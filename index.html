@@ -5,13 +5,16 @@
 <meta name="viewport" content="width=device-width,initial-scale=1,maximum-scale=1"/>
 <meta name="theme-color" content="#080b14"/>
 <title>SignalForge — Live Trading Analyzer</title>
+<link rel="icon" href="data:image/svg+xml,<svg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 100 100'><text y='.9em' font-size='90'>📈</text></svg>"/>
 <style>
 *{box-sizing:border-box;margin:0;padding:0}
-html,body{background:#080b14;color:#dce6f0;font-family:ui-monospace,Menlo,Consolas,monospace}
+html,body{background:#080b14;color:#dce6f0;font-family:ui-monospace,'SF Mono',Menlo,Consolas,monospace;-webkit-text-size-adjust:100%}
 input,select,button,textarea{font-family:inherit}
 input,select{outline:none}
 select option{background:#0d1120;color:#dce6f0}
 a{text-decoration:none}
+::-webkit-scrollbar{height:6px;width:6px}
+::-webkit-scrollbar-thumb{background:#1a2035;border-radius:3px}
 @keyframes spin{to{transform:rotate(360deg)}}
 </style>
 <script crossorigin src="https://unpkg.com/react@18/umd/react.production.min.js"></script>
@@ -21,7 +24,10 @@ a{text-decoration:none}
 <body>
 <div id="root"></div>
 <script type="text/babel" data-presets="react">
-const { useState, useRef, useEffect, useCallback } = React;const SAMPLE = `Date,Open,High,Low,Close,Volume
+const { useState, useRef, useEffect, useCallback } = React;
+
+// ─── Sample data ───────────────────────────────────────────────────────────
+const SAMPLE = `Date,Open,High,Low,Close,Volume
 2026-04-01,169.20,171.80,168.50,171.25,52000000
 2026-04-02,171.25,173.40,170.10,172.80,48500000
 2026-04-03,172.80,174.20,170.90,170.40,61200000
@@ -54,7 +60,12 @@ const { useState, useRef, useEffect, useCallback } = React;const SAMPLE = `Date,
 2026-05-06,178.40,179.20,175.10,176.80,85100000`;
 
 const STRATEGIES = ["Trend Following","Mean Reversion","Breakout","Momentum","Swing Trading","Scalping"];
-const MARKETS    = ["Stocks","Crypto","Forex","Commodities","ETFs"];function parseCSV(raw) {
+// Natural mode for each strategy: P = POSITION (patient), T = TACTICAL (active)
+const STRATEGY_MODE = {"Trend Following":"P","Mean Reversion":"T","Breakout":"T","Momentum":"T","Swing Trading":"P","Scalping":"T"};
+const MARKETS    = ["Stocks","Crypto","Forex","Commodities","ETFs"];
+
+// ─── CSV Parser ────────────────────────────────────────────────────────────
+function parseCSV(raw) {
   try {
     const lines = raw.trim().split(/\r?\n/).filter(Boolean);
     if (lines.length < 2) return [];
@@ -78,32 +89,32 @@ const MARKETS    = ["Stocks","Crypto","Forex","Commodities","ETFs"];function par
   } catch { return []; }
 }
 
+// ─── Technical Analysis ────────────────────────────────────────────────────
 const sma = (p,n) => p.length<n ? null : p.slice(-n).reduce((a,b)=>a+b,0)/n;
 function ema(p,n) {
   if (p.length<n) return null;
   const k=2/(n+1); let e=p.slice(0,n).reduce((a,b)=>a+b,0)/n;
-  for (let i=n;i<p.length;i++) e=p[i]*k+e*(1-k);
-  return e;
+  for (let i=n;i<p.length;i++) e=p[i]*k+e*(1-k); return e;
 }
 function rsi(p,n=14) {
   if (p.length<n+1) return null;
   let g=0,l=0;
-  for (let i=p.length-n;i<p.length;i++){const d=p[i]-p[i-1];d>0?g+=d:l-=d;}
+  for (let i=p.length-n;i<p.length;i++) { const d=p[i]-p[i-1]; d>0?g+=d:l-=d; }
   const rs=(g/n)/((l/n)||.0001);
   return parseFloat((100-100/(1+rs)).toFixed(1));
 }
 function macd(p) {
-  const e12=ema(p,12),e26=ema(p,26);
-  if(!e12||!e26) return null;
-  return {macd:parseFloat((e12-e26).toFixed(4)),ema12:e12,ema26:e26};
+  const e12=ema(p,12),e26=ema(p,26); if(!e12||!e26) return null;
+  const m=e12-e26; return {macd:parseFloat(m.toFixed(4)),ema12:e12,ema26:e26};
 }
 function bb(p,n=20) {
-  if(p.length<n) return null;
-  const sl=p.slice(-n),mu=sl.reduce((a,b)=>a+b,0)/n,sd=Math.sqrt(sl.reduce((a,b)=>a+Math.pow(b-mu,2),0)/n);
+  if (p.length<n) return null;
+  const sl=p.slice(-n),mu=sl.reduce((a,b)=>a+b,0)/n;
+  const sd=Math.sqrt(sl.reduce((a,b)=>a+Math.pow(b-mu,2),0)/n);
   return {upper:mu+2*sd,middle:mu,lower:mu-2*sd};
 }
 function stoch(data,n=14) {
-  if(data.length<n) return null;
+  if (data.length<n) return null;
   const sl=data.slice(-n),lo=Math.min(...sl.map(d=>d.low)),hi=Math.max(...sl.map(d=>d.high));
   return parseFloat(((sl[sl.length-1].close-lo)/((hi-lo)||1)*100).toFixed(1));
 }
@@ -114,151 +125,162 @@ function atr(data,n=14) {
     return Math.max(d.high-d.low,Math.abs(d.high-a[i-1].close),Math.abs(d.low-a[i-1].close));
   });
   return trs.reduce((a,b)=>a+b,0)/trs.length;
-}function parseCSV(raw) {
-  try {
-    const lines = raw.trim().split(/\r?\n/).filter(Boolean);
-    if (lines.length < 2) return [];
-    const hdr = lines[0].toLowerCase().split(",").map(h => h.trim());
-    const fi = kws => hdr.findIndex(h => kws.some(k => h.includes(k)));
-    const ci = fi(["close","price","last"]);
-    if (ci < 0) return [];
-    const di=fi(["date","time"]),oi=fi(["open"]),hi=fi(["high"]),li=fi(["low"]),vi=fi(["vol"]);
-    return lines.slice(1).map(line => {
-      const c = line.split(",");
-      const close = parseFloat(c[ci]);
-      return {
-        date:   di>=0 ? (c[di]||"").trim() : "",
-        open:   parseFloat(c[oi]) || close,
-        high:   parseFloat(c[hi]) || close,
-        low:    parseFloat(c[li]) || close,
-        close,
-        volume: parseInt(c[vi]) || 0,
-      };
-    }).filter(d => !isNaN(d.close) && d.close > 0);
-  } catch { return []; }
+}
+function adxCalc(data,n=14){
+  if(data.length<n*2)return null;
+  const tr=[],plusDM=[],minusDM=[];
+  for(let i=1;i<data.length;i++){
+    const h=data[i].high,l=data[i].low,ph=data[i-1].high,pl=data[i-1].low,pc=data[i-1].close;
+    tr.push(Math.max(h-l,Math.abs(h-pc),Math.abs(l-pc)));
+    const up=h-ph,dn=pl-l;
+    plusDM.push(up>dn&&up>0?up:0);
+    minusDM.push(dn>up&&dn>0?dn:0);
+  }
+  const smooth=arr=>{let s=arr.slice(0,n).reduce((a,b)=>a+b,0);const out=[s];for(let i=n;i<arr.length;i++){s=s-s/n+arr[i];out.push(s);}return out;};
+  const trS=smooth(tr),pS=smooth(plusDM),mS=smooth(minusDM);
+  const dx=[];
+  for(let i=0;i<trS.length;i++){
+    const pdi=100*pS[i]/(trS[i]||1),mdi=100*mS[i]/(trS[i]||1);
+    dx.push(100*Math.abs(pdi-mdi)/((pdi+mdi)||1));
+  }
+  if(dx.length<n)return null;
+  const adx=dx.slice(-n).reduce((a,b)=>a+b,0)/n;
+  const li=trS.length-1;
+  const pdi=100*pS[li]/(trS[li]||1),mdi=100*mS[li]/(trS[li]||1);
+  return{adx:+adx.toFixed(1),plusDI:+pdi.toFixed(1),minusDI:+mdi.toFixed(1)};
+}
+function obvCalc(data){
+  if(data.length<16)return null;
+  let obv=0;const series=[0];
+  for(let i=1;i<data.length;i++){
+    if(data[i].close>data[i-1].close)obv+=data[i].volume;
+    else if(data[i].close<data[i-1].close)obv-=data[i].volume;
+    series.push(obv);
+  }
+  const recent=series.slice(-5).reduce((a,b)=>a+b,0)/5;
+  const prior=series.slice(-15,-5).reduce((a,b)=>a+b,0)/10;
+  return{obv,rising:recent>prior};
+}
+function vwapCalc(data){
+  if(!data.length)return null;
+  let pv=0,vol=0;
+  data.slice(-20).forEach(d=>{const tp=(d.high+d.low+d.close)/3;pv+=tp*d.volume;vol+=d.volume;});
+  return vol>0?+(pv/vol).toFixed(4):null;
+}
+function patterns(data) {
+  const out=[],n=data.length; if(n<3) return out;
+  const [c,b,a]=[data[n-1],data[n-2],data[n-3]];
+  const body=d=>Math.abs(d.close-d.open), range=d=>d.high-d.low;
+  if(b.close<b.open&&c.close>c.open&&c.open<=b.close&&c.close>=b.open)
+    out.push({name:"Bullish Engulfing",type:"BULLISH",desc:"Bullish candle fully engulfs prior bearish — strong reversal signal."});
+  if(b.close>b.open&&c.close<c.open&&c.open>=b.close&&c.close<=b.open)
+    out.push({name:"Bearish Engulfing",type:"BEARISH",desc:"Bearish candle fully engulfs prior bullish — strong reversal signal."});
+  if(range(c)>0&&body(c)/range(c)<0.08)
+    out.push({name:"Doji",type:"NEUTRAL",desc:"Open and close nearly equal — indecision, potential reversal ahead."});
+  const lw=Math.min(c.open,c.close)-c.low, uw=c.high-Math.max(c.open,c.close);
+  if(body(c)>0&&lw>2*body(c)&&uw<body(c))
+    out.push({name:"Hammer",type:"BULLISH",desc:"Long lower wick — buyers rejected lows, bullish reversal."});
+  if(body(c)>0&&uw>2*body(c)&&lw<body(c))
+    out.push({name:"Shooting Star",type:"BEARISH",desc:"Long upper wick — sellers rejected highs, bearish reversal."});
+  if([a,b,c].every(d=>d.close>d.open)&&b.close>a.close&&c.close>b.close)
+    out.push({name:"Three White Soldiers",type:"BULLISH",desc:"Three consecutive bullish candles — strong upward momentum."});
+  if([a,b,c].every(d=>d.close<d.open)&&b.close<a.close&&c.close<b.close)
+    out.push({name:"Three Black Crows",type:"BEARISH",desc:"Three consecutive bearish candles — strong downward pressure."});
+  return out;
+}
+function divergence(closes,n=10) {
+  if(closes.length<n+15) return null;
+  const rsiAt=i=>rsi(closes.slice(0,i+1));
+  const recentP=closes.slice(-n),recentR=closes.slice(0,-n).map((_,i,a)=>rsiAt(i)).filter(Boolean);
+  if(recentR.length<3) return null;
+  const pUp=recentP[recentP.length-1]>recentP[0];
+  const rUp=recentR[recentR.length-1]>recentR[0];
+  if(pUp&&!rUp) return{type:"BEARISH",desc:"Price making higher highs but RSI declining — momentum weakening, potential reversal."};
+  if(!pUp&&rUp)  return{type:"BULLISH",desc:"Price making lower lows but RSI rising — selling pressure fading, potential bottom."};
+  return null;
 }
 
-const sma = (p,n) => p.length<n ? null : p.slice(-n).reduce((a,b)=>a+b,0)/n;
-function ema(p,n) {
-  if (p.length<n) return null;
-  const k=2/(n+1); let e=p.slice(0,n).reduce((a,b)=>a+b,0)/n;
-  for (let i=n;i<p.length;i++) e=p[i]*k+e*(1-k);
-  return e;
-}
-function rsi(p,n=14) {
-  if (p.length<n+1) return null;
-  let g=0,l=0;
-  for (let i=p.length-n;i<p.length;i++){const d=p[i]-p[i-1];d>0?g+=d:l-=d;}
-  const rs=(g/n)/((l/n)||.0001);
-  return parseFloat((100-100/(1+rs)).toFixed(1));
-}
-function macd(p) {
-  const e12=ema(p,12),e26=ema(p,26);
-  if(!e12||!e26) return null;
-  return {macd:parseFloat((e12-e26).toFixed(4)),ema12:e12,ema26:e26};
-}
-function bb(p,n=20) {
-  if(p.length<n) return null;
-  const sl=p.slice(-n),mu=sl.reduce((a,b)=>a+b,0)/n,sd=Math.sqrt(sl.reduce((a,b)=>a+Math.pow(b-mu,2),0)/n);
-  return {upper:mu+2*sd,middle:mu,lower:mu-2*sd};
-}
-function stoch(data,n=14) {
-  if(data.length<n) return null;
-  const sl=data.slice(-n),lo=Math.min(...sl.map(d=>d.low)),hi=Math.max(...sl.map(d=>d.high));
-  return parseFloat(((sl[sl.length-1].close-lo)/((hi-lo)||1)*100).toFixed(1));
-}
-function atr(data,n=14) {
-  if (data.length<2) return 0;
-  const trs=data.slice(-Math.min(n+1,data.length)).map((d,i,a)=>{
-    if(i===0) return d.high-d.low;
-    return Math.max(d.high-d.low,Math.abs(d.high-a[i-1].close),Math.abs(d.low-a[i-1].close));
-  });
-  return trs.reduce((a,b)=>a+b,0)/trs.length;
-}function parseCSV(raw) {
-  try {
-    const lines = raw.trim().split(/\r?\n/).filter(Boolean);
-    if (lines.length < 2) return [];
-    const hdr = lines[0].toLowerCase().split(",").map(h => h.trim());
-    const fi = kws => hdr.findIndex(h => kws.some(k => h.includes(k)));
-    const ci = fi(["close","price","last"]);
-    if (ci < 0) return [];
-    const di=fi(["date","time"]),oi=fi(["open"]),hi=fi(["high"]),li=fi(["low"]),vi=fi(["vol"]);
-    return lines.slice(1).map(line => {
-      const c = line.split(",");
-      const close = parseFloat(c[ci]);
-      return {
-        date:   di>=0 ? (c[di]||"").trim() : "",
-        open:   parseFloat(c[oi]) || close,
-        high:   parseFloat(c[hi]) || close,
-        low:    parseFloat(c[li]) || close,
-        close,
-        volume: parseInt(c[vi]) || 0,
-      };
-    }).filter(d => !isNaN(d.close) && d.close > 0);
-  } catch { return []; }
+// ─── Shared signal logic: weighted votes + confluence + conflict penalty ─────
+// Used by BOTH analyze() and scoreAt() so live signals and backtest stay identical.
+// Each indicator casts a directional vote (+1 bullish / -1 bearish / 0 neutral)
+// with a reliability weight. Final signal requires confluence (3+ aligned) AND
+// a strong enough weighted score, with conflicting votes dampening the result.
+function computeSignal(ctx) {
+  const {R,M,s5,s10,s20,s50,trend,S,B,last,pats,div,volSig,ADX,OBV,VWAP} = ctx;
+  const votes=[];
+  if(R!=null)  votes.push({n:"RSI",   dir:R<40?1:R>60?-1:0, w:2});
+  if(M)        votes.push({n:"MACD",  dir:M.macd>0?1:-1,     w:2.5});
+  if(s5&&s10)  votes.push({n:"MA",    dir:s5>s10?1:-1,       w:1.5});
+  if(s20&&s50) votes.push({n:"MAlong",dir:s20>s50?1:-1,      w:2});
+  votes.push({n:"Trend", dir:trend==="UPTREND"?1:trend==="DOWNTREND"?-1:0, w:2});
+  if(S!=null)  votes.push({n:"Stoch", dir:S<25?1:S>75?-1:0,  w:1.5});
+  if(B)        votes.push({n:"BB",    dir:last.close<B.lower?1:last.close>B.upper?-1:0, w:1.5});
+  // Patterns: each contributes a weighted vote
+  pats.forEach(p=>votes.push({n:"Pat", dir:p.type==="BULLISH"?1:p.type==="BEARISH"?-1:0, w:1.5}));
+  // Divergence: high-reliability reversal signal
+  if(div) votes.push({n:"Div", dir:div.type==="BULLISH"?1:-1, w:2.5});
+  // Volume confirmation (only meaningful with a trend)
+  if(volSig==="CONFIRMING"&&trend==="UPTREND")   votes.push({n:"Vol",dir:1,w:1});
+  if(volSig==="CONFIRMING"&&trend==="DOWNTREND") votes.push({n:"Vol",dir:-1,w:1});
+  // ADX confirmer — weight scales with trend strength
+  if(ADX) votes.push({n:"ADX", dir:ADX.plusDI>ADX.minusDI?1:-1, w:ADX.adx>25?3:ADX.adx>20?1.5:0.5});
+  if(OBV) votes.push({n:"OBV", dir:OBV.rising?1:-1, w:2});
+  if(VWAP)votes.push({n:"VWAP",dir:last.close>VWAP?1:-1, w:1.5});
+
+  const active=votes.filter(v=>v.dir!==0);
+  const bull=active.filter(v=>v.dir>0).length;
+  const bear=active.filter(v=>v.dir<0).length;
+  const weighted=active.reduce((a,v)=>a+v.dir*v.w,0);
+  const conflict=Math.min(bull,bear);
+  const penalty=conflict*0.8;
+  const net=weighted>0?weighted-penalty:weighted+penalty;
+
+  // Confluence requirement: 3+ aligned indicators AND strong weighted score
+  let signal="HOLD";
+  if(net>=5 && bull>=3 && bull>bear) signal="BUY";
+  else if(net<=-5 && bear>=3 && bear>bull) signal="SELL";
+
+  // Confidence: scale net score, capped, factoring how lopsided the vote is
+  const total=bull+bear;
+  const agreement=total>0?Math.max(bull,bear)/total:0;
+  const confidence=Math.min(95,Math.max(35,Math.round(40+Math.abs(net)*3+agreement*15)));
+
+  return {signal, score:parseFloat(net.toFixed(1)), bull, bear, conflict, confidence};
 }
 
-const sma = (p,n) => p.length<n ? null : p.slice(-n).reduce((a,b)=>a+b,0)/n;
-function ema(p,n) {
-  if (p.length<n) return null;
-  const k=2/(n+1); let e=p.slice(0,n).reduce((a,b)=>a+b,0)/n;
-  for (let i=n;i<p.length;i++) e=p[i]*k+e*(1-k);
-  return e;
-}
-function rsi(p,n=14) {
-  if (p.length<n+1) return null;
-  let g=0,l=0;
-  for (let i=p.length-n;i<p.length;i++){const d=p[i]-p[i-1];d>0?g+=d:l-=d;}
-  const rs=(g/n)/((l/n)||.0001);
-  return parseFloat((100-100/(1+rs)).toFixed(1));
-}
-function macd(p) {
-  const e12=ema(p,12),e26=ema(p,26);
-  if(!e12||!e26) return null;
-  return {macd:parseFloat((e12-e26).toFixed(4)),ema12:e12,ema26:e26};
-}
-function bb(p,n=20) {
-  if(p.length<n) return null;
-  const sl=p.slice(-n),mu=sl.reduce((a,b)=>a+b,0)/n,sd=Math.sqrt(sl.reduce((a,b)=>a+Math.pow(b-mu,2),0)/n);
-  return {upper:mu+2*sd,middle:mu,lower:mu-2*sd};
-}
-function stoch(data,n=14) {
-  if(data.length<n) return null;
-  const sl=data.slice(-n),lo=Math.min(...sl.map(d=>d.low)),hi=Math.max(...sl.map(d=>d.high));
-  return parseFloat(((sl[sl.length-1].close-lo)/((hi-lo)||1)*100).toFixed(1));
-}
-function atr(data,n=14) {
-  if (data.length<2) return 0;
-  const trs=data.slice(-Math.min(n+1,data.length)).map((d,i,a)=>{
-    if(i===0) return d.high-d.low;
-    return Math.max(d.high-d.low,Math.abs(d.high-a[i-1].close),Math.abs(d.low-a[i-1].close));
-  });
-  return trs.reduce((a,b)=>a+b,0)/trs.length;
-}function analyze(data, ticker, market, strategy, slMult, tpMult) {
+function analyze(data, ticker, market, strategy, slMult, tpMult) {
   const SLM = slMult || 1.5;
   const TPM = tpMult || 2.0;
   const closes=data.map(d=>d.close), vols=data.map(d=>d.volume);
   const last=data[data.length-1];
   const R=rsi(closes), M=macd(closes), B=bb(closes), S=stoch(data), A=atr(data);
-  const s5=sma(closes,Math.min(5,closes.length)), s10=sma(closes,Math.min(10,closes.length));
-  const s20=sma(closes,Math.min(20,closes.length)), s50=sma(closes,Math.min(50,closes.length));
+  const s5=sma(closes,Math.min(5,closes.length));
+  const s10=sma(closes,Math.min(10,closes.length));
+  const s20=sma(closes,Math.min(20,closes.length));
+  const s50=sma(closes,Math.min(50,closes.length));
   const pats=patterns(data);
   const div=divergence(closes);
   const ADX=adxCalc(data);
   const OBV=obvCalc(data);
   const VWAP=vwapCalc(data);
+
+  // Trend
   const chg=(last.close-closes[0])/closes[0]*100;
   const trend=chg>2?"UPTREND":chg<-2?"DOWNTREND":"SIDEWAYS";
   const strength=Math.abs(chg)>8?"STRONG":Math.abs(chg)>3?"MODERATE":"WEAK";
+
+  // Volume
   const avgV=vols.slice(0,-3).reduce((a,b)=>a+b,0)/Math.max(vols.length-3,1);
   const recV=vols.slice(-3).reduce((a,b)=>a+b,0)/3;
   const volSig=recV>avgV*1.15?"CONFIRMING":recV<avgV*0.85?"DIVERGING":"NEUTRAL";
 
+  // Score via shared weighted+confluence logic
   const sigResult=computeSignal({R,M,s5,s10,s20,s50,trend,S,B,last,pats,div,volSig,ADX,OBV,VWAP});
   const score=sigResult.score;
   const signal=sigResult.signal;
   const confidence=sigResult.confidence;
 
+  // Levels
   const sup=Math.min(...data.slice(-Math.min(20,data.length)).map(d=>d.low));
   const res=Math.max(...data.slice(-Math.min(20,data.length)).map(d=>d.high));
   const e=last.close;
@@ -266,6 +288,7 @@ function atr(data,n=14) {
   const tp1=signal==="BUY"?e+A*TPM:e-A*TPM;
   const tp2=signal==="BUY"?e+A*TPM*1.75:e-A*TPM*1.75;
   const rr=parseFloat((Math.abs(tp1-e)/Math.abs(sl-e)).toFixed(1));
+
   const rsiLabel=R?R>70?"OVERBOUGHT":R<30?"OVERSOLD":"NEUTRAL":"N/A";
 
   return {
@@ -296,10 +319,55 @@ function atr(data,n=14) {
         {price:parseFloat(B.upper.toFixed(4)),type:"RESISTANCE",strength:"MODERATE"},
       ]:[]),
     ],
-    reasoning:ticker+" shows a "+strength.toLowerCase()+" "+trend.toLowerCase()+" over "+data.length+" candles. "+(M?M.macd>0?"MACD positive — bullish momentum. ":"MACD negative — bearish pressure. ":"")+(R?"RSI "+R+" ("+rsiLabel+"). ":"")+(div?div.desc+" ":"")+(pats.length?pats[0].name+" detected. ":"")+"Score "+score+" → "+signal+" at "+confidence+"% confidence.",
-    bias:signal==="BUY"?"Test of resistance near "+res.toFixed(2)+" expected. Trail stop as price moves favourably.":signal==="SELL"?"Retest of support near "+sup.toFixed(2)+" expected. Treat rallies as selling opportunities.":"Consolidation between "+sup.toFixed(2)+"–"+res.toFixed(2)+" likely. Await a decisive breakout.",
+    risks:[
+      "Support at "+fmt(sup)+" — breach would invalidate bullish thesis",
+      volSig==="DIVERGING"?"Volume declining — weakening conviction in current move":"Monitor for volume confirmation on breakout",
+      R&&R>70?"RSI overbought at "+R+" — momentum may stall soon":R&&R<30?"RSI oversold at "+R+" — bounce possible":"RSI "+R+" — no extreme readings",
+    ],
+    reasoning:
+      ticker+" ("+market+") shows a "+strength.toLowerCase()+" "+trend.toLowerCase()+" over the "+data.length+"-candle period. "+
+      (M?M.macd>0?"MACD positive ("+M.macd.toFixed(3)+") — bullish momentum active. ":"MACD negative ("+M.macd.toFixed(3)+") — bearish pressure. ":"")+
+      (R?"RSI "+R+" ("+rsiLabel+"). ":"")+
+      (div?div.desc+" ":"")+
+      (pats.length?pats[0].name+" pattern detected. ":"")+
+      "Score "+score+" → "+signal+" at "+confidence+"% confidence using "+strategy+".",
+    bias:
+      signal==="BUY"?"Test of resistance near "+fmt(res)+" expected. Volume confirmation required. Trail stop as price moves in your favour.":
+      signal==="SELL"?"Retest of support near "+fmt(sup)+" expected. Any rallies should be treated as selling opportunities.":
+      "Consolidation between "+fmt(sup)+"–"+fmt(res)+" likely. Wait for a decisive breakout with volume before entering.",
   };
-}function scoreFlat(slice){
+}
+
+// ─── Backtest engine ─────────────────────────────────────────────────────────
+// Computes the signal score using the same logic as analyze(), but for a given
+// slice of data ending at index i. Returns just the score + signal.
+// Legacy flat-scoring logic (pre-confluence) — kept only for A/B comparison.
+// POSITION mode: long-horizon trend-following (the "patient" philosophy).
+// Only goes long, only inside an established long-term uptrend, buys pullbacks,
+// holds through noise, exits only when the long trend actually breaks.
+// NOTE: price-based trend-following — NOT fundamental value investing. It cannot
+// see earnings, debt, or business quality, which is the real core of Buffett's edge.
+function scorePosition(slice){
+  if(slice.length<30)return null;
+  const cl=slice.map(d=>d.close),last=slice[slice.length-1];
+  const s50=sma(cl,Math.min(50,cl.length));
+  const s200=sma(cl,Math.min(200,cl.length));
+  const R=rsi(cl);
+  if(!s50||!s200) return {score:0,signal:"HOLD",atr:atr(slice)};
+  const longUptrend = last.close>s200 && s50>s200;
+  const longDowntrend = last.close<s200 && s50<s200;
+  let signal="HOLD", score=0;
+  if(longUptrend){
+    score=3;
+    // buy a pullback within the uptrend
+    if(R!=null && R<45){ signal="BUY"; score=6; }
+  } else if(longDowntrend){
+    score=-6; signal="SELL"; // exit/avoid — thesis broken
+  }
+  return {score, signal, atr:atr(slice)};
+}
+
+function scoreFlat(slice){
   if(slice.length<26)return null;
   const cl=slice.map(d=>d.close),last=slice[slice.length-1];
   const R=rsi(cl),M=macd(cl),B=bb(cl),S=stoch(slice);
@@ -323,8 +391,9 @@ function atr(data,n=14) {
   if(VWAP)s+=last.close>VWAP?1:-1;
   return{score:s,signal:s>=4?"BUY":s<=-4?"SELL":"HOLD",atr:atr(slice)};
 }
+
 function scoreAt(slice) {
-  if (slice.length < 26) return null;
+  if (slice.length < 26) return null; // need enough for MACD/SMA
   const closes = slice.map(d=>d.close), vols = slice.map(d=>d.volume);
   const last = slice[slice.length-1];
   const R=rsi(closes), M=macd(closes), B=bb(closes), S=stoch(slice);
@@ -339,21 +408,27 @@ function scoreAt(slice) {
   const r=computeSignal({R,M,s5,s10,s20,s50,trend,S,B,last,pats,div,volSig,ADX,OBV,VWAP});
   return {score:r.score, signal:r.signal, atr:atr(slice)};
 }
-function runBacktest(data, scorer, slMult, tpMult, costs, range) {
+
+// Walks through history, opens a trade on each BUY/SELL signal, then checks the
+// NEXT candles to see whether TP or SL was hit first. ATR-based SL/TP, same as live.
+function runBacktest(data, scorer, slMult, tpMult, costs, range, holdMode) {
   const scoreFn = scorer || scoreAt;
   const SLM = slMult || 1.5;
   const TPM = tpMult || 2.0;
-  const slipPct = costs?.slip || 0;
-  const commPct = costs?.comm || 0;
-  const costPerTrade = (slipPct + commPct) * 2;
+  const slipPct = costs?.slip || 0;   // % per side
+  const commPct = costs?.comm || 0;   // % per side
+  const costPerTrade = (slipPct + commPct) * 2; // entry + exit
   const startIdx = range?.start!=null ? Math.max(30, range.start) : 30;
   const endIdx   = range?.end!=null   ? range.end : data.length;
   const trades=[];
   let openTrade=null;
-  let pending=null;
+  let pending=null; // signal queued on prior bar, fills at THIS bar's open (no lookahead)
+  // start once we have enough lookback for indicators
   for (let i=startIdx; i<endIdx; i++) {
     const slice=data.slice(0,i+1);
     const candle=data[i];
+
+    // 1) Fill any pending entry at THIS bar's OPEN (realistic — no lookahead)
     if (pending && !openTrade) {
       const entry=candle.open;
       const A=pending.atr;
@@ -365,26 +440,39 @@ function runBacktest(data, scorer, slMult, tpMult, costs, range) {
       };
       pending=null;
     }
+
+    // 2) Manage an open trade
     if (openTrade) {
       const t=openTrade;
       let closed=false;
       if (t.dir==="BUY") {
         if (candle.low<=t.sl)   { t.exit=t.sl;  t.result="LOSS"; closed=true; }
         else if (candle.high>=t.tp){ t.exit=t.tp; t.result="WIN";  closed=true; }
-      } else {
+      } else { // SELL
         if (candle.high>=t.sl)  { t.exit=t.sl;  t.result="LOSS"; closed=true; }
         else if (candle.low<=t.tp){ t.exit=t.tp; t.result="WIN";  closed=true; }
+      }
+      // POSITION/hold mode: exit a long when the long-term thesis breaks (scorer flips to SELL)
+      if (!closed && holdMode && t.dir==="BUY") {
+        const sNow=scoreFn(slice);
+        if (sNow && sNow.signal==="SELL") {
+          t.exit=candle.close;
+          t.result = candle.close>=t.entry ? "WIN" : "LOSS";
+          closed=true;
+        }
       }
       if (closed) {
         t.exitDate=candle.date;
         t.pnl = t.dir==="BUY" ? (t.exit-t.entry) : (t.entry-t.exit);
         t.grossPct = t.pnl/t.entry*100;
-        t.pnlPct = parseFloat((t.grossPct - costPerTrade).toFixed(4));
+        t.pnlPct = parseFloat((t.grossPct - costPerTrade).toFixed(4)); // net after costs
         t.barsHeld = i - t.openIndex;
         trades.push(t);
         openTrade=null;
       }
     }
+
+    // 3) Generate a signal on THIS bar's close → queue it for NEXT bar's open
     if (!openTrade && !pending) {
       const r=scoreFn(slice);
       if (r && (r.signal==="BUY"||r.signal==="SELL") && r.atr>0) {
@@ -392,6 +480,8 @@ function runBacktest(data, scorer, slMult, tpMult, costs, range) {
       }
     }
   }
+
+  // Tally results
   const wins=trades.filter(t=>t.result==="WIN");
   const losses=trades.filter(t=>t.result==="LOSS");
   const totalPnlPct=trades.reduce((a,t)=>a+t.pnlPct,0);
@@ -404,25 +494,34 @@ function runBacktest(data, scorer, slMult, tpMult, costs, range) {
   const profitFactor=grossLoss>0?grossWin/grossLoss:(grossWin>0?Infinity:0);
   const expectancy=trades.length?totalPnlPct/trades.length:0;
   const totalCostDrag=totalGrossPct-totalPnlPct;
+  // Net-profitable trades (a TP "win" can still be net-negative after costs)
   const netWins=trades.filter(t=>t.pnlPct>0).length;
+
+  // Equity curve (cumulative % return)
   let equity=0;
   const curve=trades.map(t=>{equity+=t.pnlPct; return parseFloat(equity.toFixed(2));});
+
+  // ─── Statistical validation ───
   const rets=trades.map(t=>t.pnlPct);
   const nT=rets.length;
   const mean=nT?rets.reduce((a,b)=>a+b,0)/nT:0;
   const variance=nT?rets.reduce((a,b)=>a+Math.pow(b-mean,2),0)/nT:0;
   const stdDev=Math.sqrt(variance);
-  const sharpe=stdDev>0?mean/stdDev:0;
+  const sharpe=stdDev>0?mean/stdDev:0;               // per-trade Sharpe-like ratio
+  // Max drawdown from equity curve
   let peak=0,maxDD=0;
   curve.forEach(eq=>{if(eq>peak)peak=eq;const dd=peak-eq;if(dd>maxDD)maxDD=dd;});
-  let cl2=0,maxConsecLoss=0;
-  rets.forEach(x=>{if(x<=0){cl2++;if(cl2>maxConsecLoss)maxConsecLoss=cl2;}else cl2=0;});
+  // Max consecutive losses
+  let cl=0,maxConsecLoss=0;
+  rets.forEach(x=>{if(x<=0){cl++;if(cl>maxConsecLoss)maxConsecLoss=cl;}else cl=0;});
+  // Significance via rough t-stat
   const se=stdDev>0?stdDev/Math.sqrt(nT):0;
   const tStat=se>0?mean/se:0;
   let significance="NOT SIGNIFICANT";
   if(nT<10) significance="TOO FEW TRADES";
   else if(nT>=30&&Math.abs(tStat)>2) significance="SIGNIFICANT";
   else if(nT>=20&&Math.abs(tStat)>1.5) significance="SUGGESTIVE";
+
   return {
     trades, openTrade,
     stats:{
@@ -446,18 +545,86 @@ function runBacktest(data, scorer, slMult, tpMult, costs, range) {
     curve,
   };
 }
+
+// ─── Buffett-style fundamental VALUE score ──────────────────────────────────
+// Grades cheapness + financial health + growth into a composite, the way a
+// quantitative value screen would. Covers the SCREENABLE part of value investing
+// — NOT the qualitative moat/management judgment that needs reading annual reports.
+function valueScore(m){
+  if(!m) return null;
+  const flags=[], reasons=[];
+  let cheap=0, healthy=0, growing=0;
+  const num=v=>(v==null||isNaN(v))?null:Number(v);
+  const pe=num(m.peTTM), pb=num(m.pbAnnual), de=num(m["totalDebt/totalEquityAnnual"]);
+  const roe=num(m.roeTTM), npm=num(m.netProfitMarginTTM), cr=num(m.currentRatioAnnual);
+  const revG=num(m.revenueGrowthTTMYoy), epsG=num(m.epsGrowthTTMYoy);
+
+  if(pe!=null){
+    if(pe>0&&pe<15){cheap+=2; reasons.push("P/E "+pe.toFixed(1)+" — attractively valued");}
+    else if(pe>=15&&pe<25){cheap+=1; reasons.push("P/E "+pe.toFixed(1)+" — fairly valued");}
+    else if(pe>=25){cheap-=1; reasons.push("P/E "+pe.toFixed(1)+" — expensive");}
+    else if(pe<=0){flags.push("Negative earnings — no positive P/E");}
+  }
+  if(pb!=null){
+    if(pb>0&&pb<1.5){cheap+=2; reasons.push("P/B "+pb.toFixed(2)+" — near/below book value");}
+    else if(pb>=1.5&&pb<3){cheap+=1;}
+    else if(pb>=5){cheap-=1; reasons.push("P/B "+pb.toFixed(2)+" — pricey vs assets");}
+  }
+  if(de!=null){
+    if(de<0.5){healthy+=2; reasons.push("Debt/equity "+de.toFixed(2)+" — strong balance sheet");}
+    else if(de<1){healthy+=1;}
+    else if(de>2){healthy-=2; flags.push("High debt/equity "+de.toFixed(2));}
+  }
+  if(roe!=null){
+    if(roe>0.15){healthy+=2; reasons.push("ROE "+(roe*100).toFixed(0)+"% — efficient capital use");}
+    else if(roe>0.08){healthy+=1;}
+    else if(roe<0){healthy-=2; flags.push("Negative ROE");}
+  }
+  if(npm!=null){
+    if(npm>0.20){healthy+=2; reasons.push("Net margin "+(npm*100).toFixed(0)+"% — highly profitable");}
+    else if(npm>0.10){healthy+=1;}
+    else if(npm<0){healthy-=2; flags.push("Unprofitable — negative margin");}
+  }
+  if(cr!=null){
+    if(cr>1.5){healthy+=1; reasons.push("Current ratio "+cr.toFixed(1)+" — liquid");}
+    else if(cr<1){healthy-=1; flags.push("Current ratio <1 — liquidity risk");}
+  }
+  if(revG!=null){
+    if(revG>0.15){growing+=2; reasons.push("Revenue +"+(revG*100).toFixed(0)+"% — expanding strongly");}
+    else if(revG>0.05){growing+=1;}
+    else if(revG<0){growing-=1; flags.push("Revenue shrinking");}
+  }
+  if(epsG!=null){
+    if(epsG>0.15){growing+=2; reasons.push("EPS +"+(epsG*100).toFixed(0)+"% — earnings rising");}
+    else if(epsG>0){growing+=1;}
+    else if(epsG<0){growing-=1;}
+  }
+
+  const total=cheap+healthy+growing;
+  let grade,verdict;
+  if(total>=10){grade="A";verdict="STRONG VALUE — cheap, healthy, and growing. The kind of business a value screen flags for deeper study.";}
+  else if(total>=6){grade="B";verdict="GOOD — solid fundamentals with real appeal. Worth a closer look.";}
+  else if(total>=2){grade="C";verdict="FAIR — mixed picture. Some strengths, some concerns.";}
+  else if(total>=-2){grade="D";verdict="WEAK — limited fundamental appeal at current price.";}
+  else{grade="F";verdict="POOR — expensive and/or financially strained. A value investor would likely pass.";}
+
+  const hasData = [pe,pb,de,roe,npm,cr,revG,epsG].some(v=>v!=null);
+  return hasData ? {cheap,healthy,growing,total,grade,verdict,reasons,flags} : null;
+}
+
+// ─── Formatting ────────────────────────────────────────────────────────────
 function fmt(v,dec) {
   if(v==null||isNaN(v)) return "—";
   const d=dec!=null?dec:Math.abs(v)>=100?2:4;
   return "$"+Number(v).toFixed(d);
-}function Chart({rows,analysis}) {
+}
+
+// ─── Candlestick Chart ─────────────────────────────────────────────────────
+function Chart({rows,analysis}) {
   const ref=useRef(null);
   useEffect(()=>{
     const cv=ref.current; if(!cv||rows.length<2) return;
-    const dpr=window.devicePixelRatio||1;
-    const W=cv.offsetWidth,H=300;
-    cv.width=W*dpr; cv.height=H*dpr; cv.style.height=H+"px";
-    const ctx=cv.getContext("2d"); ctx.scale(dpr,dpr);
+    const ctx=cv.getContext("2d"),W=cv.width,H=cv.height;
     const PAD={l:58,r:10,t:12,b:24},cH=(H-PAD.t-PAD.b)*0.72,vH=(H-PAD.t-PAD.b)*0.2,gap=(H-PAD.t-PAD.b)*0.08;
     ctx.clearRect(0,0,W,H);
     const n=Math.min(rows.length,80),data=rows.slice(-n);
@@ -467,7 +634,10 @@ function fmt(v,dec) {
     const toX=i=>PAD.l+i*cw+cw/2;
     const toY=v=>PAD.t+(1-(v-lo)/rng)*cH;
     const vBase=PAD.t+cH+gap+vH;
+    const toVY=v=>vBase-Math.max((v/maxVol)*vH,1);
+    // Background
     ctx.fillStyle="#080b14"; ctx.fillRect(0,0,W,H);
+    // Grid
     [0,.25,.5,.75,1].forEach(f=>{
       const price=lo+rng*(1-f),y=PAD.t+f*cH;
       ctx.strokeStyle="#1a2035"; ctx.lineWidth=.5;
@@ -475,27 +645,38 @@ function fmt(v,dec) {
       ctx.fillStyle="#37474f";ctx.font="9px monospace";ctx.textAlign="right";
       ctx.fillText(price>=100?price.toFixed(2):price.toFixed(4),PAD.l-3,y+3);
     });
+    // SMAs
     const closes=data.map(d=>d.close);
     [[5,"#ffd74099"],[10,"#00bcd499"],[20,"#e040fb99"]].forEach(([p,col])=>{
-      const per=+p;if(closes.length<per)return;
+      const per=parseInt(p); if(closes.length<per) return;
       ctx.beginPath();ctx.strokeStyle=col;ctx.lineWidth=1.2;let first=true;
-      data.forEach((d,i)=>{if(i<per-1)return;const v=closes.slice(i-per+1,i+1).reduce((a,b)=>a+b,0)/per;first?ctx.moveTo(toX(i),toY(v)):ctx.lineTo(toX(i),toY(v));first=false;});
-      ctx.stroke();
+      data.forEach((d,i)=>{
+        if(i<per-1)return;
+        const v=closes.slice(i-per+1,i+1).reduce((a,b)=>a+b,0)/per;
+        first?ctx.moveTo(toX(i),toY(v)):ctx.lineTo(toX(i),toY(v));first=false;
+      });ctx.stroke();
     });
+    // BB bands
     const bbV=analysis?.indicators?.bb?.v;
     if(bbV){
-      ctx.setLineDash([4,4]);ctx.lineWidth=.8;
-      [bbV.upper,bbV.lower].forEach(v=>{ctx.strokeStyle="#546e7a44";ctx.beginPath();ctx.moveTo(PAD.l,toY(v));ctx.lineTo(W-PAD.r,toY(v));ctx.stroke();});
-      ctx.setLineDash([]);
+      [bbV.upper,bbV.middle,bbV.lower].forEach((v,i)=>{
+        ctx.beginPath();ctx.strokeStyle=i===1?"#546e7a55":"#546e7a33";
+        ctx.setLineDash(i===1?[4,4]:[]); ctx.lineWidth=.8;
+        ctx.moveTo(PAD.l,toY(v));ctx.lineTo(W-PAD.r,toY(v));ctx.stroke();
+        ctx.setLineDash([]);
+      });
     }
+    // Candles
     data.forEach((d,i)=>{
       const up=d.close>=d.open,col=up?"#00e676":"#ff5252",x=toX(i);
-      const bt=toY(Math.max(d.open,d.close)),bbm=toY(Math.min(d.open,d.close));
+      const bt=toY(Math.max(d.open,d.close)),bb_=toY(Math.min(d.open,d.close));
       ctx.strokeStyle=col;ctx.lineWidth=.8;
       ctx.beginPath();ctx.moveTo(x,toY(d.high));ctx.lineTo(x,toY(d.low));ctx.stroke();
       ctx.fillStyle=up?"#00e676":"#cc3333";
-      ctx.fillRect(x-cw*.38,bt,cw*.76,Math.max(bbm-bt,1));
+      ctx.fillRect(x-cw*.38,bt,cw*.76,Math.max(bb_-bt,1));
+      if(!up){ctx.strokeStyle="#ff5252";ctx.lineWidth=.5;ctx.strokeRect(x-cw*.38,bt,cw*.76,Math.max(bb_-bt,1));}
     });
+    // Entry/SL lines
     if(analysis){
       [[analysis.entry,"#00bcd4","ENTRY"],[analysis.sl,"#ff5252","SL"],[analysis.tp1,"#00e676","TP1"]].forEach(([v,col,lbl])=>{
         if(!v||v<lo||v>hi) return;
@@ -504,47 +685,118 @@ function fmt(v,dec) {
         ctx.fillStyle=col;ctx.font="bold 8px monospace";ctx.textAlign="left";
         ctx.fillText(lbl,PAD.l+2,toY(v)-2);
       });
-      if(analysis.levels){
-        const sR=analysis.levels.find(l=>l.type==="RESISTANCE"&&l.strength==="STRONG");
-        const sS=analysis.levels.find(l=>l.type==="SUPPORT"&&l.strength==="STRONG");
-        if(sR&&sR.price>=lo&&sR.price<=hi){const y=toY(sR.price);ctx.beginPath();ctx.strokeStyle="#ff5252";ctx.lineWidth=1.4;ctx.setLineDash([2,2]);ctx.moveTo(PAD.l,y);ctx.lineTo(W-PAD.r,y);ctx.stroke();ctx.setLineDash([]);ctx.fillStyle="#ff5252";ctx.font="bold 9px monospace";ctx.textAlign="right";ctx.fillText("RESISTANCE "+fmt(sR.price),W-PAD.r-2,y-3);}
-        if(sS&&sS.price>=lo&&sS.price<=hi){const y=toY(sS.price);ctx.beginPath();ctx.strokeStyle="#00e676";ctx.lineWidth=1.4;ctx.setLineDash([2,2]);ctx.moveTo(PAD.l,y);ctx.lineTo(W-PAD.r,y);ctx.stroke();ctx.setLineDash([]);ctx.fillStyle="#00e676";ctx.font="bold 9px monospace";ctx.textAlign="right";ctx.fillText("SUPPORT "+fmt(sS.price),W-PAD.r-2,y+11);}
-      }
-      const fullLen=rows.length,startIdx=30;
-      if(fullLen>startIdx){const offset=fullLen-n,vi=startIdx-offset;if(vi>=0&&vi<n){const x=toX(vi);ctx.beginPath();ctx.strokeStyle="#ffa726";ctx.lineWidth=1;ctx.setLineDash([3,3]);ctx.moveTo(x,PAD.t);ctx.lineTo(x,PAD.t+cH);ctx.stroke();ctx.setLineDash([]);ctx.fillStyle="#ffa726";ctx.font="bold 8px monospace";ctx.textAlign="left";ctx.fillText("◀ ANALYSIS START",x+3,PAD.t+10);}}
-      const li=data.length-1,d=data[li],x=toX(li),sig=analysis.signal;
-      const scol=sig==="BUY"?"#00e676":sig==="SELL"?"#ff5252":"#ffa726";
-      const bt=toY(Math.max(d.open,d.close)),bbm=toY(Math.min(d.open,d.close));
-      ctx.strokeStyle=scol;ctx.lineWidth=2;ctx.strokeRect(x-cw*.5,bt-3,cw,(bbm-bt)+6);
-      ctx.fillStyle=scol;ctx.font="bold 11px monospace";ctx.textAlign="center";
-      if(sig==="BUY"){ctx.fillText("▲ BUY",x,toY(d.high)-14);ctx.fillText("$$$",x,toY(d.high)-4);}
-      else if(sig==="SELL"){ctx.fillText("▼ SELL",x,toY(d.low)+22);ctx.fillText("$$$",x,toY(d.low)+12);}
-      else{ctx.fillText("◆ HOLD",x,toY(d.high)-6);}
     }
+    // Labeled SUPPORT / RESISTANCE lines (strong levels)
+    if(analysis&&analysis.levels){
+      const strongSup=analysis.levels.find(l=>l.type==="SUPPORT"&&l.strength==="STRONG");
+      const strongRes=analysis.levels.find(l=>l.type==="RESISTANCE"&&l.strength==="STRONG");
+      if(strongRes&&strongRes.price>=lo&&strongRes.price<=hi){
+        const y=toY(strongRes.price);
+        ctx.beginPath();ctx.strokeStyle="#ff5252";ctx.lineWidth=1.4;ctx.setLineDash([2,2]);
+        ctx.moveTo(PAD.l,y);ctx.lineTo(W-PAD.r,y);ctx.stroke();ctx.setLineDash([]);
+        ctx.fillStyle="#ff5252";ctx.font="bold 9px monospace";ctx.textAlign="right";
+        ctx.fillText("RESISTANCE "+fmt(strongRes.price),W-PAD.r-2,y-3);
+      }
+      if(strongSup&&strongSup.price>=lo&&strongSup.price<=hi){
+        const y=toY(strongSup.price);
+        ctx.beginPath();ctx.strokeStyle="#00e676";ctx.lineWidth=1.4;ctx.setLineDash([2,2]);
+        ctx.moveTo(PAD.l,y);ctx.lineTo(W-PAD.r,y);ctx.stroke();ctx.setLineDash([]);
+        ctx.fillStyle="#00e676";ctx.font="bold 9px monospace";ctx.textAlign="right";
+        ctx.fillText("SUPPORT "+fmt(strongSup.price),W-PAD.r-2,y+11);
+      }
+    }
+    // Candle-30 "analysis starts" vertical marker
+    // The backtest begins at index 30 of the FULL dataset; map that to the visible window.
+    {
+      const fullLen=rows.length;
+      const startIdx=30;
+      if(fullLen>startIdx){
+        // visible window shows the last n candles; find where index 30 falls
+        const offset=fullLen-n; // how many candles trimmed from the front
+        const visibleIdx=startIdx-offset;
+        if(visibleIdx>=0&&visibleIdx<n){
+          const x=toX(visibleIdx);
+          ctx.beginPath();ctx.strokeStyle="#ffa726";ctx.lineWidth=1;ctx.setLineDash([3,3]);
+          ctx.moveTo(x,PAD.t);ctx.lineTo(x,PAD.t+cH);ctx.stroke();ctx.setLineDash([]);
+          ctx.fillStyle="#ffa726";ctx.font="bold 8px monospace";ctx.textAlign="left";
+          ctx.fillText("◀ ANALYSIS START (c30)",x+3,PAD.t+10);
+        }
+      }
+    }
+    // Latest-signal marker on the most recent candle
+    if(analysis){
+      const li=data.length-1;
+      const d=data[li];
+      const x=toX(li);
+      const sig=analysis.signal;
+      const col=sig==="BUY"?"#00e676":sig==="SELL"?"#ff5252":"#ffa726";
+      // Glow ring around the last candle's body
+      const bt=toY(Math.max(d.open,d.close)),bbm=toY(Math.min(d.open,d.close));
+      ctx.strokeStyle=col;ctx.lineWidth=2;
+      ctx.strokeRect(x-cw*.5,bt-3,cw,(bbm-bt)+6);
+      // Marker symbol + label
+      ctx.fillStyle=col;ctx.font="bold 11px monospace";ctx.textAlign="center";
+      if(sig==="BUY"){
+        ctx.fillText("▲ BUY",x,toY(d.high)-14);
+        ctx.fillText("$$$",x,toY(d.high)-4);
+      } else if(sig==="SELL"){
+        ctx.fillText("▼ SELL",x,toY(d.low)+22);
+        ctx.fillText("$$$",x,toY(d.low)+12);
+      } else {
+        ctx.fillText("◆ HOLD",x,toY(d.high)-6);
+      }
+    }
+    // Volume
     data.forEach((d,i)=>{
       ctx.fillStyle=d.close>=d.open?"rgba(0,230,118,0.4)":"rgba(255,82,82,0.35)";
       const bh=Math.max((d.volume/maxVol)*vH,1);
       ctx.fillRect(toX(i)-cw*.38,vBase-bh,cw*.76,bh);
     });
-    ctx.fillStyle="#37474f";ctx.font="8px monospace";ctx.textAlign="center";
+    // VOL label
+    ctx.fillStyle="#37474f";ctx.font="8px monospace";ctx.textAlign="left";
+    ctx.fillText("VOL",PAD.l+2,PAD.t+cH+gap+8);
+    // X axis dates
+    ctx.fillStyle="#2a3a4a";ctx.font="8px monospace";ctx.textAlign="center";
     const step=Math.max(1,Math.floor(n/6));
-    data.forEach((d,i)=>{if(i%step===0)ctx.fillText(d.date||"",toX(i),H-4);});
+    data.forEach((d,i)=>{if(i%step===0)ctx.fillText(d.date?.slice(5)||"",toX(i),H-4);});
   },[rows,analysis]);
-  return <canvas ref={ref} style={{width:"100%",height:300,display:"block",borderRadius:4}}/>;
+  return <canvas ref={ref} width={820} height={260} style={{width:"100%",height:260,display:"block"}}/>;
 }
+
+// ─── UI Components ─────────────────────────────────────────────────────────
 function Badge({signal}) {
-  const c=signal==="BUY"?"#00e676":signal==="SELL"?"#ff5252":"#ffd740";
-  const ic=signal==="BUY"?"▲":signal==="SELL"?"▼":"◆";
-  return <span style={{display:"inline-flex",alignItems:"center",gap:6,padding:"5px 20px",borderRadius:4,fontSize:15,fontWeight:700,letterSpacing:3,color:c,background:c+"1f",border:"1px solid "+c+"55"}}>{ic} {signal}</span>;
+  const m={BUY:["#00e676","rgba(0,230,118,0.12)","▲"],SELL:["#ff5252","rgba(255,82,82,0.12)","▼"],HOLD:["#ffd740","rgba(255,215,64,0.12)","◆"]};
+  const s=(signal||"HOLD").toUpperCase();const[col,bg,icon]=m[s]||m.HOLD;
+  return <span style={{color:col,background:bg,border:"1px solid "+col+"55",padding:"5px 20px",borderRadius:4,fontSize:16,fontWeight:700,letterSpacing:3}}>{icon} {s}</span>;
 }
 function ConfBar({pct}) {
-  const c=pct>=70?"#00e676":pct>=45?"#ffd740":"#ff5252";
-  return <div style={{marginTop:10}}><div style={{display:"flex",justifyContent:"space-between",fontSize:10,color:"#546e7a",marginBottom:4}}><span>SIGNAL CONFIDENCE</span><span style={{color:c,fontWeight:700}}>{pct}%</span></div><div style={{background:"#1a1f2e",borderRadius:2,height:5}}><div style={{height:"100%",borderRadius:2,width:pct+"%",background:c,transition:"width 1s ease"}}/></div></div>;
+  const col=pct>=70?"#00e676":pct>=45?"#ffd740":"#ff5252";
+  return(
+    <div style={{marginTop:10}}>
+      <div style={{display:"flex",justifyContent:"space-between",fontSize:10,color:"#546e7a",marginBottom:4}}>
+        <span>SIGNAL CONFIDENCE</span><span style={{color:col,fontWeight:700}}>{pct}%</span>
+      </div>
+      <div style={{background:"#1a1f2e",borderRadius:2,height:5}}>
+        <div style={{width:pct+"%",background:col,height:"100%",borderRadius:2,transition:"width 1s ease"}}/>
+      </div>
+    </div>
+  );
 }
 function IndCard({name,sig,val}) {
-  const c=(sig==="BULLISH"||sig==="CONFIRMING")?"#00e676":(sig==="BEARISH"||sig==="DIVERGING")?"#ff5252":"#ffd740";
-  return <div style={{background:"#060810",padding:12,borderRadius:4}}><div style={{display:"flex",justifyContent:"space-between",marginBottom:4}}><span style={{fontSize:9,color:"#546e7a",letterSpacing:1}}>{name}</span><span style={{fontSize:9,fontWeight:700,letterSpacing:1,color:c}}>{sig}</span></div><div style={{fontSize:10,color:"#78909c",lineHeight:1.5}}>{val}</div></div>;
+  const col=(sig==="BULLISH"||sig==="CONFIRMING")?"#00e676":(sig==="BEARISH"||sig==="DIVERGING")?"#ff5252":"#ffd740";
+  return(
+    <div style={{background:"#060810",padding:12,borderRadius:4}}>
+      <div style={{display:"flex",justifyContent:"space-between",marginBottom:4}}>
+        <span style={{fontSize:9,color:"#546e7a",letterSpacing:1}}>{name}</span>
+        <span style={{fontSize:9,fontWeight:700,color:col}}>{sig}</span>
+      </div>
+      <div style={{fontSize:10,color:"#78909c",lineHeight:1.5}}>{val}</div>
+    </div>
+  );
 }
+const tCol=t=>t==="UPTREND"?"#00e676":t==="DOWNTREND"?"#ff5252":"#ffd740";
+
+// Equity curve mini-chart for backtest results
 function EquityCurve({curve}) {
   const ref=useRef(null);
   useEffect(()=>{
@@ -559,327 +811,1085 @@ function EquityCurve({curve}) {
     const cw=(W-PAD.l-PAD.r)/(pts.length-1);
     const toX=i=>PAD.l+i*cw;
     const toY=v=>PAD.t+(1-(v-min)/rng)*(H-PAD.t-PAD.b);
+    // Zero line
     const zeroY=toY(0);
     ctx.strokeStyle="#546e7a55"; ctx.lineWidth=.5; ctx.setLineDash([3,3]);
     ctx.beginPath(); ctx.moveTo(PAD.l,zeroY); ctx.lineTo(W-PAD.r,zeroY); ctx.stroke(); ctx.setLineDash([]);
+    // Grid labels
     ctx.fillStyle="#37474f"; ctx.font="9px monospace"; ctx.textAlign="right";
     ctx.fillText(max.toFixed(1)+"%",PAD.l-3,PAD.t+4);
     ctx.fillText("0%",PAD.l-3,zeroY+3);
     ctx.fillText(min.toFixed(1)+"%",PAD.l-3,H-PAD.b);
+    // Area fill
     const ends=curve[curve.length-1]>=0;
+    const grad=ctx.createLinearGradient(0,PAD.t,0,H-PAD.b);
+    grad.addColorStop(0, ends?"rgba(0,230,118,0.25)":"rgba(255,82,82,0.25)");
+    grad.addColorStop(1,"rgba(0,0,0,0)");
+    ctx.beginPath(); ctx.moveTo(toX(0),toY(pts[0]));
+    pts.forEach((v,i)=>ctx.lineTo(toX(i),toY(v)));
+    ctx.lineTo(toX(pts.length-1),zeroY); ctx.lineTo(toX(0),zeroY); ctx.closePath();
+    ctx.fillStyle=grad; ctx.fill();
+    // Line
     ctx.beginPath(); ctx.moveTo(toX(0),toY(pts[0]));
     pts.forEach((v,i)=>ctx.lineTo(toX(i),toY(v)));
     ctx.strokeStyle=ends?"#00e676":"#ff5252"; ctx.lineWidth=1.8; ctx.stroke();
+    // X label
     ctx.fillStyle="#37474f"; ctx.font="8px monospace"; ctx.textAlign="center";
     ctx.fillText("Trade #"+curve.length,W/2,H-4);
   },[curve]);
   return <canvas ref={ref} style={{width:"100%",height:140,display:"block"}}/>;
-}function App() {
-  const [csv,setCsv]=useState(SAMPLE);
-  const [ticker,setTicker]=useState("AAPL");
-  const [market,setMarket]=useState("Stocks");
-  const [strategy,setStrategy]=useState("Trend Following");
-  const [account,setAccount]=useState("10000");
-  const [riskPct,setRiskPct]=useState("1");
-  const [tab,setTab]=useState("live");
-  const [rows,setRows]=useState([]);
-  const [analysis,setAnalysis]=useState(null);
-  const [error,setError]=useState("");
-  const [history,setHistory]=useState([]);
-  const [backtest,setBacktest]=useState(null);
-  const [abTest,setAbTest]=useState(null);
-  const [oosTest,setOosTest]=useState(null);
-  const [sweep,setSweep]=useState(null);
-  const [sweeping,setSweeping]=useState(false);
-  const [slMult,setSlMult]=useState(1.5);
-  const [tpMult,setTpMult]=useState(2.0);
-  const [slipPct,setSlipPct]=useState(0.05);
-  const [commPct,setCommPct]=useState(0.01);
-  const [apiKey,setApiKey]=useState(localStorage.getItem("sf_finnhub_key")||"");
-  const [resolution,setResolution]=useState("D");
-  const [fetching,setFetching]=useState(false);
-  const [liveMeta,setLiveMeta]=useState(null);
+}
 
-  function runAll(data,SL,TP){
-    const costs={slip:slipPct,comm:commPct};
-    const result=analyze(data,ticker,market,strategy,SL,TP);
-    setRows(data);setAnalysis(result);
-    setBacktest(data.length>=40?runBacktest(data,scoreAt,SL,TP,costs):null);
-    setAbTest(data.length>=40?{current:runBacktest(data,scoreAt,SL,TP,costs),legacy:runBacktest(data,scoreFlat,SL,TP,costs)}:null);
-    if(data.length>=60){const sp=Math.floor(data.length*0.7);setOosTest({splitIdx:sp,inSample:runBacktest(data,scoreAt,SL,TP,costs,{start:30,end:sp}),outSample:runBacktest(data,scoreAt,SL,TP,costs,{start:sp,end:data.length})});}else{setOosTest(null);}
-    setHistory(h=>[{time:new Date().toLocaleTimeString(),ticker,signal:result.signal,confidence:result.confidence,price:data[data.length-1].close,trend:result.trend},...h].slice(0,10));
-    return result;
-  }
+// ─── Main App ──────────────────────────────────────────────────────────────
+function App() {
+  const [csv,       setCsv]      = useState("");
+  const [ticker,    setTicker]   = useState("AAPL");
+  const [market,    setMarket]   = useState("Stocks");
+  const [strategy,  setStrategy] = useState("Trend Following");
+  const [account,   setAccount]  = useState("10000");
+  const [riskPct,   setRiskPct]  = useState("1");
+  const [tab,       setTab]      = useState("live");
+  const [rows,      setRows]     = useState([]);
+  const [analysis,  setAnalysis] = useState(null);
+  const [error,     setError]    = useState("");
+  const [history,   setHistory]  = useState([]);
+  const [backtest,  setBacktest]  = useState(null);
+  const [abTest,    setAbTest]    = useState(null);
+  const [oosTest,   setOosTest]   = useState(null);
+  const [sweep,     setSweep]     = useState(null);
+  const [sweeping,  setSweeping]  = useState(false);
+  const [slMult,    setSlMult]    = useState(1.5);
+  const [tpMult,    setTpMult]    = useState(2.0);
+  const [slipPct,   setSlipPct]   = useState(0.05);
+  const [commPct,   setCommPct]   = useState(0.01);
+  const [mode,      setMode]      = useState("tactical"); // "tactical" | "position"
+  const [funda,     setFunda]     = useState({peTTM:"",pbAnnual:"",["totalDebt/totalEquityAnnual"]:"",roeTTM:"",netProfitMarginTTM:"",currentRatioAnnual:"",revenueGrowthTTMYoy:"",epsGrowthTTMYoy:""});
+  const fundaResult = (()=>{ const m={}; let any=false; for(const k in funda){ if(funda[k]!==""&&!isNaN(parseFloat(funda[k]))){ m[k]=parseFloat(funda[k]); any=true; } } return any?valueScore(m):null; })();
+  const [apiKey,    setApiKey]    = useState((typeof localStorage!=="undefined"&&localStorage.getItem("sf_td_key"))||"");
+  const [resolution,setResolution]= useState("D");
+  const [fetching,  setFetching]  = useState(false);
+  const [liveMeta,  setLiveMeta]  = useState(null);
 
   async function fetchLive(){
     const key=apiKey.trim();
-    if(!key){setError("Enter your free Finnhub API key first (finnhub.io/register).");return;}
+    if(!key){setError("Enter your free Twelve Data API key first (twelvedata.com).");setTab("live");return;}
     const sym=ticker.trim().toUpperCase();
     if(!sym){setError("Enter a ticker symbol.");return;}
     setFetching(true);setError("");
-    localStorage.setItem("sf_finnhub_key",key);
+    try{localStorage.setItem("sf_td_key",key);}catch(e){}
     try{
-      const now=Math.floor(Date.now()/1000);
-      const spans={"1":2,"5":7,"15":20,"30":40,"60":90,"D":730,"W":1825};
-      const from=now-(spans[resolution]||730)*24*3600;
-      const url="https://finnhub.io/api/v1/stock/candle?symbol="+encodeURIComponent(sym)+"&resolution="+resolution+"&from="+from+"&to="+now+"&token="+encodeURIComponent(key);
+      const intervalMap={"1":"1min","5":"5min","15":"15min","30":"30min","60":"1h","D":"1day","W":"1week"};
+      const interval=intervalMap[resolution]||"1day";
+      const url="https://api.twelvedata.com/time_series?symbol="+encodeURIComponent(sym)+"&interval="+interval+"&outputsize=300&apikey="+encodeURIComponent(key);
       const res=await fetch(url);
-      if(!res.ok){
-        if(res.status===401||res.status===403)throw new Error("Invalid API key, or this symbol needs a paid plan. Free tier: US stocks (AAPL), forex (OANDA:EUR_USD), crypto (BINANCE:BTCUSDT).");
-        if(res.status===429)throw new Error("Rate limit hit (60/min free). Wait and retry.");
-        throw new Error("Finnhub HTTP "+res.status);
-      }
       const j=await res.json();
-      if(j.s==="no_data")throw new Error('No data for "'+sym+'". US stocks: AAPL · Crypto: BINANCE:BTCUSDT · Forex: OANDA:EUR_USD');
-      if(j.s!=="ok"||!j.t||!j.t.length)throw new Error('No candles for "'+sym+'".');
-      const candles=j.t.map((t,i)=>({date:new Date(t*1000).toLocaleDateString("en-GB",{day:"2-digit",month:"short",year:"2-digit"}),open:+(j.o[i]||j.c[i]).toFixed(4),high:+(j.h[i]||j.c[i]).toFixed(4),low:+(j.l[i]||j.c[i]).toFixed(4),close:+j.c[i].toFixed(4),volume:j.v?.[i]||0})).filter(d=>d.close>0);
+      if(j.status==="error"||j.code){
+        const msg=j.message||"Request failed.";
+        if(/api key/i.test(msg))throw new Error("Invalid API key. Check it at twelvedata.com dashboard.");
+        if(/limit/i.test(msg))throw new Error("Daily limit reached (800/day free). Try again later.");
+        throw new Error(msg);
+      }
+      if(!j.values||!j.values.length)throw new Error('No data for "'+sym+'". Stocks: AAPL. Forex: EUR/USD. Crypto: BTC/USD.');
+      const vals=j.values.slice().reverse();
+      const candles=vals.map(v=>({date:v.datetime,open:+parseFloat(v.open||v.close).toFixed(4),high:+parseFloat(v.high||v.close).toFixed(4),low:+parseFloat(v.low||v.close).toFixed(4),close:+parseFloat(v.close).toFixed(4),volume:parseFloat(v.volume)||0})).filter(d=>d.close>0);
       if(candles.length<10)throw new Error("Only "+candles.length+" candles — try Daily/Weekly resolution.");
       const csvText="Date,Open,High,Low,Close,Volume\n"+candles.map(d=>d.date+","+d.open+","+d.high+","+d.low+","+d.close+","+d.volume).join("\n");
       setCsv(csvText);
       setLiveMeta({sym,when:new Date().toLocaleTimeString(),count:candles.length,resolution});
+      const isPos=mode==="position";
+      const scorer=isPos?scorePosition:scoreAt;
+      const hold=isPos;
+      const SL=isPos?3.0:slMult, TP=isPos?6.0:tpMult, costs={slip:slipPct,comm:commPct};
+      const result=analyze(candles,sym,market,strategy,SL,TP);
+      const liveScore=scorer(candles); if(liveScore){result.signal=liveScore.signal;result.modeScore=liveScore.score;}
+      setRows(candles);setAnalysis(result);
+      setBacktest(candles.length>=40?runBacktest(candles,scorer,SL,TP,costs,null,hold):null);
+      setAbTest(candles.length>=40?{current:runBacktest(candles,scorer,SL,TP,costs,null,hold),legacy:runBacktest(candles,scoreFlat,SL,TP,costs)}:null);
+      if(candles.length>=60){const sp=Math.floor(candles.length*0.7);setOosTest({splitIdx:sp,trainPct:70,testPct:30,inSample:runBacktest(candles,scorer,SL,TP,costs,{start:30,end:sp},hold),outSample:runBacktest(candles,scorer,SL,TP,costs,{start:sp,end:candles.length},hold)});}else{setOosTest(null);}
       setSweep(null);
-      runAll(candles,slMult,tpMult);
+      setHistory(h=>[{time:new Date().toLocaleTimeString(),ticker:sym,signal:result.signal,confidence:result.confidence,price:candles[candles.length-1].close,trend:result.trend},...h].slice(0,10));
       setTab("signals");
-    }catch(e){setError(e.message||"Live fetch failed.");}
+    }catch(e){setError(e.message||"Live fetch failed.");setTab("live");}
     finally{setFetching(false);}
   }
 
-  function run(slOverride,tpOverride){
+  function run(slOverride, tpOverride, costOverride) {
     setError("");
-    const data=parseCSV(csv);
-    if(data.length<10){setError("Need at least 10 rows. Click LOAD SAMPLE for the format.");return;}
-    const SL=slOverride!=null?slOverride:slMult;
-    const TP=tpOverride!=null?tpOverride:tpMult;
-    setSweep(null);
-    runAll(data,SL,TP);
+    const data = parseCSV(csv);
+    if (data.length < 10) { setError("Need at least 10 rows. Click LOAD SAMPLE to see the expected format."); return; }
+    const isPos = mode==="position";
+    const scorer = isPos ? scorePosition : scoreAt;
+    const hold = isPos; // position mode holds until thesis break
+    // Position mode uses wider stops/targets by default unless user overrides
+    const SL = slOverride!=null?slOverride:(isPos?3.0:slMult);
+    const TP = tpOverride!=null?tpOverride:(isPos?6.0:tpMult);
+    const costs = costOverride || {slip:slipPct, comm:commPct};
+    const result = analyze(data, ticker, market, strategy, SL, TP);
+    // Override the live signal with the mode's scorer so the headline matches the mode
+    const liveScore = scorer(data);
+    if (liveScore) { result.signal = liveScore.signal; result.modeScore = liveScore.score; }
+    setRows(data);
+    setAnalysis(result);
+    // Run backtest if we have enough history
+    setBacktest(data.length >= 40 ? runBacktest(data, scorer, SL, TP, costs, null, hold) : null);
+    setAbTest(data.length >= 40 ? {
+      current: runBacktest(data, scorer, SL, TP, costs, null, hold),
+      legacy:  runBacktest(data, scoreFlat, SL, TP, costs),
+    } : null);
+    // Out-of-sample split: train on first 70%, test on last 30%
+    if (data.length >= 60) {
+      const splitIdx = Math.floor(data.length * 0.7);
+      setOosTest({
+        splitIdx,
+        trainPct: 70, testPct: 30,
+        inSample:  runBacktest(data, scorer, SL, TP, costs, {start:30, end:splitIdx}, hold),
+        outSample: runBacktest(data, scorer, SL, TP, costs, {start:splitIdx, end:data.length}, hold),
+      });
+    } else {
+      setOosTest(null);
+    }
+    setHistory(h => [{
+      time: new Date().toLocaleTimeString(),
+      ticker, signal: result.signal, confidence: result.confidence,
+      price: data[data.length-1].close, trend: result.trend,
+    }, ...h].slice(0,10));
     setTab("signals");
   }
 
-  function runSweep(){
-    const data=parseCSV(csv);
-    if(data.length<60){setError("Parameter sweep needs at least 60 candles.");return;}
-    setSweeping(true);setError("");
-    const costs={slip:slipPct,comm:commPct};
-    const splitIdx=Math.floor(data.length*0.7);
-    const slRange=[1.0,1.5,2.0,2.5],tpRange=[1.5,2.0,3.0,4.0];
+  // Parameter sweep: test a grid of SL/TP combos, score each on full + OOS
+  function runSweep() {
+    const data = parseCSV(csv);
+    if (data.length < 60) { setError("Parameter sweep needs at least 60 candles for a reliable in/out-of-sample split."); return; }
+    setSweeping(true);
+    setError("");
+    const costs = {slip:slipPct, comm:commPct};
+    const splitIdx = Math.floor(data.length * 0.7);
+    const slRange = [1.0, 1.5, 2.0, 2.5];
+    const tpRange = [1.5, 2.0, 3.0, 4.0];
+    // Defer heavy compute so the "calculating" state can paint
     setTimeout(()=>{
-      const results=[];
-      slRange.forEach(sl=>tpRange.forEach(tp=>{
-        const full=runBacktest(data,scoreAt,sl,tp,costs);
-        const inS=runBacktest(data,scoreAt,sl,tp,costs,{start:30,end:splitIdx});
-        const outS=runBacktest(data,scoreAt,sl,tp,costs,{start:splitIdx,end:data.length});
-        const robust=full.stats.total>=5&&inS.stats.totalReturn>0&&outS.stats.totalReturn>0;
-        const overfit=inS.stats.totalReturn>2&&outS.stats.totalReturn<=0;
-        results.push({sl,tp,rr:parseFloat((tp/sl).toFixed(2)),fullRet:full.stats.totalReturn,trades:full.stats.total,pf:full.stats.profitFactor,inRet:inS.stats.totalReturn,outRet:outS.stats.totalReturn,robust,overfit});
+      const results = [];
+      slRange.forEach(sl => tpRange.forEach(tp => {
+        const full = runBacktest(data, scoreAt, sl, tp, costs);
+        const inS  = runBacktest(data, scoreAt, sl, tp, costs, {start:30, end:splitIdx});
+        const outS = runBacktest(data, scoreAt, sl, tp, costs, {start:splitIdx, end:data.length});
+        const robust  = full.stats.total>=5 && inS.stats.totalReturn>0 && outS.stats.totalReturn>0;
+        const overfit = inS.stats.totalReturn>2 && outS.stats.totalReturn<=0;
+        results.push({
+          sl, tp, rr:parseFloat((tp/sl).toFixed(2)),
+          fullRet: full.stats.totalReturn, trades: full.stats.total,
+          pf: full.stats.profitFactor,
+          inRet: inS.stats.totalReturn, outRet: outS.stats.totalReturn,
+          robust, overfit,
+        });
       }));
       results.sort((a,b)=>b.fullRet-a.fullRet);
-      setSweep({results,bestRobust:results.find(r=>r.robust)||null,slRange,tpRange});
+      const bestRobust = results.find(r=>r.robust) || null;
+      setSweep({results, bestRobust, slRange, tpRange});
       setSweeping(false);
-    },50);
+    }, 50);
   }
 
-  const accNum=parseFloat(account)||10000;
-  const riskNum=parseFloat(riskPct)||1;
-  const riskAmt=accNum*(riskNum/100);
-  const slDist=analysis?Math.abs(analysis.entry-analysis.sl):0;
-  const posSize=slDist>0?Math.floor(riskAmt/slDist):0;
-  const posVal=analysis?posSize*analysis.entry:0;
-  const last=rows[rows.length-1];
+  // Position sizing
+  const accNum  = parseFloat(account)||10000;
+  const riskNum = parseFloat(riskPct)||1;
+  const riskAmt = accNum*(riskNum/100);
+  const slDist  = analysis ? Math.abs(analysis.entry - analysis.sl) : 0;
+  const posSize = slDist>0 ? Math.floor(riskAmt/slDist) : 0;
+  const posVal  = analysis ? posSize*analysis.entry : 0;
 
+  const last  = rows[rows.length-1];
+  const first = rows[0];
+  const pct   = last&&first ? ((last.close-first.close)/first.close*100).toFixed(2) : null;
+
+  // ─ Design tokens ─
   const BG="#080b14",BG2="#0d1120",BG3="#0b0e1c",BORD="#1a2035",DIM="#546e7a",FADE="#37474f";
   const card={background:BG2,border:"1px solid "+BORD,borderRadius:6,padding:16,marginBottom:14};
   const lbl={fontSize:10,color:DIM,letterSpacing:2,marginBottom:8,display:"block"};
-  const inp={background:BG,border:"1px solid "+BORD,color:"#dce6f0",padding:"9px 12px",borderRadius:4,fontSize:12,width:"100%"};
-  const runBtn={background:"linear-gradient(135deg,#00e676,#00bcd4)",border:"none",color:"#000",padding:"13px 0",fontSize:12,fontWeight:700,letterSpacing:3,cursor:"pointer",borderRadius:4,width:"100%"};
-  const pill=on=>({background:on?"rgba(0,230,118,0.1)":BG,border:"1px solid "+(on?"#00e676aa":BORD),color:on?"#00e676":"#78909c",padding:"5px 11px",borderRadius:3,fontSize:10,letterSpacing:1,cursor:"pointer",marginRight:4,marginBottom:4});
-  const tBtn=on=>({background:"none",border:"none",borderBottom:"2px solid "+(on?"#00e676":"transparent"),color:on?"#00e676":"#546e7a",padding:"10px 14px",fontSize:11,letterSpacing:1,cursor:"pointer",whiteSpace:"nowrap"});
-  const tCol=t=>t==="UPTREND"?"#00e676":t==="DOWNTREND"?"#ff5252":"#ffd740";return (
-    <div style={{minHeight:"100vh",background:BG}}>
-      <div style={{background:BG3,borderBottom:"1px solid "+BORD,padding:"12px 16px",display:"flex",alignItems:"center",justifyContent:"space-between",flexWrap:"wrap",gap:8}}>
-        <div style={{display:"flex",alignItems:"baseline",gap:8}}>
-          <span style={{fontSize:22,fontWeight:700,letterSpacing:2,color:"#00e676"}}>SIGNAL<span style={{color:"#00bcd4"}}>FORGE</span></span>
-          <span style={{fontSize:9,color:FADE,letterSpacing:2}}>LIVE ANALYZER</span>
+  const pill=on=>({background:on?"rgba(0,230,118,0.08)":BG,border:"1px solid "+(on?"#00e67699":BORD),color:on?"#00e676":"#78909c",padding:"4px 10px",borderRadius:3,cursor:"pointer",fontFamily:"inherit",fontSize:10,letterSpacing:1,marginRight:4,marginBottom:4});
+  const inp={background:BG,border:"1px solid "+BORD,color:"#dce6f0",padding:"9px 12px",borderRadius:4,fontFamily:"inherit",fontSize:12,width:"100%",outline:"none",boxSizing:"border-box"};
+  const runBtn={background:"linear-gradient(135deg,#00e676,#00bcd4)",border:"none",color:"#000",padding:"13px 0",fontFamily:"inherit",fontSize:12,fontWeight:700,letterSpacing:3,cursor:"pointer",borderRadius:4,width:"100%"};
+  const tBtn=on=>({background:"none",border:"none",cursor:"pointer",padding:"10px 16px",fontFamily:"inherit",fontSize:11,letterSpacing:2,color:on?"#00e676":DIM,borderBottom:"2px solid "+(on?"#00e676":"transparent")});
+
+  return (
+    <div style={{minHeight:"100vh",background:BG,color:"#dce6f0",fontFamily:"'IBM Plex Mono',monospace",paddingBottom:60}}>
+      <link href="https://fonts.googleapis.com/css2?family=IBM+Plex+Mono:wght@400;700&family=Bebas+Neue&display=swap" rel="stylesheet"/>
+
+      {/* Header */}
+      <div style={{background:BG3,borderBottom:"1px solid "+BORD,padding:"12px 20px",display:"flex",alignItems:"center",justifyContent:"space-between",flexWrap:"wrap",gap:8}}>
+        <div>
+          <span style={{fontFamily:"'Bebas Neue',sans-serif",fontSize:26,letterSpacing:4,color:"#00e676"}}>SIGNAL</span>
+          <span style={{fontFamily:"'Bebas Neue',sans-serif",fontSize:26,letterSpacing:4,color:"#00bcd4"}}>FORGE</span>
+          <span style={{fontSize:9,color:FADE,letterSpacing:2,marginLeft:10}}>PRO TRADING ANALYZER</span>
         </div>
-        {liveMeta&&<span style={{fontSize:9,color:"#00e676"}}>● {liveMeta.sym} · {liveMeta.when}</span>}
+        <div style={{fontSize:10,color:FADE}}>RSI · MACD · BB · STOCH · ADX · OBV · VWAP · PATTERNS · DIVERGENCE</div>
       </div>
 
-      <div style={{display:"flex",borderBottom:"1px solid "+BORD,background:BG3,overflowX:"auto"}}>
-        {[["live","⚡ LIVE"],["input","▣ DATA"],["signals","◈ SIGNALS"],["backtest","⟲ BACKTEST"],["position","⊞ SIZE"],["history","◷ HISTORY"]].map(([k,l])=>(
+      {/* Tabs */}
+      <div style={{background:BG3,borderBottom:"1px solid "+BORD,padding:"0 20px",display:"flex"}}>
+        {[["live","⚡ LIVE"],["input","▣ DATA"],["signals","◈ SIGNALS"],["backtest","⟲ BACKTEST"],["value","★ VALUE"],["position","⊞ SIZE"],["history","◷ HISTORY"]].map(([k,l])=>(
           <button key={k} style={tBtn(tab===k)} onClick={()=>setTab(k)}>{l}</button>
         ))}
       </div>
 
       <div style={{maxWidth:920,margin:"0 auto",padding:"18px 14px"}}>
 
+        {/* ── LIVE TAB ── */}
         {tab==="live"&&(
           <>
             <div style={{...card,border:"1px solid rgba(0,230,118,0.25)"}}>
-              <span style={lbl}>⚡ LIVE MARKET DATA — via Finnhub</span>
-              <div style={{fontSize:11,color:"#90a4ae",lineHeight:1.8,marginBottom:14}}>Pulls real market data and runs the full analysis + backtest instantly. Free Finnhub key required (60 calls/min).</div>
-              <span style={lbl}>FINNHUB API KEY</span>
-              <input style={inp} type="password" value={apiKey} onChange={e=>setApiKey(e.target.value)} placeholder="Paste your free Finnhub key…"/>
-              <div style={{fontSize:10,color:DIM,lineHeight:1.9,marginTop:8}}>No key? <a href="https://finnhub.io/register" target="_blank" rel="noreferrer" style={{color:"#00bcd4"}}>finnhub.io/register</a> → sign up free → copy key. Stored on this device only.</div>
+              <span style={lbl}>⚡ LIVE MARKET DATA — via Twelve Data</span>
+              <div style={{fontSize:11,color:"#90a4ae",lineHeight:1.8,marginBottom:14}}>Pulls real market data and runs the full engine — backtest, validation, sweep, signals — instantly. Free Twelve Data key required (800 calls/day, no card).</div>
+              <span style={lbl}>TWELVE DATA API KEY</span>
+              <input style={inp} type="password" value={apiKey} onChange={e=>setApiKey(e.target.value)} placeholder="Paste your free Twelve Data key…"/>
+              <div style={{fontSize:10,color:DIM,lineHeight:1.9,marginTop:8}}>No key? <a href="https://twelvedata.com" target="_blank" rel="noreferrer" style={{color:"#00bcd4"}}>twelvedata.com</a> → sign up free → copy key. Saved on this device only.</div>
             </div>
             <div style={{display:"grid",gridTemplateColumns:"1fr 1fr",gap:14}}>
               <div style={card}><span style={lbl}>TICKER</span><input style={{...inp,fontSize:15}} value={ticker} onChange={e=>setTicker(e.target.value.toUpperCase())} placeholder="AAPL"/>
-                <div style={{marginTop:8}}>{["AAPL","TSLA","NVDA","BINANCE:BTCUSDT","OANDA:EUR_USD"].map(s=><button key={s} style={pill(ticker===s)} onClick={()=>setTicker(s)}>{s.replace("BINANCE:","").replace("OANDA:","")}</button>)}</div>
+                <div style={{marginTop:8}}>{["AAPL","TSLA","NVDA","BTC/USD","EUR/USD"].map(s=><button key={s} style={pill(ticker===s)} onClick={()=>setTicker(s)}>{s}</button>)}</div>
               </div>
               <div style={card}><span style={lbl}>RESOLUTION</span>
                 <select style={inp} value={resolution} onChange={e=>setResolution(e.target.value)}>
                   <option value="1">1 Min</option><option value="5">5 Min</option><option value="15">15 Min</option><option value="30">30 Min</option><option value="60">1 Hour</option><option value="D">Daily</option><option value="W">Weekly</option>
                 </select>
-                <div style={{display:"flex",gap:8,marginTop:10}}>
-                  <select style={inp} value={strategy} onChange={e=>setStrategy(e.target.value)}>{STRATEGIES.map(s=><option key={s} value={s}>{s}</option>)}</select>
-                </div>
+                <select style={{...inp,marginTop:10}} value={strategy} onChange={e=>setStrategy(e.target.value)}>{STRATEGIES.map(s=><option key={s} value={s}>{s}</option>)}</select>
+              </div>
+            </div>
+            <div style={{...card,border:"1px solid rgba(0,188,212,0.2)"}}>
+              <span style={lbl}>◆ MODE</span>
+              <div style={{display:"flex",gap:10}}>
+                <button onClick={()=>setMode("tactical")} style={{flex:1,padding:10,borderRadius:6,cursor:"pointer",background:mode==="tactical"?"rgba(0,230,118,0.08)":"#060810",border:"1px solid "+(mode==="tactical"?"#00e676":"#1a2035"),color:mode==="tactical"?"#00e676":"#90a4ae",fontWeight:700,fontSize:12}}>⚡ TACTICAL</button>
+                <button onClick={()=>setMode("position")} style={{flex:1,padding:10,borderRadius:6,cursor:"pointer",background:mode==="position"?"rgba(0,188,212,0.08)":"#060810",border:"1px solid "+(mode==="position"?"#00bcd4":"#1a2035"),color:mode==="position"?"#00bcd4":"#90a4ae",fontWeight:700,fontSize:12}}>🐢 POSITION</button>
               </div>
             </div>
             {error&&<div style={{background:"rgba(255,82,82,0.08)",border:"1px solid rgba(255,82,82,0.3)",borderRadius:6,padding:12,color:"#ff8a80",fontSize:11,marginBottom:14,lineHeight:1.7}}>⚠ {error}</div>}
             <button style={{...runBtn,opacity:fetching?0.6:1}} onClick={fetchLive} disabled={fetching}>{fetching?"⏳ FETCHING…":"⬇  FETCH LIVE DATA & ANALYZE"}</button>
             {liveMeta&&<div style={{textAlign:"center",fontSize:10,color:"#00e676",marginTop:10}}>✓ {liveMeta.sym} · {liveMeta.count} candles · {liveMeta.when}</div>}
-            <div style={{fontSize:9,color:FADE,textAlign:"center",marginTop:8,lineHeight:1.6}}>US stocks: AAPL · Crypto: BINANCE:BTCUSDT · Forex: OANDA:EUR_USD</div>
+            <div style={{fontSize:9,color:FADE,textAlign:"center",marginTop:8,lineHeight:1.6}}>Stocks: AAPL · Crypto: BTC/USD · Forex: EUR/USD · auto-fills VALUE fundamentals when available</div>
           </>
         )}
 
+        {/* ── DATA TAB ── */}
         {tab==="input"&&(
           <>
             <div style={{display:"grid",gridTemplateColumns:"1fr 1fr",gap:14}}>
-              <div style={card}><span style={lbl}>TICKER</span><input style={inp} value={ticker} onChange={e=>setTicker(e.target.value.toUpperCase())}/></div>
-              <div style={card}><span style={lbl}>MARKET</span><select style={inp} value={market} onChange={e=>setMarket(e.target.value)}>{MARKETS.map(m=><option key={m} value={m}>{m}</option>)}</select></div>
-            </div>
-            <div style={card}><span style={lbl}>STRATEGY</span>{STRATEGIES.map(s=><button key={s} style={pill(strategy===s)} onClick={()=>setStrategy(s)}>{s}</button>)}</div>
-            <div style={card}>
-              <span style={lbl}>RISK / REWARD TUNING</span>
-              <div style={{display:"grid",gridTemplateColumns:"1fr 1fr",gap:18}}>
-                <div><div style={{display:"flex",justifyContent:"space-between",fontSize:10,color:DIM,marginBottom:6}}><span>STOP LOSS</span><span style={{color:"#ff5252",fontWeight:700}}>{slMult.toFixed(1)}× ATR</span></div><input type="range" min="0.5" max="3" step="0.1" value={slMult} onChange={e=>setSlMult(parseFloat(e.target.value))} style={{width:"100%",accentColor:"#ff5252"}}/></div>
-                <div><div style={{display:"flex",justifyContent:"space-between",fontSize:10,color:DIM,marginBottom:6}}><span>TAKE PROFIT</span><span style={{color:"#00e676",fontWeight:700}}>{tpMult.toFixed(1)}× ATR</span></div><input type="range" min="0.5" max="5" step="0.1" value={tpMult} onChange={e=>setTpMult(parseFloat(e.target.value))} style={{width:"100%",accentColor:"#00e676"}}/></div>
+              <div style={card}>
+                <span style={lbl}>TICKER / SYMBOL</span>
+                <input style={inp} value={ticker} onChange={e=>setTicker(e.target.value.toUpperCase())} placeholder="AAPL · BTC · EUR/USD"/>
               </div>
-              <div style={{marginTop:10,fontSize:10,color:DIM}}>R/R RATIO: <span style={{color:"#ffd740",fontWeight:700}}>1 : {(tpMult/slMult).toFixed(2)}</span></div>
+              <div style={card}>
+                <span style={lbl}>MARKET</span>
+                {MARKETS.map(m=><button key={m} style={pill(market===m)} onClick={()=>setMarket(m)}>{m}</button>)}
+              </div>
+            </div>
+            <div style={{...card,border:"1px solid rgba(0,188,212,0.25)"}}>
+              <span style={lbl}>◆ TRADING MODE — two philosophies</span>
+              <div style={{display:"grid",gridTemplateColumns:"1fr 1fr",gap:10}}>
+                <button onClick={()=>setMode("tactical")} style={{textAlign:"left",padding:12,borderRadius:6,cursor:"pointer",background:mode==="tactical"?"rgba(0,230,118,0.08)":"#060810",border:"1px solid "+(mode==="tactical"?"#00e676":"#1a2035")}}>
+                  <div style={{fontSize:13,fontWeight:700,color:mode==="tactical"?"#00e676":"#90a4ae"}}>⚡ TACTICAL</div>
+                  <div style={{fontSize:9,color:"#546e7a",lineHeight:1.6,marginTop:4}}>Active short-term trading. All indicators, tight stops, many signals, quick exits.</div>
+                </button>
+                <button onClick={()=>setMode("position")} style={{textAlign:"left",padding:12,borderRadius:6,cursor:"pointer",background:mode==="position"?"rgba(0,188,212,0.08)":"#060810",border:"1px solid "+(mode==="position"?"#00bcd4":"#1a2035")}}>
+                  <div style={{fontSize:13,fontWeight:700,color:mode==="position"?"#00bcd4":"#90a4ae"}}>🐢 POSITION</div>
+                  <div style={{fontSize:9,color:"#546e7a",lineHeight:1.6,marginTop:4}}>Patient long-trend following. Buys dips in uptrends, wide stops, holds for big moves.</div>
+                </button>
+              </div>
+              {mode==="position"&&(
+                <div style={{marginTop:10,padding:10,borderRadius:4,background:"rgba(255,215,64,0.05)",border:"1px solid rgba(255,215,64,0.15)",fontSize:9,color:"#90a4ae",lineHeight:1.7}}>
+                  ⚠ POSITION mode is <strong>price-based trend-following, not fundamental value investing.</strong> It captures the behavioral side of long-term investing (patience, buying dips, holding) but cannot see earnings, debt, or business quality — the real core of Buffett's edge. Needs 200+ candles for the long-term trend filter to fully engage.
+                </div>
+              )}
+            </div>
+            <div style={card}>
+              <span style={lbl}>STRATEGY <span style={{color:DIM,letterSpacing:0,fontWeight:400}}>— suggested mode: (P)=Position · (T)=Tactical</span></span>
+              {STRATEGIES.map(s=><button key={s} style={pill(strategy===s)} onClick={()=>setStrategy(s)}>{s} ({STRATEGY_MODE[s]})</button>)}
+            </div>
+            <div style={card}>
+              <span style={lbl}>RISK / REWARD TUNING (ATR multipliers)</span>
+              <div style={{display:"grid",gridTemplateColumns:"1fr 1fr",gap:18,marginTop:4}}>
+                <div>
+                  <div style={{display:"flex",justifyContent:"space-between",fontSize:10,color:DIM,marginBottom:6}}>
+                    <span>STOP LOSS</span><span style={{color:"#ff5252",fontWeight:700}}>{slMult.toFixed(1)}× ATR</span>
+                  </div>
+                  <input type="range" min="0.5" max="3" step="0.1" value={slMult}
+                    onChange={e=>setSlMult(parseFloat(e.target.value))}
+                    style={{width:"100%",accentColor:"#ff5252"}}/>
+                </div>
+                <div>
+                  <div style={{display:"flex",justifyContent:"space-between",fontSize:10,color:DIM,marginBottom:6}}>
+                    <span>TAKE PROFIT</span><span style={{color:"#00e676",fontWeight:700}}>{tpMult.toFixed(1)}× ATR</span>
+                  </div>
+                  <input type="range" min="0.5" max="5" step="0.1" value={tpMult}
+                    onChange={e=>setTpMult(parseFloat(e.target.value))}
+                    style={{width:"100%",accentColor:"#00e676"}}/>
+                </div>
+              </div>
+              <div style={{marginTop:10,fontSize:10,color:DIM,display:"flex",justifyContent:"space-between",flexWrap:"wrap",gap:8}}>
+                <span>RISK/REWARD RATIO: <span style={{color:"#ffd740",fontWeight:700}}>1 : {(tpMult/slMult).toFixed(2)}</span></span>
+                <span style={{color:FADE}}>Higher TP = bigger but rarer wins · Tighter SL = quicker exits</span>
+              </div>
+              <div style={{marginTop:8,display:"flex",gap:6,flexWrap:"wrap"}}>
+                <button style={{...pill(slMult===1.0&&tpMult===2.0),marginBottom:0}} onClick={()=>{setSlMult(1.0);setTpMult(2.0);}}>Conservative 1:2</button>
+                <button style={{...pill(slMult===1.5&&tpMult===2.0),marginBottom:0}} onClick={()=>{setSlMult(1.5);setTpMult(2.0);}}>Balanced 1:1.3</button>
+                <button style={{...pill(slMult===1.5&&tpMult===3.0),marginBottom:0}} onClick={()=>{setSlMult(1.5);setTpMult(3.0);}}>Runner 1:2</button>
+                <button style={{...pill(slMult===2.0&&tpMult===2.0),marginBottom:0}} onClick={()=>{setSlMult(2.0);setTpMult(2.0);}}>Wide 1:1</button>
+              </div>
             </div>
             <div style={card}>
               <div style={{display:"flex",justifyContent:"space-between",alignItems:"center",marginBottom:8,flexWrap:"wrap",gap:6}}>
                 <span style={{...lbl,marginBottom:0}}>OHLCV DATA (CSV)</span>
-                <button style={pill(false)} onClick={()=>setCsv(SAMPLE)}>LOAD SAMPLE</button>
-              </div>
-              <textarea rows={10} value={csv} onChange={e=>setCsv(e.target.value)} style={{background:BG,border:"1px solid "+BORD,color:"#64b5f6",padding:12,borderRadius:4,fontSize:11,lineHeight:1.7,width:"100%",resize:"vertical"}}/>
-            </div>
-            {error&&<div style={{background:"rgba(255,82,82,0.08)",border:"1px solid rgba(255,82,82,0.3)",borderRadius:6,padding:12,color:"#ff8a80",fontSize:11,marginBottom:14}}>⚠ {error}</div>}
-            <button style={runBtn} onClick={()=>run()}>▶  RUN ANALYSIS</button>
-          </>
-        )}
-
-        {tab==="signals"&&!analysis&&(
-          <div style={{textAlign:"center",padding:"60px 0",color:"#1e2a3a"}}><div style={{fontSize:50}}>◇</div><div style={{letterSpacing:3,fontSize:12,marginTop:14}}>NO ANALYSIS YET</div><button style={{...runBtn,width:"auto",padding:"10px 30px",marginTop:20}} onClick={()=>setTab("live")}>← FETCH LIVE DATA</button></div>
-        )}
-        {tab==="signals"&&analysis&&(
-          <>
-            <div style={{...card,background:"linear-gradient(135deg,#0e1320,#0b1025)"}}>
-              <div style={{display:"flex",justifyContent:"space-between",alignItems:"flex-start",flexWrap:"wrap",gap:12}}>
-                <div><div style={{fontSize:10,color:FADE,letterSpacing:1,marginBottom:8}}>{ticker} · {rows.length} candles</div><div style={{display:"flex",alignItems:"center",gap:14,flexWrap:"wrap"}}><Badge signal={analysis.signal}/><span style={{fontSize:11,color:DIM}}>TREND: <span style={{color:tCol(analysis.trend)}}>{analysis.trend}</span> · {analysis.strength}</span></div></div>
-                <div style={{textAlign:"right"}}><div style={{fontSize:24,fontWeight:700}}>{fmt(last.close)}</div><div style={{fontSize:9,color:FADE}}>{last.date}</div></div>
-              </div>
-              <div style={{marginTop:14,background:"#060810",borderRadius:4,padding:"6px 0"}}>
-                <div style={{display:"flex",gap:12,fontSize:9,color:FADE,paddingLeft:60,marginBottom:4,flexWrap:"wrap"}}><span style={{color:"#ffd740"}}>SMA5</span><span style={{color:"#00bcd4"}}>SMA10</span><span style={{color:"#e040fb"}}>SMA20</span><span style={{color:"#ff5252"}}>RESIST</span><span style={{color:"#00e676"}}>SUPPORT</span><span style={{color:"#ffa726"}}>c30</span></div>
-                <Chart rows={rows} analysis={analysis}/>
-              </div>
-              <ConfBar pct={analysis.confidence}/>
-              {analysis.divergence&&<div style={{marginTop:10,padding:"8px 12px",borderRadius:4,fontSize:10,border:"1px solid",borderColor:analysis.divergence.type==="BULLISH"?"rgba(0,230,118,0.25)":"rgba(255,82,82,0.25)",background:analysis.divergence.type==="BULLISH"?"rgba(0,230,118,0.06)":"rgba(255,82,82,0.06)",color:analysis.divergence.type==="BULLISH"?"#00e676":"#ff5252"}}>⚡ {analysis.divergence.type} DIVERGENCE — {analysis.divergence.desc}</div>}
-              <div style={{marginTop:12,padding:12,background:"#060810",borderRadius:4,fontSize:11,color:"#90a4ae",lineHeight:1.9}}>{analysis.reasoning}</div>
-            </div>
-            <div style={card}>
-              <span style={lbl}>◈ TRADE LEVELS</span>
-              <div style={{display:"grid",gridTemplateColumns:"repeat(auto-fit,minmax(120px,1fr))",gap:10}}>
-                {[{l:"ENTRY",v:analysis.entry,c:"#00bcd4"},{l:"STOP LOSS",v:analysis.sl,c:"#ff5252"},{l:"TP 1",v:analysis.tp1,c:"#00e676"},{l:"TP 2",v:analysis.tp2,c:"#69f0ae"}].map(x=>(<div key={x.l} style={{background:"#060810",padding:12,borderRadius:4,borderLeft:"3px solid "+x.c}}><div style={{fontSize:9,color:DIM,letterSpacing:2,marginBottom:4}}>{x.l}</div><div style={{fontSize:16,fontWeight:700,color:x.c}}>{fmt(x.v)}</div></div>))}
-              </div>
-              <div style={{marginTop:10,fontSize:11,color:DIM,display:"flex",gap:20,flexWrap:"wrap"}}><span>R/R: <span style={{color:"#ffd740",fontWeight:700}}>1:{analysis.rr}</span></span><span>ATR: {fmt(analysis.indicators.atr)}</span><span>SCORE: <span style={{color:analysis.score>0?"#00e676":analysis.score<0?"#ff5252":"#ffd740",fontWeight:700}}>{analysis.score>0?"+":""}{analysis.score}</span></span>{analysis.confluence&&<span>CONFLUENCE: <span style={{color:"#00e676"}}>{analysis.confluence.bull}↑</span>/<span style={{color:"#ff5252"}}>{analysis.confluence.bear}↓</span></span>}</div>
-            </div>
-            <div style={card}>
-              <span style={lbl}>◈ INDICATORS</span>
-              <div style={{display:"grid",gridTemplateColumns:"repeat(auto-fit,minmax(150px,1fr))",gap:10}}>
-                <IndCard name="RSI 14" sig={analysis.indicators.rsi.v>70?"BEARISH":analysis.indicators.rsi.v<30?"BULLISH":"NEUTRAL"} val={(analysis.indicators.rsi.v||"—")+" · "+analysis.indicators.rsi.label}/>
-                <IndCard name="STOCH" sig={analysis.indicators.stoch.v>75?"BEARISH":analysis.indicators.stoch.v<25?"BULLISH":"NEUTRAL"} val={(analysis.indicators.stoch.v||"—")+" · "+analysis.indicators.stoch.label}/>
-                <IndCard name="MACD" sig={analysis.indicators.macd.sig} val={analysis.indicators.macd.desc}/>
-                <IndCard name="MOVING AVG" sig={analysis.indicators.ma.sig} val={analysis.indicators.ma.s5?"SMA5 "+fmt(analysis.indicators.ma.s5):"—"}/>
-                <IndCard name="BOLLINGER" sig={analysis.indicators.bb.sig} val={analysis.indicators.bb.v?"U:"+fmt(analysis.indicators.bb.v.upper)+" L:"+fmt(analysis.indicators.bb.v.lower):"—"}/>
-                <IndCard name="VOLUME" sig={analysis.indicators.vol.sig==="CONFIRMING"?"BULLISH":analysis.indicators.vol.sig==="DIVERGING"?"BEARISH":"NEUTRAL"} val={"Recent "+(analysis.indicators.vol.recent/1e6).toFixed(1)+"M vs "+(analysis.indicators.vol.avg/1e6).toFixed(1)+"M"}/>
-                {analysis.indicators.adx&&<IndCard name="ADX TREND" sig={analysis.indicators.adx.sig} val={"ADX "+analysis.indicators.adx.adx+" · +DI "+analysis.indicators.adx.plusDI+"/-DI "+analysis.indicators.adx.minusDI}/>}
-                {analysis.indicators.obv&&<IndCard name="OBV FLOW" sig={analysis.indicators.obv.sig} val={analysis.indicators.obv.rising?"Rising — accumulation":"Falling — distribution"}/>}
-                {analysis.indicators.vwap&&<IndCard name="VWAP" sig={analysis.indicators.vwap.sig} val={"VWAP "+fmt(analysis.indicators.vwap.v)}/>}
-              </div>
-            </div>
-            <div style={card}><span style={lbl}>◎ NEAR-TERM BIAS</span><div style={{fontSize:11,color:"#90a4ae",lineHeight:1.9}}>{analysis.bias}</div></div>
-            <button style={{...runBtn,marginBottom:10}} onClick={()=>setTab("backtest")}>⟲ VIEW BACKTEST</button>
-          </>
-        )}
-
-        {tab==="backtest"&&!backtest&&(<div style={{textAlign:"center",padding:"60px 0",color:"#1e2a3a"}}><div style={{fontSize:50}}>⟲</div><div style={{letterSpacing:3,fontSize:12,marginTop:14}}>NO BACKTEST</div><div style={{fontSize:10,color:FADE,marginTop:8}}>Fetch 40+ candles to backtest.</div></div>)}
-        {tab==="backtest"&&backtest&&(
-          <>
-            {abTest&&(
-              <div style={{...card,border:"1px solid rgba(0,188,212,0.25)"}}>
-                <span style={lbl}>⚖ A/B TEST — old flat vs new confluence logic</span>
-                <table style={{width:"100%",borderCollapse:"collapse",fontSize:11}}>
-                  <thead><tr style={{color:DIM,fontSize:9}}><td style={{padding:"6px 8px",textAlign:"left"}}>METRIC</td><td style={{padding:"6px 8px",textAlign:"right"}}>OLD</td><td style={{padding:"6px 8px",textAlign:"right"}}>NEW</td></tr></thead>
-                  <tbody>{[["Trades","total"],["Win %","winRate"],["Return %","totalReturn"],["Profit factor","profitFactor"]].map(([m,k])=>(<tr key={k} style={{borderTop:"1px solid "+BORD}}><td style={{padding:"6px 8px",color:"#90a4ae"}}>{m}</td><td style={{padding:"6px 8px",textAlign:"right",color:"#78909c"}}>{abTest.legacy.stats[k]}</td><td style={{padding:"6px 8px",textAlign:"right",color:"#dce6f0",fontWeight:700}}>{abTest.current.stats[k]}</td></tr>))}</tbody>
-                </table>
-              </div>
-            )}
-            <div style={{...card,background:"linear-gradient(135deg,#0e1320,#0b1025)"}}>
-              <span style={lbl}>⟲ BACKTEST · {ticker} · {rows.length} candles</span>
-              <div style={{display:"flex",gap:14,alignItems:"center",flexWrap:"wrap",marginBottom:8,padding:"10px 12px",background:"#060810",borderRadius:4}}>
-                <span style={{fontSize:9,color:DIM}}>RE-TUNE:</span>
-                <label style={{fontSize:10,color:"#ff5252",display:"flex",alignItems:"center",gap:6}}>SL {slMult.toFixed(1)}×<input type="range" min="0.5" max="3" step="0.1" value={slMult} onChange={e=>{const v=parseFloat(e.target.value);setSlMult(v);run(v,tpMult);}} style={{accentColor:"#ff5252",width:80}}/></label>
-                <label style={{fontSize:10,color:"#00e676",display:"flex",alignItems:"center",gap:6}}>TP {tpMult.toFixed(1)}×<input type="range" min="0.5" max="5" step="0.1" value={tpMult} onChange={e=>{const v=parseFloat(e.target.value);setTpMult(v);run(slMult,v);}} style={{accentColor:"#00e676",width:80}}/></label>
-              </div>
-              {backtest.stats.total>0&&(<div style={{display:"flex",gap:12,flexWrap:"wrap",marginBottom:14}}>
-                <div style={{flex:1,minWidth:110,background:"#060810",padding:12,borderRadius:4,borderLeft:"3px solid #546e7a"}}><div style={{fontSize:9,color:DIM}}>GROSS</div><div style={{fontSize:17,fontWeight:700,color:"#90a4ae"}}>{backtest.stats.grossReturn>=0?"+":""}{backtest.stats.grossReturn}%</div></div>
-                <div style={{flex:1,minWidth:110,background:"#060810",padding:12,borderRadius:4,borderLeft:"3px solid #ffb74d"}}><div style={{fontSize:9,color:DIM}}>COST DRAG</div><div style={{fontSize:17,fontWeight:700,color:"#ffb74d"}}>−{backtest.stats.costDrag}%</div></div>
-                <div style={{flex:1,minWidth:110,background:"#060810",padding:12,borderRadius:4,borderLeft:"3px solid "+(backtest.stats.totalReturn>=0?"#00e676":"#ff5252")}}><div style={{fontSize:9,color:DIM}}>NET</div><div style={{fontSize:17,fontWeight:700,color:backtest.stats.totalReturn>=0?"#00e676":"#ff5252"}}>{backtest.stats.totalReturn>=0?"+":""}{backtest.stats.totalReturn}%</div></div>
-              </div>)}
-              <div style={{display:"grid",gridTemplateColumns:"repeat(auto-fit,minmax(110px,1fr))",gap:10}}>
-                {[{l:"TRADES",v:backtest.stats.total},{l:"WIN RATE",v:backtest.stats.winRate+"%"},{l:"PROFIT FACTOR",v:backtest.stats.profitFactor},{l:"EXPECTANCY",v:backtest.stats.expectancy+"%"}].map(x=>(<div key={x.l} style={{background:"#060810",padding:12,borderRadius:4}}><div style={{fontSize:9,color:DIM,marginBottom:4}}>{x.l}</div><div style={{fontSize:15,fontWeight:700}}>{x.v}</div></div>))}
-              </div>
-            </div>
-            <div style={card}>
-              <span style={lbl}>📐 STATISTICAL VALIDATION</span>
-              <div style={{display:"grid",gridTemplateColumns:"repeat(auto-fit,minmax(110px,1fr))",gap:10}}>
-                {[{l:"SAMPLE",v:backtest.stats.total+" trades",c:backtest.stats.total>=30?"#00e676":"#ff5252"},{l:"SHARPE",v:backtest.stats.sharpe,c:backtest.stats.sharpe>=0.3?"#00e676":"#ffd740"},{l:"MAX DD",v:"-"+backtest.stats.maxDrawdown+"%",c:"#ff5252"},{l:"T-STAT",v:backtest.stats.tStat,c:Math.abs(backtest.stats.tStat)>2?"#00e676":"#ffd740"}].map(x=>(<div key={x.l} style={{background:"#060810",padding:12,borderRadius:4}}><div style={{fontSize:9,color:DIM,marginBottom:4}}>{x.l}</div><div style={{fontSize:15,fontWeight:700,color:x.c}}>{x.v}</div></div>))}
-              </div>
-              <div style={{marginTop:12,padding:12,borderRadius:4,background:"rgba(255,215,64,0.06)",border:"1px solid rgba(255,215,64,0.2)"}}><div style={{fontSize:11,fontWeight:700,color:"#ffd740",marginBottom:4}}>VERDICT: {backtest.stats.significance}</div></div>
-            </div>
-            {oosTest&&(()=>{const isR=oosTest.inSample.stats.totalReturn,osR=oosTest.outSample.stats.totalReturn,osN=oosTest.outSample.stats.total;let vC,vrd;if(osN<3){vC="#ff8a80";vrd="INCONCLUSIVE";}else if(isR>0&&osR>0){vC="#00e676";vrd="EDGE HELD";}else if(isR>0&&osR<=0){vC="#ff5252";vrd="LIKELY OVERFIT";}else if(isR<=0&&osR>0){vC="#ffd740";vrd="REGIME SHIFT?";}else{vC="#ff5252";vrd="NO EDGE";}return(
-              <div style={{...card,border:"1px solid rgba(0,188,212,0.25)"}}>
-                <span style={lbl}>🔬 OUT-OF-SAMPLE TEST (70/30)</span>
-                <div style={{display:"grid",gridTemplateColumns:"1fr 1fr",gap:12}}>
-                  {[["IN-SAMPLE",oosTest.inSample,"#546e7a"],["OUT-OF-SAMPLE",oosTest.outSample,"#00bcd4"]].map(([lab,d,ac])=>(<div key={lab} style={{background:"#060810",padding:12,borderRadius:4,borderTop:"2px solid "+ac}}><div style={{fontSize:9,color:DIM,marginBottom:8}}>{lab}</div>{[["Trades","total"],["Win %","winRate"],["Return %","totalReturn"]].map(([m,k])=>(<div key={k} style={{display:"flex",justifyContent:"space-between",fontSize:11,padding:"3px 0"}}><span style={{color:DIM}}>{m}</span><span style={{color:k==="totalReturn"?(d.stats[k]>=0?"#00e676":"#ff5252"):"#dce6f0",fontWeight:700}}>{d.stats[k]}</span></div>))}</div>))}
+                <div style={{display:"flex",gap:6}}>
+                  <button style={{...pill(false),marginBottom:0,background:"rgba(0,188,212,0.1)",border:"1px solid #00bcd499",color:"#00bcd4",fontWeight:700}} onClick={async()=>{
+                    try{
+                      const text=await navigator.clipboard.readText();
+                      if(!text.trim()){setError("Clipboard is empty. Copy the CSV from TradingView first.");return;}
+                      setCsv(text);
+                      setError("");
+                      // auto-run after a brief render tick
+                      setTimeout(()=>{
+                        const data=parseCSV(text);
+                        if(data.length>=10){
+                          setRows(data);
+                          const result=analyze(data,ticker,market,strategy);
+                          setAnalysis(result);
+                          setHistory(h=>[{time:new Date().toLocaleTimeString(),ticker,signal:result.signal,confidence:result.confidence,price:data[data.length-1].close,trend:result.trend},...h].slice(0,10));
+                          setTab("signals");
+                        } else {
+                          setError("Clipboard data needs at least 10 rows with a Close column.");
+                        }
+                      },100);
+                    }catch(e){
+                      setError("Clipboard access denied. Please allow clipboard access in your browser, or paste manually.");
+                    }
+                  }}>📋 PASTE &amp; RUN</button>
+                  <button style={{...pill(false),marginBottom:0}} onClick={()=>setCsv(SAMPLE)}>LOAD SAMPLE</button>
                 </div>
-                <div style={{marginTop:12,padding:12,borderRadius:4,background:vC+"11",border:"1px solid "+vC+"44"}}><div style={{fontSize:11,fontWeight:700,color:vC}}>VERDICT: {vrd}</div></div>
-              </div>);})()}
-            <div style={{...card,border:"1px solid rgba(224,64,251,0.2)"}}>
-              <div style={{display:"flex",justifyContent:"space-between",alignItems:"center",flexWrap:"wrap",gap:8,marginBottom:8}}><span style={{...lbl,marginBottom:0}}>⚗ PARAMETER SWEEP</span><button style={{...pill(false),background:"rgba(224,64,251,0.1)",border:"1px solid #e040fb88",color:"#e040fb",fontWeight:700}} onClick={runSweep} disabled={sweeping}>{sweeping?"⏳…":"▶ RUN SWEEP"}</button></div>
-              {sweep&&sweep.bestRobust&&(<div style={{padding:12,borderRadius:4,background:"rgba(0,230,118,0.08)",border:"1px solid rgba(0,230,118,0.3)",marginBottom:12}}><div style={{fontSize:11,fontWeight:700,color:"#00e676"}}>★ BEST ROBUST: SL {sweep.bestRobust.sl}× / TP {sweep.bestRobust.tp}×</div><button style={{...pill(false),marginTop:8}} onClick={()=>{setSlMult(sweep.bestRobust.sl);setTpMult(sweep.bestRobust.tp);run(sweep.bestRobust.sl,sweep.bestRobust.tp);}}>APPLY</button></div>)}
-              {sweep&&!sweep.bestRobust&&(<div style={{padding:12,borderRadius:4,background:"rgba(255,82,82,0.07)",border:"1px solid rgba(255,82,82,0.25)",marginBottom:12,fontSize:10,color:"#ff8a80"}}>⚠ No robust combo found — no real edge on this instrument.</div>)}
-              {sweep&&(<div style={{overflowX:"auto"}}><table style={{width:"100%",borderCollapse:"collapse",fontSize:10}}><thead><tr style={{color:DIM,fontSize:9}}>{["SL","TP","FULL","IN","OUT","FLAG"].map(h=>(<td key={h} style={{padding:"5px 6px",textAlign:"right"}}>{h}</td>))}</tr></thead><tbody>{sweep.results.map((r,i)=>(<tr key={i} style={{background:r.robust?"rgba(0,230,118,0.05)":r.overfit?"rgba(255,82,82,0.05)":"transparent"}}><td style={{padding:"6px",color:"#90a4ae"}}>{r.sl}</td><td style={{padding:"6px",color:"#90a4ae"}}>{r.tp}</td><td style={{padding:"6px",textAlign:"right",color:r.fullRet>=0?"#00e676":"#ff5252"}}>{r.fullRet}%</td><td style={{padding:"6px",textAlign:"right",color:r.inRet>=0?"#69f0ae":"#ff8a80"}}>{r.inRet}%</td><td style={{padding:"6px",textAlign:"right",color:r.outRet>=0?"#69f0ae":"#ff8a80"}}>{r.outRet}%</td><td style={{padding:"6px",textAlign:"right",fontSize:8,fontWeight:700,color:r.robust?"#00e676":r.overfit?"#ff5252":DIM}}>{r.robust?"✓":r.overfit?"⚠":"—"}</td></tr>))}</tbody></table></div>)}
+              </div>
+              <textarea rows={12} value={csv} onChange={e=>setCsv(e.target.value)}
+                placeholder={"Date,Open,High,Low,Close,Volume\n2026-01-01,100,105,98,103,1000000"}
+                style={{background:BG,border:"1px solid "+BORD,color:"#64b5f6",padding:12,borderRadius:4,fontFamily:"inherit",fontSize:11,lineHeight:1.7,resize:"vertical",width:"100%",outline:"none"}}
+              />
+              <div style={{marginTop:10}}>
+                <div style={{fontSize:10,color:"#00e676",fontWeight:700,marginBottom:8,letterSpacing:1}}>📥 GET REAL MARKET DATA — click a source, download CSV, paste above:</div>
+                <div style={{display:"flex",flexWrap:"wrap",gap:8}}>
+                  <a href={"https://finance.yahoo.com/quote/"+ticker+"/history/"} target="_blank" rel="noreferrer"
+                    style={{background:"rgba(0,230,118,0.08)",border:"1px solid #00e67699",color:"#00e676",padding:"7px 14px",borderRadius:3,fontSize:10,fontWeight:700,letterSpacing:1,textDecoration:"none",cursor:"pointer"}}>
+                    ⬇ YAHOO FINANCE — {ticker}
+                  </a>
+                  <a href={"https://www.tradingview.com/chart/?symbol="+ticker} target="_blank" rel="noreferrer"
+                    style={{background:"rgba(0,188,212,0.08)",border:"1px solid #00bcd499",color:"#00bcd4",padding:"7px 14px",borderRadius:3,fontSize:10,fontWeight:700,letterSpacing:1,textDecoration:"none"}}>
+                    ⬇ TRADINGVIEW — {ticker}
+                  </a>
+                </div>
+                <div style={{fontSize:9,color:FADE,marginTop:8,lineHeight:1.8}}>
+                  Yahoo Finance: Historical Data tab → select date range → Download · TradingView: right-click chart → Export chart data → CSV
+                </div>
+              </div>
             </div>
-            {backtest.curve.length>1&&(<div style={card}><span style={lbl}>◈ EQUITY CURVE</span><EquityCurve curve={backtest.curve}/></div>)}
-            <div style={card}><span style={lbl}>◈ TRADE LOG ({backtest.trades.length})</span>{backtest.trades.length===0?<div style={{color:FADE,fontSize:11}}>No trades.</div>:(<div style={{overflowX:"auto"}}><table style={{width:"100%",borderCollapse:"collapse",fontSize:11}}><thead><tr style={{color:DIM,fontSize:9}}>{["#","DIR","ENTRY","EXIT","RESULT","P&L%"].map(h=>(<td key={h} style={{padding:"4px 8px",textAlign:"left"}}>{h}</td>))}</tr></thead><tbody>{backtest.trades.map((t,i)=>(<tr key={i} style={{borderTop:"1px solid "+BG2}}><td style={{padding:"7px 8px",color:FADE}}>{i+1}</td><td style={{padding:"7px 8px",color:t.dir==="BUY"?"#00e676":"#ff5252",fontWeight:700}}>{t.dir}</td><td style={{padding:"7px 8px",color:"#90a4ae"}}>{fmt(t.entry)}</td><td style={{padding:"7px 8px",color:"#90a4ae"}}>{fmt(t.exit)}</td><td style={{padding:"7px 8px",color:t.result==="WIN"?"#00e676":"#ff5252",fontWeight:700}}>{t.result}</td><td style={{padding:"7px 8px",color:t.pnlPct>=0?"#00e676":"#ff5252",fontWeight:700}}>{t.pnlPct>=0?"+":""}{t.pnlPct.toFixed(2)}%</td></tr>))}</tbody></table></div>)}</div>
+            {error&&<div style={{background:"rgba(255,82,82,0.07)",border:"1px solid rgba(255,82,82,0.3)",borderRadius:4,padding:12,color:"#ff8a80",fontSize:11,marginBottom:14,lineHeight:1.7}}>⚠ {error}</div>}
+            <button style={runBtn} onClick={run}>▶ RUN SIGNAL ANALYSIS</button>
           </>
         )}
 
-        {tab==="position"&&(
-          <div style={card}>
-            <span style={lbl}>⊞ POSITION SIZE CALCULATOR</span>
-            <div style={{display:"grid",gridTemplateColumns:"1fr 1fr",gap:14,marginBottom:14}}>
-              <div><span style={lbl}>ACCOUNT ($)</span><input style={inp} type="number" value={account} onChange={e=>setAccount(e.target.value)}/></div>
-              <div><span style={lbl}>RISK (%)</span><input style={inp} type="number" value={riskPct} step="0.1" onChange={e=>setRiskPct(e.target.value)}/></div>
-            </div>
-            {analysis?(<div style={{display:"grid",gridTemplateColumns:"repeat(auto-fit,minmax(120px,1fr))",gap:10}}>{[{l:"RISK AMOUNT",v:"$"+riskAmt.toFixed(2),c:"#ffd740"},{l:"ENTRY",v:fmt(analysis.entry),c:"#00bcd4"},{l:"STOP LOSS",v:fmt(analysis.sl),c:"#ff5252"},{l:"POSITION SIZE",v:posSize+" units",c:"#00e676"},{l:"POSITION VALUE",v:"$"+posVal.toFixed(2),c:"#69f0ae"},{l:"MAX LOSS",v:"$"+(posSize*slDist).toFixed(2),c:"#ff5252"}].map(x=>(<div key={x.l} style={{background:"#060810",padding:12,borderRadius:4,borderLeft:"3px solid "+x.c}}><div style={{fontSize:9,color:DIM,marginBottom:4}}>{x.l}</div><div style={{fontSize:14,fontWeight:700,color:x.c}}>{x.v}</div></div>))}</div>):<div style={{color:FADE,textAlign:"center",padding:20,fontSize:12}}>Run an analysis first.</div>}
+        {/* ── SIGNALS TAB ── */}
+        {tab==="signals"&&!analysis&&(
+          <div style={{textAlign:"center",padding:"60px 0",color:"#1e2a3a"}}>
+            <div style={{fontSize:50}}>◇</div>
+            <div style={{letterSpacing:3,fontSize:12,marginTop:14}}>NO ANALYSIS YET</div>
+            <button style={{...runBtn,width:"auto",padding:"10px 30px",marginTop:20}} onClick={()=>setTab("input")}>← LOAD DATA</button>
           </div>
         )}
 
-        {tab==="history"&&(
-          <div style={card}><span style={lbl}>◷ HISTORY</span>{history.length===0?<div style={{color:FADE,textAlign:"center",padding:20,fontSize:12}}>No history yet.</div>:(<table style={{width:"100%",borderCollapse:"collapse",fontSize:11}}><thead><tr style={{color:DIM,fontSize:9}}>{["TIME","TICKER","SIGNAL","CONF","PRICE"].map(h=>(<td key={h} style={{padding:"4px 8px",textAlign:"left"}}>{h}</td>))}</tr></thead><tbody>{history.map((h,i)=>(<tr key={i} style={{borderTop:"1px solid "+BG2}}><td style={{padding:"7px 8px",color:FADE}}>{h.time}</td><td style={{padding:"7px 8px",fontWeight:700}}>{h.ticker}</td><td style={{padding:"7px 8px",color:h.signal==="BUY"?"#00e676":h.signal==="SELL"?"#ff5252":"#ffd740",fontWeight:700}}>{h.signal}</td><td style={{padding:"7px 8px",color:"#90a4ae"}}>{h.confidence}%</td><td style={{padding:"7px 8px",color:"#90a4ae"}}>{fmt(h.price)}</td></tr>))}</tbody></table>)}</div>
+        {tab==="signals"&&analysis&&(
+          <>
+            {/* Hero card */}
+            <div style={{...card,background:"linear-gradient(135deg,#0e1320,#0b1025)"}}>
+              <div style={{display:"flex",justifyContent:"space-between",alignItems:"flex-start",flexWrap:"wrap",gap:10}}>
+                <div>
+                  <div style={{fontSize:10,color:FADE,letterSpacing:1,marginBottom:6}}>{ticker} · {market} · {strategy} · {rows.length} candles</div>
+                  <div style={{display:"flex",alignItems:"center",gap:14,flexWrap:"wrap"}}>
+                    <Badge signal={analysis.signal}/>
+                    <span style={{fontSize:9,fontWeight:700,letterSpacing:1,padding:"4px 10px",borderRadius:3,color:mode==="position"?"#00bcd4":"#00e676",background:(mode==="position"?"#00bcd4":"#00e676")+"15",border:"1px solid "+(mode==="position"?"#00bcd4":"#00e676")+"44"}}>{mode==="position"?"🐢 POSITION":"⚡ TACTICAL"}</span>
+                    <span style={{fontSize:11,color:DIM}}>
+                      <span style={{color:tCol(analysis.trend)}}>{analysis.trend}</span>{" · "}
+                      <span style={{color:"#78909c"}}>{analysis.strength}</span>
+                    </span>
+                  </div>
+                </div>
+                {last&&(
+                  <div style={{textAlign:"right"}}>
+                    <div style={{fontSize:26,fontWeight:700}}>{fmt(last.close)}</div>
+                    <div style={{fontSize:11,color:pct>=0?"#00e676":"#ff5252"}}>{pct>=0?"▲":"▼"} {Math.abs(pct)}% period</div>
+                    <div style={{fontSize:9,color:FADE,marginTop:2}}>{last.date}</div>
+                  </div>
+                )}
+              </div>
+
+              {/* Chart */}
+              <div style={{marginTop:14,background:"#060810",borderRadius:4,padding:"6px 0"}}>
+                <div style={{display:"flex",gap:14,fontSize:9,color:FADE,paddingLeft:60,marginBottom:4,flexWrap:"wrap"}}>
+                  <span style={{color:"#ffd740"}}>── SMA5</span>
+                  <span style={{color:"#00bcd4"}}>── SMA10</span>
+                  <span style={{color:"#e040fb"}}>── SMA20</span>
+                  <span style={{color:"#546e7a"}}>── BB Bands</span>
+                  <span style={{color:"#00bcd4"}}>-- ENTRY</span>
+                  <span style={{color:"#ff5252"}}>-- SL</span>
+                  <span style={{color:"#00e676"}}>-- TP1</span>
+                  <span style={{color:"#ff5252"}}>·· RESISTANCE</span>
+                  <span style={{color:"#00e676"}}>·· SUPPORT</span>
+                  <span style={{color:"#ffa726"}}>┊ ANALYSIS START</span>
+                  <span style={{color:"#dce6f0"}}>▢ LATEST SIGNAL ($$$ )</span>
+                </div>
+                <Chart rows={rows} analysis={analysis}/>
+              </div>
+
+              <ConfBar pct={analysis.confidence}/>
+
+              {analysis.divergence&&(
+                <div style={{marginTop:10,padding:"8px 12px",background:analysis.divergence.type==="BULLISH"?"rgba(0,230,118,0.06)":"rgba(255,82,82,0.06)",border:"1px solid "+(analysis.divergence.type==="BULLISH"?"rgba(0,230,118,0.25)":"rgba(255,82,82,0.25)"),borderRadius:4,fontSize:10,color:analysis.divergence.type==="BULLISH"?"#00e676":"#ff5252"}}>
+                  ⚡ {analysis.divergence.type} DIVERGENCE — {analysis.divergence.desc}
+                </div>
+              )}
+
+              <div style={{marginTop:12,padding:12,background:"#060810",borderRadius:4,fontSize:11,color:"#90a4ae",lineHeight:1.9}}>{analysis.reasoning}</div>
+            </div>
+
+            {/* Trade levels */}
+            <div style={card}>
+              <span style={lbl}>◈ TRADE LEVELS</span>
+              <div style={{display:"grid",gridTemplateColumns:"repeat(auto-fit,minmax(130px,1fr))",gap:10}}>
+                {[
+                  {l:"ENTRY",v:analysis.entry,c:"#00bcd4"},
+                  {l:"STOP LOSS",v:analysis.sl,c:"#ff5252"},
+                  {l:"TP 1",v:analysis.tp1,c:"#00e676"},
+                  {l:"TP 2",v:analysis.tp2,c:"#69f0ae"},
+                ].map(x=>(
+                  <div key={x.l} style={{background:"#060810",padding:12,borderRadius:4,borderLeft:"3px solid "+x.c}}>
+                    <div style={{fontSize:9,color:DIM,letterSpacing:2,marginBottom:4}}>{x.l}</div>
+                    <div style={{fontSize:17,fontWeight:700,color:x.c}}>{fmt(x.v)}</div>
+                  </div>
+                ))}
+              </div>
+              <div style={{marginTop:10,fontSize:11,color:DIM,display:"flex",gap:24}}>
+                <span>R/R: <span style={{color:"#ffd740",fontWeight:700}}>1:{analysis.rr}</span></span>
+                <span>ATR: <span style={{color:"#78909c"}}>{fmt(analysis.indicators.atr)}</span></span>
+                <span>SCORE: <span style={{color:analysis.score>0?"#00e676":analysis.score<0?"#ff5252":"#ffd740",fontWeight:700}}>{analysis.score>0?"+":""}{analysis.score}</span></span>
+                {analysis.confluence&&<span>CONFLUENCE: <span style={{color:"#00e676",fontWeight:700}}>{analysis.confluence.bull}↑</span> / <span style={{color:"#ff5252",fontWeight:700}}>{analysis.confluence.bear}↓</span>{analysis.confluence.conflict>0&&<span style={{color:"#ffa726"}}> · {analysis.confluence.conflict} conflict</span>}</span>}
+              </div>
+            </div>
+
+            {/* Indicators */}
+            <div style={card}>
+              <span style={lbl}>◈ TECHNICAL INDICATORS</span>
+              <div style={{display:"grid",gridTemplateColumns:"repeat(auto-fit,minmax(170px,1fr))",gap:10}}>
+                <IndCard name="RSI 14" sig={analysis.indicators.rsi.v>70?"BEARISH":analysis.indicators.rsi.v<30?"BULLISH":"NEUTRAL"} val={(analysis.indicators.rsi.v||"—")+" · "+analysis.indicators.rsi.label}/>
+                <IndCard name="STOCH 14" sig={analysis.indicators.stoch.v>75?"BEARISH":analysis.indicators.stoch.v<25?"BULLISH":"NEUTRAL"} val={(analysis.indicators.stoch.v||"—")+" · "+analysis.indicators.stoch.label}/>
+                <IndCard name="MACD" sig={analysis.indicators.macd.sig} val={analysis.indicators.macd.desc}/>
+                <IndCard name="MOVING AVG" sig={analysis.indicators.ma.sig} val={analysis.indicators.ma.s5?"SMA5 "+fmt(analysis.indicators.ma.s5)+(analysis.indicators.ma.s5>analysis.indicators.ma.s10?" > ":" < ")+"SMA10 "+fmt(analysis.indicators.ma.s10):"Insufficient data"}/>
+                <IndCard name="BOLLINGER" sig={analysis.indicators.bb.sig} val={analysis.indicators.bb.v?"U:"+fmt(analysis.indicators.bb.v.upper)+" M:"+fmt(analysis.indicators.bb.v.middle)+" L:"+fmt(analysis.indicators.bb.v.lower):"Insufficient data"}/>
+                <IndCard name="VOLUME" sig={analysis.indicators.vol.sig==="CONFIRMING"?"BULLISH":analysis.indicators.vol.sig==="DIVERGING"?"BEARISH":"NEUTRAL"} val={"Recent "+(analysis.indicators.vol.recent/1e6).toFixed(1)+"M vs avg "+(analysis.indicators.vol.avg/1e6).toFixed(1)+"M"}/>
+                {analysis.indicators.adx&&<IndCard name="ADX (TREND STR)" sig={analysis.indicators.adx.sig} val={"ADX "+analysis.indicators.adx.adx+" "+(analysis.indicators.adx.adx>25?"(strong)":analysis.indicators.adx.adx>20?"(building)":"(weak/range)")+" · +DI "+analysis.indicators.adx.plusDI+" / -DI "+analysis.indicators.adx.minusDI}/>}
+                {analysis.indicators.obv&&<IndCard name="OBV (VOL FLOW)" sig={analysis.indicators.obv.sig} val={(analysis.indicators.obv.rising?"Rising":"Falling")+" — "+(analysis.indicators.obv.rising?"buyers accumulating":"sellers distributing")}/>}
+                {analysis.indicators.vwap&&<IndCard name="VWAP" sig={analysis.indicators.vwap.sig} val={"VWAP "+fmt(analysis.indicators.vwap.v)+" — price "+(analysis.indicators.vwap.sig==="BULLISH"?"above (bullish)":"below (bearish)")}/>}
+              </div>
+            </div>
+
+            {/* Levels + Patterns */}
+            <div style={{display:"grid",gridTemplateColumns:"1fr 1fr",gap:14}}>
+              <div style={card}>
+                <span style={lbl}>◈ KEY LEVELS</span>
+                {analysis.levels.map((l,i)=>(
+                  <div key={i} style={{display:"flex",justifyContent:"space-between",padding:"6px 0",borderBottom:"1px solid "+BG,fontSize:11}}>
+                    <span style={{color:l.type==="SUPPORT"?"#00e676":"#ff5252"}}>{l.type}</span>
+                    <span style={{fontWeight:700}}>{fmt(l.price)}</span>
+                    <span style={{color:FADE}}>{l.strength}</span>
+                  </div>
+                ))}
+              </div>
+              <div style={card}>
+                <span style={lbl}>◈ PATTERNS DETECTED</span>
+                {analysis.patterns.length>0
+                  ?analysis.patterns.map((p,i)=>(
+                    <div key={i} style={{marginBottom:10}}>
+                      <div style={{display:"flex",justifyContent:"space-between",marginBottom:2}}>
+                        <span style={{fontSize:11,fontWeight:700}}>{p.name}</span>
+                        <span style={{fontSize:9,fontWeight:700,color:p.type==="BULLISH"?"#00e676":p.type==="BEARISH"?"#ff5252":"#ffd740"}}>{p.type}</span>
+                      </div>
+                      <div style={{fontSize:10,color:DIM,lineHeight:1.5}}>{p.desc}</div>
+                    </div>
+                  ))
+                  :<div style={{color:FADE,fontSize:11}}>No classic patterns detected in latest candles</div>
+                }
+              </div>
+            </div>
+
+            {/* Risks + Bias */}
+            <div style={{display:"grid",gridTemplateColumns:"1fr 1fr",gap:14}}>
+              <div style={card}>
+                <span style={lbl}>⚠ RISK FACTORS</span>
+                {analysis.risks.map((r,i)=>(
+                  <div key={i} style={{fontSize:11,color:"#78909c",padding:"5px 0",borderBottom:"1px solid "+BG,lineHeight:1.5}}>· {r}</div>
+                ))}
+              </div>
+              <div style={card}>
+                <span style={lbl}>◎ NEAR-TERM BIAS</span>
+                <div style={{fontSize:11,color:"#90a4ae",lineHeight:1.9}}>{analysis.bias}</div>
+              </div>
+            </div>
+
+            <div style={{display:"grid",gridTemplateColumns:"1fr 1fr",gap:14,marginTop:4}}>
+              <button style={runBtn} onClick={()=>setTab("input")}>← LOAD NEW DATA</button>
+              <button style={{...runBtn,background:"transparent",border:"1px solid "+BORD,color:"#78909c"}} onClick={()=>setTab("position")}>⊞ POSITION CALCULATOR</button>
+            </div>
+            <div style={{background:"rgba(255,215,64,0.03)",border:"1px solid rgba(255,215,64,0.10)",borderRadius:4,padding:10,fontSize:9,color:FADE,lineHeight:1.8,marginTop:14}}>
+              ⚠ EDUCATIONAL PURPOSES ONLY — Not financial advice. Always consult a licensed financial advisor before trading.
+            </div>
+          </>
         )}
 
+        {/* ── BACKTEST TAB ── */}
+        {tab==="backtest"&&(
+          <>
+            {!backtest&&(
+              <div style={{textAlign:"center",padding:"60px 0",color:"#1e2a3a"}}>
+                <div style={{fontSize:50}}>⟲</div>
+                <div style={{letterSpacing:3,fontSize:12,marginTop:14}}>NO BACKTEST YET</div>
+                <div style={{fontSize:10,color:FADE,marginTop:8,lineHeight:1.7}}>Run an analysis with at least 40 candles of data.<br/>The backtest replays the signal logic across all history.</div>
+                <button style={{...runBtn,width:"auto",padding:"10px 30px",marginTop:20}} onClick={()=>setTab("input")}>← LOAD DATA</button>
+              </div>
+            )}
+            {backtest&&(
+              <>
+                {/* A/B Logic Comparison */}
+                {abTest&&(
+                  <div style={{...card,border:"1px solid rgba(0,188,212,0.25)"}}>
+                    <span style={lbl}>⚖ SIGNAL LOGIC A/B TEST — does the new logic reduce risk on THIS data?</span>
+                    <div style={{overflowX:"auto"}}>
+                      <table style={{width:"100%",borderCollapse:"collapse",fontSize:11,marginTop:4}}>
+                        <thead>
+                          <tr style={{color:DIM,fontSize:9,letterSpacing:1}}>
+                            <td style={{padding:"6px 8px",borderBottom:"1px solid "+BORD}}>METRIC</td>
+                            <td style={{padding:"6px 8px",borderBottom:"1px solid "+BORD,textAlign:"right"}}>OLD (flat)</td>
+                            <td style={{padding:"6px 8px",borderBottom:"1px solid "+BORD,textAlign:"right"}}>NEW (confluence)</td>
+                            <td style={{padding:"6px 8px",borderBottom:"1px solid "+BORD,textAlign:"right"}}>VERDICT</td>
+                          </tr>
+                        </thead>
+                        <tbody>
+                          {[
+                            {m:"Trades",o:abTest.legacy.stats.total,n:abTest.current.stats.total,better:"neutral"},
+                            {m:"Win rate %",o:abTest.legacy.stats.winRate,n:abTest.current.stats.winRate,better:"high"},
+                            {m:"Total return %",o:abTest.legacy.stats.totalReturn,n:abTest.current.stats.totalReturn,better:"high"},
+                            {m:"Profit factor",o:abTest.legacy.stats.profitFactor,n:abTest.current.stats.profitFactor,better:"high"},
+                            {m:"Expectancy %/trade",o:abTest.legacy.stats.expectancy,n:abTest.current.stats.expectancy,better:"high"},
+                          ].map(row=>{
+                            const oNum=row.o==="∞"?999:parseFloat(row.o);
+                            const nNum=row.n==="∞"?999:parseFloat(row.n);
+                            let verdict="—",vcol=DIM;
+                            if(row.better==="high"){
+                              if(nNum>oNum){verdict="NEW better";vcol="#00e676";}
+                              else if(nNum<oNum){verdict="OLD better";vcol="#ff5252";}
+                              else{verdict="tie";vcol="#ffd740";}
+                            }
+                            return(
+                              <tr key={row.m} style={{borderBottom:"1px solid "+BG2}}>
+                                <td style={{padding:"7px 8px",color:"#90a4ae"}}>{row.m}</td>
+                                <td style={{padding:"7px 8px",textAlign:"right",color:"#78909c"}}>{row.o}</td>
+                                <td style={{padding:"7px 8px",textAlign:"right",color:"#dce6f0",fontWeight:700}}>{row.n}</td>
+                                <td style={{padding:"7px 8px",textAlign:"right",color:vcol,fontWeight:700,fontSize:9}}>{verdict}</td>
+                              </tr>
+                            );
+                          })}
+                        </tbody>
+                      </table>
+                    </div>
+                    <div style={{marginTop:12,padding:12,background:"#060810",borderRadius:4,fontSize:11,color:"#90a4ae",lineHeight:1.9}}>
+                      {(()=>{
+                        const o=abTest.legacy.stats, n=abTest.current.stats;
+                        const oPF=o.profitFactor==="∞"?999:parseFloat(o.profitFactor);
+                        const nPF=n.profitFactor==="∞"?999:parseFloat(n.profitFactor);
+                        if(o.total===0&&n.total===0) return "Neither logic produced trades on this data — not enough signals fired. Try a longer history or more volatile instrument.";
+                        const pfBetter=nPF>oPF, retBetter=n.totalReturn>o.totalReturn, wrBetter=n.winRate>o.winRate;
+                        const wins=[pfBetter,retBetter,wrBetter].filter(Boolean).length;
+                        if(wins>=2) return "✓ On this data, the NEW confluence logic improved risk-adjusted performance — higher "+[pfBetter?"profit factor":null,retBetter?"return":null,wrBetter?"win rate":null].filter(Boolean).join(", ")+". Fewer, higher-conviction trades paid off here.";
+                        if(wins===0) return "✗ On this data, the NEW logic did NOT outperform — the stricter filter either missed winners or the old logic happened to suit this instrument. This is exactly why we test rather than assume.";
+                        return "≈ Mixed result on this data — the new logic improved some metrics but not others. Risk profile shifted rather than strictly reduced. Test on more data before concluding.";
+                      })()}
+                    </div>
+                    <div style={{marginTop:8,fontSize:9,color:FADE,lineHeight:1.7}}>
+                      Higher profit factor &amp; expectancy = better risk/reward. This compares both logics on the exact same candles, so the numbers — not opinion — tell you whether the upgrade helped.
+                    </div>
+                  </div>
+                )}
+
+                {/* Summary stats */}
+                <div style={{...card,background:"linear-gradient(135deg,#0e1320,#0b1025)"}}>
+                  <span style={lbl}>⟲ BACKTEST RESULTS · {ticker} · {rows.length} candles · {strategy}</span>
+                  <div style={{display:"flex",gap:16,alignItems:"center",flexWrap:"wrap",marginBottom:8,padding:"10px 12px",background:"#060810",borderRadius:4}}>
+                    <span style={{fontSize:9,color:DIM,letterSpacing:1}}>RE-TUNE:</span>
+                    <label style={{fontSize:10,color:"#ff5252",display:"flex",alignItems:"center",gap:6}}>
+                      SL {slMult.toFixed(1)}×
+                      <input type="range" min="0.5" max="3" step="0.1" value={slMult} onChange={e=>{const v=parseFloat(e.target.value);setSlMult(v);run(v,tpMult,{slip:slipPct,comm:commPct});}} style={{accentColor:"#ff5252",width:90}}/>
+                    </label>
+                    <label style={{fontSize:10,color:"#00e676",display:"flex",alignItems:"center",gap:6}}>
+                      TP {tpMult.toFixed(1)}×
+                      <input type="range" min="0.5" max="5" step="0.1" value={tpMult} onChange={e=>{const v=parseFloat(e.target.value);setTpMult(v);run(slMult,v,{slip:slipPct,comm:commPct});}} style={{accentColor:"#00e676",width:90}}/>
+                    </label>
+                    <span style={{fontSize:10,color:"#ffd740",fontWeight:700}}>R/R 1:{(tpMult/slMult).toFixed(2)}</span>
+                  </div>
+                  <div style={{display:"flex",gap:16,alignItems:"center",flexWrap:"wrap",marginBottom:14,padding:"10px 12px",background:"#060810",borderRadius:4}}>
+                    <span style={{fontSize:9,color:DIM,letterSpacing:1}}>COSTS:</span>
+                    <label style={{fontSize:10,color:"#ff8a80",display:"flex",alignItems:"center",gap:6}}>
+                      SLIPPAGE {slipPct.toFixed(2)}%/side
+                      <input type="range" min="0" max="0.3" step="0.01" value={slipPct} onChange={e=>{const v=parseFloat(e.target.value);setSlipPct(v);run(slMult,tpMult,{slip:v,comm:commPct});}} style={{accentColor:"#ff8a80",width:90}}/>
+                    </label>
+                    <label style={{fontSize:10,color:"#ffb74d",display:"flex",alignItems:"center",gap:6}}>
+                      COMMISSION {commPct.toFixed(2)}%/side
+                      <input type="range" min="0" max="0.2" step="0.01" value={commPct} onChange={e=>{const v=parseFloat(e.target.value);setCommPct(v);run(slMult,tpMult,{slip:slipPct,comm:v});}} style={{accentColor:"#ffb74d",width:90}}/>
+                    </label>
+                    <span style={{fontSize:9,color:FADE}}>round-trip cost: {((slipPct+commPct)*2).toFixed(2)}%/trade</span>
+                  </div>
+                  {/* Cost presets */}
+                  <div style={{display:"flex",gap:6,flexWrap:"wrap",marginBottom:14}}>
+                    <button style={{...pill(slipPct===0&&commPct===0),marginBottom:0}} onClick={()=>{setSlipPct(0);setCommPct(0);run(slMult,tpMult,{slip:0,comm:0});}}>Zero (ideal)</button>
+                    <button style={{...pill(slipPct===0.02&&commPct===0),marginBottom:0}} onClick={()=>{setSlipPct(0.02);setCommPct(0);run(slMult,tpMult,{slip:0.02,comm:0});}}>Retail stock</button>
+                    <button style={{...pill(slipPct===0.05&&commPct===0.01),marginBottom:0}} onClick={()=>{setSlipPct(0.05);setCommPct(0.01);run(slMult,tpMult,{slip:0.05,comm:0.01});}}>Typical retail</button>
+                    <button style={{...pill(slipPct===0.08&&commPct===0.02),marginBottom:0}} onClick={()=>{setSlipPct(0.08);setCommPct(0.02);run(slMult,tpMult,{slip:0.08,comm:0.02});}}>Forex/CFD</button>
+                  </div>
+                  {/* Gross vs Net headline */}
+                  {backtest.stats.total>0&&(
+                    <div style={{display:"flex",gap:12,flexWrap:"wrap",marginBottom:14}}>
+                      <div style={{flex:1,minWidth:130,background:"#060810",padding:12,borderRadius:4,borderLeft:"3px solid #546e7a"}}>
+                        <div style={{fontSize:9,color:DIM,letterSpacing:1,marginBottom:4}}>GROSS RETURN (no costs)</div>
+                        <div style={{fontSize:18,fontWeight:700,color:backtest.stats.grossReturn>=0?"#90a4ae":"#ff8a80"}}>{backtest.stats.grossReturn>=0?"+":""}{backtest.stats.grossReturn}%</div>
+                      </div>
+                      <div style={{flex:1,minWidth:130,background:"#060810",padding:12,borderRadius:4,borderLeft:"3px solid #ffb74d"}}>
+                        <div style={{fontSize:9,color:DIM,letterSpacing:1,marginBottom:4}}>COST DRAG</div>
+                        <div style={{fontSize:18,fontWeight:700,color:"#ffb74d"}}>−{backtest.stats.costDrag}%</div>
+                      </div>
+                      <div style={{flex:1,minWidth:130,background:"#060810",padding:12,borderRadius:4,borderLeft:"3px solid "+(backtest.stats.totalReturn>=0?"#00e676":"#ff5252")}}>
+                        <div style={{fontSize:9,color:DIM,letterSpacing:1,marginBottom:4}}>NET RETURN (after costs)</div>
+                        <div style={{fontSize:18,fontWeight:700,color:backtest.stats.totalReturn>=0?"#00e676":"#ff5252"}}>{backtest.stats.totalReturn>=0?"+":""}{backtest.stats.totalReturn}%</div>
+                      </div>
+                    </div>
+                  )}
+                  {backtest.stats.total>0&&backtest.stats.grossReturn>0&&backtest.stats.totalReturn<0&&(
+                    <div style={{background:"rgba(255,82,82,0.08)",border:"1px solid rgba(255,82,82,0.3)",borderRadius:4,padding:10,fontSize:10,color:"#ff8a80",lineHeight:1.7,marginBottom:14}}>
+                      ⚠ REALITY CHECK: This strategy is profitable on paper (+{backtest.stats.grossReturn}%) but <strong>loses money after costs</strong> ({backtest.stats.totalReturn}%). The edge doesn't survive real-world friction. This is the single most common reason backtested strategies fail live.
+                    </div>
+                  )}
+                  <div style={{display:"grid",gridTemplateColumns:"repeat(auto-fit,minmax(120px,1fr))",gap:10,marginTop:6}}>
+                    {[
+                      {l:"TOTAL TRADES",v:backtest.stats.total,c:"#dce6f0"},
+                      {l:"WIN RATE",v:backtest.stats.winRate+"%",c:backtest.stats.winRate>=50?"#00e676":"#ff5252"},
+                      {l:"WINS",v:backtest.stats.wins,c:"#00e676"},
+                      {l:"LOSSES",v:backtest.stats.losses,c:"#ff5252"},
+                      {l:"TOTAL RETURN",v:(backtest.stats.totalReturn>=0?"+":"")+backtest.stats.totalReturn+"%",c:backtest.stats.totalReturn>=0?"#00e676":"#ff5252"},
+                      {l:"PROFIT FACTOR",v:backtest.stats.profitFactor,c:backtest.stats.profitFactor>=1.5?"#00e676":backtest.stats.profitFactor>=1?"#ffd740":"#ff5252"},
+                      {l:"EXPECTANCY",v:(backtest.stats.expectancy>=0?"+":"")+backtest.stats.expectancy+"%",c:backtest.stats.expectancy>=0?"#00e676":"#ff5252"},
+                      {l:"AVG WIN / LOSS",v:"+"+backtest.stats.avgWin+"% / -"+backtest.stats.avgLoss+"%",c:"#90a4ae"},
+                    ].map(x=>(
+                      <div key={x.l} style={{background:"#060810",padding:12,borderRadius:4}}>
+                        <div style={{fontSize:9,color:DIM,letterSpacing:1,marginBottom:4}}>{x.l}</div>
+                        <div style={{fontSize:16,fontWeight:700,color:x.c}}>{x.v}</div>
+                      </div>
+                    ))}
+                  </div>
+                  <div style={{marginTop:14,padding:12,background:"#060810",borderRadius:4,fontSize:11,color:"#90a4ae",lineHeight:1.9}}>
+                    {backtest.stats.total===0
+                      ? "No completed trades in this dataset — the signal logic never produced a confirmed BUY/SELL entry that resolved. Try a longer history or a more volatile instrument."
+                      : "Across "+rows.length+" candles, the strategy took "+backtest.stats.total+" trades with a "+backtest.stats.winRate+"% win rate. "+
+                        "Profit factor "+backtest.stats.profitFactor+" ("+(backtest.stats.profitFactor==="∞"||backtest.stats.profitFactor>=1.5?"strong":backtest.stats.profitFactor>=1?"marginally profitable":"unprofitable")+"). "+
+                        "Each trade averaged "+(backtest.stats.expectancy>=0?"+":"")+backtest.stats.expectancy+"% expectancy. "+
+                        (backtest.openTrade?"One trade is still open at period end.":"")}
+                  </div>
+                </div>
+
+                {/* Statistical Validation */}
+                {backtest.stats.total>0&&(
+                  <div style={card}>
+                    <span style={lbl}>📐 STATISTICAL VALIDATION — can you trust these results?</span>
+                    {(()=>{
+                      const s=backtest.stats;
+                      const sigCfg={
+                        "SIGNIFICANT":{c:"#00e676",msg:"Strong evidence of a real edge — enough trades and the average result is well clear of random noise."},
+                        "SUGGESTIVE":{c:"#ffd740",msg:"Hints of an edge, but not conclusive. Gather more trades before trusting it."},
+                        "NOT SIGNIFICANT":{c:"#ff5252",msg:"Results are statistically indistinguishable from random. No proven edge here."},
+                        "TOO FEW TRADES":{c:"#ff8a80",msg:"Sample far too small to mean anything. You need 30+ trades for any statistical confidence. Treat these numbers as anecdote, not evidence."},
+                      };
+                      const sc=sigCfg[s.significance]||sigCfg["NOT SIGNIFICANT"];
+                      return(
+                        <>
+                          <div style={{display:"grid",gridTemplateColumns:"repeat(auto-fit,minmax(120px,1fr))",gap:10,marginTop:6}}>
+                            {[
+                              {l:"SAMPLE SIZE",v:s.total+" trades",c:s.total>=30?"#00e676":s.total>=15?"#ffd740":"#ff5252"},
+                              {l:"SHARPE (per trade)",v:s.sharpe,c:s.sharpe>=0.3?"#00e676":s.sharpe>=0?"#ffd740":"#ff5252"},
+                              {l:"MAX DRAWDOWN",v:"-"+s.maxDrawdown+"%",c:"#ff5252"},
+                              {l:"MAX CONSEC LOSSES",v:s.maxConsecLoss,c:s.maxConsecLoss>=5?"#ff5252":"#ffd740"},
+                              {l:"RETURN STD DEV",v:s.stdDev+"%",c:"#90a4ae"},
+                              {l:"T-STATISTIC",v:s.tStat,c:Math.abs(s.tStat)>2?"#00e676":Math.abs(s.tStat)>1.5?"#ffd740":"#ff5252"},
+                            ].map(x=>(
+                              <div key={x.l} style={{background:"#060810",padding:12,borderRadius:4}}>
+                                <div style={{fontSize:9,color:DIM,letterSpacing:1,marginBottom:4}}>{x.l}</div>
+                                <div style={{fontSize:16,fontWeight:700,color:x.c}}>{x.v}</div>
+                              </div>
+                            ))}
+                          </div>
+                          <div style={{marginTop:12,padding:12,borderRadius:4,background:sc.c+"11",border:"1px solid "+sc.c+"44"}}>
+                            <div style={{fontSize:11,fontWeight:700,color:sc.c,letterSpacing:1,marginBottom:4}}>VERDICT: {s.significance}</div>
+                            <div style={{fontSize:10,color:"#90a4ae",lineHeight:1.8}}>{sc.msg}</div>
+                          </div>
+                          <div style={{marginTop:8,fontSize:9,color:FADE,lineHeight:1.7}}>
+                            Sharpe = avg return ÷ volatility (higher = smoother gains). Max drawdown = worst peak-to-trough drop. Max consecutive losses = the losing streak you'd have had to stomach. T-stat &gt; 2 with 30+ trades ≈ 95% confidence the edge isn't luck.
+                          </div>
+                        </>
+                      );
+                    })()}
+                  </div>
+                )}
+
+                {/* Out-of-Sample Validation */}
+                {oosTest&&(()=>{
+                  const isR=oosTest.inSample.stats.totalReturn, osR=oosTest.outSample.stats.totalReturn;
+                  const osN=oosTest.outSample.stats.total;
+                  let vCol,verdict,msg;
+                  if(osN<3){vCol="#ff8a80";verdict="INCONCLUSIVE";msg="Too few trades in the test window to judge. Need more data for a reliable out-of-sample read.";}
+                  else if(isR>0&&osR>0){vCol="#00e676";verdict="EDGE HELD";msg="The strategy stayed profitable on data it was never tuned against — the strongest sign the edge is real, not curve-fit.";}
+                  else if(isR>0&&osR<=0){vCol="#ff5252";verdict="LIKELY OVERFIT";msg="Profitable in-sample but NOT out-of-sample. Classic overfitting signature — the 'edge' fit past noise and didn't generalize. Do not trust it.";}
+                  else if(isR<=0&&osR>0){vCol="#ffd740";verdict="REGIME SHIFT?";msg="Weak in-sample but better out-of-sample — could be a market regime change, or small-sample luck. Inconclusive.";}
+                  else{vCol="#ff5252";verdict="NO EDGE";msg="Unprofitable in both halves. No evidence of any edge on this instrument with current settings.";}
+                  return(
+                  <div style={{...card,border:"1px solid rgba(0,188,212,0.25)"}}>
+                    <span style={lbl}>🔬 OUT-OF-SAMPLE TEST — does the edge survive on unseen data?</span>
+                    <div style={{fontSize:10,color:DIM,lineHeight:1.7,marginBottom:12}}>
+                      Trained on first 70% of candles ({oosTest.splitIdx} bars), tested on the last 30% it never "saw." If performance collapses out-of-sample, the edge was likely curve-fit to past noise.
+                    </div>
+                    <div style={{display:"grid",gridTemplateColumns:"1fr 1fr",gap:12}}>
+                      {[
+                        {label:"IN-SAMPLE (train, 70%)",d:oosTest.inSample,accent:"#546e7a"},
+                        {label:"OUT-OF-SAMPLE (test, 30%)",d:oosTest.outSample,accent:"#00bcd4"},
+                      ].map(col=>(
+                        <div key={col.label} style={{background:"#060810",padding:12,borderRadius:4,borderTop:"2px solid "+col.accent}}>
+                          <div style={{fontSize:9,color:DIM,letterSpacing:1,marginBottom:8}}>{col.label}</div>
+                          {[
+                            {l:"Trades",v:col.d.stats.total},
+                            {l:"Win rate",v:col.d.stats.winRate+"%"},
+                            {l:"Return",v:(col.d.stats.totalReturn>=0?"+":"")+col.d.stats.totalReturn+"%",c:col.d.stats.totalReturn>=0?"#00e676":"#ff5252"},
+                            {l:"Profit factor",v:col.d.stats.profitFactor},
+                            {l:"Expectancy",v:(col.d.stats.expectancy>=0?"+":"")+col.d.stats.expectancy+"%",c:col.d.stats.expectancy>=0?"#00e676":"#ff5252"},
+                          ].map(row=>(
+                            <div key={row.l} style={{display:"flex",justifyContent:"space-between",padding:"4px 0",borderBottom:"1px solid "+BG2,fontSize:11}}>
+                              <span style={{color:DIM}}>{row.l}</span>
+                              <span style={{color:row.c||"#dce6f0",fontWeight:700}}>{row.v}</span>
+                            </div>
+                          ))}
+                        </div>
+                      ))}
+                    </div>
+                    <div style={{marginTop:12,padding:12,borderRadius:4,background:vCol+"11",border:"1px solid "+vCol+"44"}}>
+                      <div style={{fontSize:11,fontWeight:700,color:vCol,letterSpacing:1,marginBottom:4}}>VERDICT: {verdict}</div>
+                      <div style={{fontSize:10,color:"#90a4ae",lineHeight:1.8}}>{msg}</div>
+                    </div>
+                  </div>
+                  );
+                })()}
+
+                {/* Parameter Sweep */}
+                <div style={{...card,border:"1px solid rgba(224,64,251,0.2)"}}>
+                  <div style={{display:"flex",justifyContent:"space-between",alignItems:"center",flexWrap:"wrap",gap:8,marginBottom:8}}>
+                    <span style={{...lbl,marginBottom:0}}>⚗ PARAMETER SWEEP — auto-find the best SL/TP combo</span>
+                    <button style={{...pill(false),marginBottom:0,background:"rgba(224,64,251,0.1)",border:"1px solid #e040fb88",color:"#e040fb",fontWeight:700}}
+                      onClick={runSweep} disabled={sweeping}>
+                      {sweeping?"⏳ TESTING…":"▶ RUN SWEEP (16 combos)"}
+                    </button>
+                  </div>
+                  <div style={{fontSize:10,color:DIM,lineHeight:1.7,marginBottom:10}}>
+                    Tests 16 stop-loss / take-profit combinations, ranks them by net return, and checks each against the out-of-sample split. <span style={{color:"#e040fb"}}>This is how you find robust settings — but beware: picking the single best in-sample combo is itself overfitting. Prefer combos flagged ROBUST (profitable in AND out of sample).</span>
+                  </div>
+                  {!sweep&&!sweeping&&(
+                    <div style={{textAlign:"center",padding:"20px 0",color:FADE,fontSize:11}}>Click RUN SWEEP to test the grid. Needs 60+ candles.</div>
+                  )}
+                  {sweep&&(
+                    <>
+                      {sweep.bestRobust?(
+                        <div style={{padding:12,borderRadius:4,background:"rgba(0,230,118,0.08)",border:"1px solid rgba(0,230,118,0.3)",marginBottom:12}}>
+                          <div style={{fontSize:11,fontWeight:700,color:"#00e676",letterSpacing:1,marginBottom:4}}>★ BEST ROBUST COMBO: SL {sweep.bestRobust.sl}× / TP {sweep.bestRobust.tp}× (R/R 1:{sweep.bestRobust.rr})</div>
+                          <div style={{fontSize:10,color:"#90a4ae",lineHeight:1.7}}>
+                            Full {sweep.bestRobust.fullRet>=0?"+":""}{sweep.bestRobust.fullRet}% · in-sample {sweep.bestRobust.inRet>=0?"+":""}{sweep.bestRobust.inRet}% · out-of-sample {sweep.bestRobust.outRet>=0?"+":""}{sweep.bestRobust.outRet}%. Profitable in both halves — the most trustworthy choice.
+                            <button style={{...pill(false),marginTop:8,marginBottom:0,fontSize:9}} onClick={()=>{setSlMult(sweep.bestRobust.sl);setTpMult(sweep.bestRobust.tp);run(sweep.bestRobust.sl,sweep.bestRobust.tp,{slip:slipPct,comm:commPct});}}>APPLY THIS COMBO</button>
+                          </div>
+                        </div>
+                      ):(
+                        <div style={{padding:12,borderRadius:4,background:"rgba(255,82,82,0.07)",border:"1px solid rgba(255,82,82,0.25)",marginBottom:12,fontSize:10,color:"#ff8a80",lineHeight:1.7}}>
+                          ⚠ No combo was profitable in BOTH in-sample and out-of-sample. No robust settings found — the strategy may not have a real edge on this instrument, regardless of SL/TP tuning. Don't cherry-pick the best in-sample row; that's the overfitting trap.
+                        </div>
+                      )}
+                      <div style={{overflowX:"auto"}}>
+                        <table style={{width:"100%",borderCollapse:"collapse",fontSize:10}}>
+                          <thead>
+                            <tr style={{color:DIM,fontSize:9,letterSpacing:1}}>
+                              {["SL×","TP×","R/R","FULL RET","TRADES","IN-S","OUT-S","FLAG"].map(h=>(
+                                <td key={h} style={{padding:"5px 6px",borderBottom:"1px solid "+BORD,textAlign:h==="SL×"||h==="TP×"||h==="R/R"?"left":"right"}}>{h}</td>
+                              ))}
+                            </tr>
+                          </thead>
+                          <tbody>
+                            {sweep.results.map((r,i)=>(
+                              <tr key={i} style={{borderBottom:"1px solid "+BG2,background:r.robust?"rgba(0,230,118,0.05)":r.overfit?"rgba(255,82,82,0.05)":"transparent"}}>
+                                <td style={{padding:"6px",color:"#90a4ae"}}>{r.sl.toFixed(1)}</td>
+                                <td style={{padding:"6px",color:"#90a4ae"}}>{r.tp.toFixed(1)}</td>
+                                <td style={{padding:"6px",color:"#ffd740"}}>1:{r.rr}</td>
+                                <td style={{padding:"6px",textAlign:"right",color:r.fullRet>=0?"#00e676":"#ff5252",fontWeight:700}}>{r.fullRet>=0?"+":""}{r.fullRet}%</td>
+                                <td style={{padding:"6px",textAlign:"right",color:FADE}}>{r.trades}</td>
+                                <td style={{padding:"6px",textAlign:"right",color:r.inRet>=0?"#69f0ae":"#ff8a80"}}>{r.inRet>=0?"+":""}{r.inRet}%</td>
+                                <td style={{padding:"6px",textAlign:"right",color:r.outRet>=0?"#69f0ae":"#ff8a80"}}>{r.outRet>=0?"+":""}{r.outRet}%</td>
+                                <td style={{padding:"6px",textAlign:"right",fontSize:8,fontWeight:700,color:r.robust?"#00e676":r.overfit?"#ff5252":DIM}}>{r.robust?"✓ ROBUST":r.overfit?"⚠ OVERFIT":"—"}</td>
+                              </tr>
+                            ))}
+                          </tbody>
+                        </table>
+                      </div>
+                      <div style={{marginTop:8,fontSize:9,color:FADE,lineHeight:1.7}}>
+                        Green rows = profitable in &amp; out of sample (robust). Red rows = profitable in-sample only (overfit). The full-return ranking is tempting but the FLAG column is what matters — a lower-return robust combo beats a high-return overfit one every time.
+                      </div>
+                    </>
+                  )}
+                </div>
+
+                {/* Equity curve */}
+                {backtest.curve.length>1&&(
+                  <div style={card}>
+                    <span style={lbl}>◈ EQUITY CURVE (cumulative % return)</span>
+                    <EquityCurve curve={backtest.curve}/>
+                  </div>
+                )}
+
+                {/* Trade log */}
+                <div style={card}>
+                  <span style={lbl}>◈ TRADE LOG ({backtest.trades.length})</span>
+                  {backtest.trades.length===0
+                    ? <div style={{color:FADE,fontSize:11}}>No completed trades.</div>
+                    : (
+                      <div style={{overflowX:"auto"}}>
+                        <table style={{width:"100%",borderCollapse:"collapse",fontSize:11}}>
+                          <thead>
+                            <tr style={{color:DIM,fontSize:9,letterSpacing:1}}>
+                              {["#","DIR","ENTRY","EXIT","RESULT","P&L %","BARS"].map(h=>(
+                                <td key={h} style={{padding:"4px 8px",borderBottom:"1px solid "+BORD}}>{h}</td>
+                              ))}
+                            </tr>
+                          </thead>
+                          <tbody>
+                            {backtest.trades.map((t,i)=>(
+                              <tr key={i} style={{borderBottom:"1px solid "+BG2}}>
+                                <td style={{padding:"7px 8px",color:FADE}}>{i+1}</td>
+                                <td style={{padding:"7px 8px"}}><span style={{color:t.dir==="BUY"?"#00e676":"#ff5252",fontWeight:700}}>{t.dir==="BUY"?"▲":"▼"} {t.dir}</span></td>
+                                <td style={{padding:"7px 8px",color:"#90a4ae"}}>{fmt(t.entry)}</td>
+                                <td style={{padding:"7px 8px",color:"#90a4ae"}}>{fmt(t.exit)}</td>
+                                <td style={{padding:"7px 8px"}}><span style={{color:t.result==="WIN"?"#00e676":"#ff5252",fontWeight:700}}>{t.result}</span></td>
+                                <td style={{padding:"7px 8px",color:t.pnlPct>=0?"#00e676":"#ff5252",fontWeight:700}}>{t.pnlPct>=0?"+":""}{t.pnlPct.toFixed(2)}%</td>
+                                <td style={{padding:"7px 8px",color:FADE}}>{t.barsHeld}</td>
+                              </tr>
+                            ))}
+                          </tbody>
+                        </table>
+                      </div>
+                    )}
+                </div>
+
+                <div style={{background:"rgba(255,215,64,0.03)",border:"1px solid rgba(255,215,64,0.10)",borderRadius:4,padding:10,fontSize:9,color:FADE,lineHeight:1.8}}>
+                  ⚠ Backtest enters at the NEXT bar's open after a signal (no lookahead bias), with ATR-based SL/TP and your configured slippage + commission costs applied. Past performance does not guarantee future results. EDUCATIONAL ONLY.
+                </div>
+              </>
+            )}
+          </>
+        )}
+
+        {/* ── VALUE TAB ── */}
+        {tab==="value"&&(
+          <>
+            <div style={{...card,border:"1px solid rgba(255,215,64,0.25)"}}>
+              <span style={lbl}>★ FUNDAMENTAL VALUE — Buffett-style screening</span>
+              <div style={{fontSize:11,color:"#90a4ae",lineHeight:1.8}}>
+                Grades a business on <strong style={{color:"#ffd740"}}>cheapness + financial health + growth</strong> — the quantitative core of value investing. Enter these manually from any finance site. Here, enter them manually from any finance site (Yahoo Finance "Statistics" tab, stockanalysis.com, etc.).
+              </div>
+              <div style={{marginTop:10,padding:10,borderRadius:4,background:"rgba(255,215,64,0.05)",border:"1px solid rgba(255,215,64,0.15)",fontSize:9,color:"#90a4ae",lineHeight:1.7}}>
+                ⚠ This covers the <strong>screenable ~80%</strong> of value investing. It cannot judge moat durability, brand power, or management quality — the qualitative ~20% that needs reading annual reports and years of judgment. A high grade means "worth deeper study," never "guaranteed buy."
+              </div>
+            </div>
+
+            <div style={card}>
+              <span style={lbl}>ENTER FUNDAMENTALS (leave blank if unknown)</span>
+              <div style={{display:"grid",gridTemplateColumns:"1fr 1fr",gap:12}}>
+                {[
+                  {k:"peTTM",label:"P/E RATIO",hint:"e.g. 18"},
+                  {k:"pbAnnual",label:"P/B RATIO",hint:"e.g. 2.5"},
+                  {k:"totalDebt/totalEquityAnnual",label:"DEBT / EQUITY",hint:"e.g. 0.6"},
+                  {k:"roeTTM",label:"ROE (decimal)",hint:"e.g. 0.18 = 18%"},
+                  {k:"netProfitMarginTTM",label:"NET MARGIN (decimal)",hint:"e.g. 0.21"},
+                  {k:"currentRatioAnnual",label:"CURRENT RATIO",hint:"e.g. 1.4"},
+                  {k:"revenueGrowthTTMYoy",label:"REVENUE GROWTH (decimal)",hint:"e.g. 0.12"},
+                  {k:"epsGrowthTTMYoy",label:"EPS GROWTH (decimal)",hint:"e.g. 0.15"},
+                ].map(f=>(
+                  <div key={f.k}>
+                    <span style={{fontSize:9,color:DIM,letterSpacing:1,display:"block",marginBottom:4}}>{f.label}</span>
+                    <input style={inp} type="number" step="any" value={funda[f.k]} placeholder={f.hint}
+                      onChange={e=>setFunda(prev=>({...prev,[f.k]:e.target.value}))}/>
+                  </div>
+                ))}
+              </div>
+            </div>
+
+            {!fundaResult&&(
+              <div style={{textAlign:"center",padding:"40px 0",color:"#1e2a3a"}}>
+                <div style={{fontSize:40}}>★</div>
+                <div style={{letterSpacing:2,fontSize:11,marginTop:12}}>ENTER AT LEAST ONE METRIC TO SEE THE VALUE GRADE</div>
+              </div>
+            )}
+            {fundaResult&&(()=>{
+              const gradeColor={A:"#00e676",B:"#69f0ae",C:"#ffd740",D:"#ff8a80",F:"#ff5252"}[fundaResult.grade];
+              return(
+                <>
+                  <div style={{...card,background:"linear-gradient(135deg,#0e1320,#0b1025)"}}>
+                    <div style={{display:"flex",alignItems:"center",gap:16,flexWrap:"wrap"}}>
+                      <div style={{fontSize:48,fontWeight:700,color:gradeColor,lineHeight:1}}>{fundaResult.grade}</div>
+                      <div style={{flex:1,minWidth:180}}>
+                        <div style={{fontSize:12,fontWeight:700,color:gradeColor,letterSpacing:1,marginBottom:4}}>VALUE GRADE {fundaResult.grade}</div>
+                        <div style={{fontSize:11,color:"#90a4ae",lineHeight:1.7}}>{fundaResult.verdict}</div>
+                      </div>
+                    </div>
+                    <div style={{display:"grid",gridTemplateColumns:"repeat(3,1fr)",gap:10,marginTop:14}}>
+                      {[{l:"CHEAPNESS",v:fundaResult.cheap},{l:"HEALTH",v:fundaResult.healthy},{l:"GROWTH",v:fundaResult.growing}].map(x=>(
+                        <div key={x.l} style={{background:"#060810",padding:12,borderRadius:4,textAlign:"center"}}>
+                          <div style={{fontSize:9,color:DIM,letterSpacing:1,marginBottom:4}}>{x.l}</div>
+                          <div style={{fontSize:18,fontWeight:700,color:x.v>0?"#00e676":x.v<0?"#ff5252":"#ffd740"}}>{x.v>0?"+":""}{x.v}</div>
+                        </div>
+                      ))}
+                    </div>
+                  </div>
+                  {fundaResult.reasons.length>0&&(
+                    <div style={card}>
+                      <span style={lbl}>✓ STRENGTHS</span>
+                      {fundaResult.reasons.map((r,i)=>(<div key={i} style={{fontSize:11,color:"#90a4ae",padding:"5px 0",borderBottom:"1px solid "+BG2,lineHeight:1.5}}>· {r}</div>))}
+                    </div>
+                  )}
+                  {fundaResult.flags.length>0&&(
+                    <div style={{...card,border:"1px solid rgba(255,82,82,0.2)"}}>
+                      <span style={lbl}>⚠ RED FLAGS</span>
+                      {fundaResult.flags.map((f,i)=>(<div key={i} style={{fontSize:11,color:"#ff8a80",padding:"5px 0",borderBottom:"1px solid "+BG2,lineHeight:1.5}}>· {f}</div>))}
+                    </div>
+                  )}
+                  {analysis&&(
+                    <div style={{...card,border:"1px solid rgba(0,188,212,0.2)"}}>
+                      <span style={lbl}>◆ COMBINED VIEW — business quality × entry timing</span>
+                      <div style={{fontSize:11,color:"#90a4ae",lineHeight:1.9}}>
+                        Fundamentals grade <strong style={{color:gradeColor}}>{fundaResult.grade}</strong> ({fundaResult.verdict.split("—")[0].trim()}).
+                        Technical signal is <strong style={{color:analysis.signal==="BUY"?"#00e676":analysis.signal==="SELL"?"#ff5252":"#ffd740"}}>{analysis.signal}</strong> at {analysis.confidence}% confidence.{" "}
+                        {fundaResult.grade<="B"&&analysis.signal==="BUY"?"★ Rare alignment — a fundamentally sound business AND a technical buy signal. This is the Buffett-meets-timing sweet spot worth your deepest research.":
+                         fundaResult.grade<="B"&&analysis.signal!=="BUY"?"Good business, but technicals don't favor an entry right now. A patient value investor might accumulate anyway; a tactical trader would wait.":
+                         fundaResult.grade>="D"&&analysis.signal==="BUY"?"⚠ Technicals say buy, but fundamentals are weak — this could be a momentum trade on a poor business. Short-term only; not a Buffett hold.":
+                         "Neither fundamentals nor technicals are compelling here. Likely one to skip."}
+                      </div>
+                    </div>
+                  )}
+                </>
+              );
+            })()}
+          </>
+        )}
+
+        {/* ── POSITION SIZE TAB ── */}
+        {tab==="position"&&(
+          <>
+            <div style={card}>
+              <span style={lbl}>POSITION SIZE CALCULATOR</span>
+              <div style={{display:"grid",gridTemplateColumns:"1fr 1fr",gap:14,marginBottom:14}}>
+                <div>
+                  <span style={{...lbl,marginBottom:4}}>ACCOUNT SIZE ($)</span>
+                  <input style={inp} type="number" value={account} onChange={e=>setAccount(e.target.value)} placeholder="10000"/>
+                </div>
+                <div>
+                  <span style={{...lbl,marginBottom:4}}>RISK PER TRADE (%)</span>
+                  <input style={inp} type="number" value={riskPct} onChange={e=>setRiskPct(e.target.value)} placeholder="1" step="0.1" min="0.1" max="5"/>
+                </div>
+              </div>
+              {analysis?(
+                <>
+                  <div style={{display:"grid",gridTemplateColumns:"repeat(auto-fit,minmax(160px,1fr))",gap:10,marginTop:8}}>
+                    {[
+                      {l:"ACCOUNT SIZE",v:"$"+Number(accNum).toLocaleString(),c:"#dce6f0"},
+                      {l:"RISK AMOUNT",v:"$"+riskAmt.toFixed(2),c:"#ffd740"},
+                      {l:"ENTRY PRICE",v:fmt(analysis.entry),c:"#00bcd4"},
+                      {l:"STOP LOSS",v:fmt(analysis.sl),c:"#ff5252"},
+                      {l:"SL DISTANCE",v:fmt(slDist),c:"#ff8a80"},
+                      {l:"POSITION SIZE",v:posSize+" units",c:"#00e676"},
+                      {l:"POSITION VALUE",v:"$"+posVal.toFixed(2),c:"#69f0ae"},
+                      {l:"RISK/REWARD",v:"1 : "+analysis.rr,c:"#ffd740"},
+                    ].map(x=>(
+                      <div key={x.l} style={{background:"#060810",padding:12,borderRadius:4,borderLeft:"3px solid "+x.c}}>
+                        <div style={{fontSize:9,color:DIM,letterSpacing:1,marginBottom:4}}>{x.l}</div>
+                        <div style={{fontSize:15,fontWeight:700,color:x.c}}>{x.v}</div>
+                      </div>
+                    ))}
+                  </div>
+                  <div style={{marginTop:14,padding:12,background:"#060810",borderRadius:4,fontSize:11,color:"#90a4ae",lineHeight:1.9}}>
+                    Risking <strong style={{color:"#ffd740"}}>{riskPct}%</strong> (${riskAmt.toFixed(2)}) of your ${Number(accNum).toLocaleString()} account on {ticker}.<br/>
+                    With stop loss at {fmt(analysis.sl)} ({fmt(slDist)} from entry), buy <strong style={{color:"#00e676"}}>{posSize} units</strong> (${posVal.toFixed(2)} position).<br/>
+                    Max loss if SL hit: <strong style={{color:"#ff5252"}}>${(posSize*slDist).toFixed(2)}</strong> · Target gain TP1: <strong style={{color:"#00e676"}}>${(posSize*Math.abs(analysis.tp1-analysis.entry)).toFixed(2)}</strong>
+                  </div>
+                </>
+              ):(
+                <div style={{color:FADE,fontSize:12,padding:20,textAlign:"center"}}>Run an analysis first to calculate position sizing.</div>
+              )}
+            </div>
+            <div style={{...card,fontSize:10,color:DIM,lineHeight:1.9}}>
+              <span style={{color:"#00e676",fontWeight:700}}>POSITION SIZING RULES</span><br/>
+              · Never risk more than 1-2% of account per trade<br/>
+              · Position value should not exceed 10-20% of account (avoid over-concentration)<br/>
+              · Always set a stop loss before entering — no stop = undefined risk<br/>
+              · Scale down position size in high-volatility conditions (high ATR)<br/>
+              · R/R ratio should be minimum 1:1.5, ideally 1:2 or better
+            </div>
+          </>
+        )}
+
+        {/* ── HISTORY TAB ── */}
+        {tab==="history"&&(
+          <>
+            <div style={card}>
+              <span style={lbl}>SIGNAL HISTORY (last 10 runs)</span>
+              {history.length===0?(
+                <div style={{color:FADE,fontSize:12,padding:20,textAlign:"center"}}>No history yet. Run some analyses to see them logged here.</div>
+              ):(
+                <table style={{width:"100%",borderCollapse:"collapse",fontSize:11}}>
+                  <thead>
+                    <tr style={{color:DIM,fontSize:9,letterSpacing:1}}>
+                      {["TIME","TICKER","SIGNAL","CONFIDENCE","PRICE","TREND"].map(h=>(
+                        <td key={h} style={{padding:"4px 8px",borderBottom:"1px solid "+BORD}}>{h}</td>
+                      ))}
+                    </tr>
+                  </thead>
+                  <tbody>
+                    {history.map((h,i)=>(
+                      <tr key={i} style={{borderBottom:"1px solid "+BG2}}>
+                        <td style={{padding:"8px 8px",color:FADE}}>{h.time}</td>
+                        <td style={{padding:"8px 8px",color:"#dce6f0",fontWeight:700}}>{h.ticker}</td>
+                        <td style={{padding:"8px 8px"}}>
+                          <span style={{color:h.signal==="BUY"?"#00e676":h.signal==="SELL"?"#ff5252":"#ffd740",fontWeight:700}}>{h.signal==="BUY"?"▲ ":h.signal==="SELL"?"▼ ":"◆ "}{h.signal}</span>
+                        </td>
+                        <td style={{padding:"8px 8px"}}>
+                          <span style={{color:h.confidence>=70?"#00e676":h.confidence>=45?"#ffd740":"#ff5252"}}>{h.confidence}%</span>
+                        </td>
+                        <td style={{padding:"8px 8px",color:"#90a4ae"}}>{fmt(h.price)}</td>
+                        <td style={{padding:"8px 8px",color:tCol(h.trend)}}>{h.trend}</td>
+                      </tr>
+                    ))}
+                  </tbody>
+                </table>
+              )}
+            </div>
+            <button style={runBtn} onClick={()=>setHistory([])}>CLEAR HISTORY</button>
+          </>
+        )}
       </div>
     </div>
   );
