@@ -1107,6 +1107,8 @@ function App() {
   const [fetching,  setFetching]  = useState(false);
   const [liveMeta,  setLiveMeta]  = useState(null);
   const [fundaMeta, setFundaMeta] = useState(null); // provenance of auto-filled fundamentals
+  const [fundaAuto, setFundaAuto] = useState({});   // which fields came from auto-fetch (vs hand-entered)
+  const [fundaVerified, setFundaVerified] = useState(false); // user confirmed auto-data against a primary source
   // ─ Replay state ─
   const [replayIdx,     setReplayIdx]     = useState(0);
   const [replayPlaying, setReplayPlaying] = useState(false);
@@ -1210,9 +1212,15 @@ function App() {
       const liveMutedFlag=liveVerdict!=="SIGNIFICANT"&&liveVerdict!=="SUGGESTIVE";
       setHistory(h=>[{time:new Date().toLocaleTimeString(),ticker:sym,signal:result.signal,confidence:result.confidence,price:candles[candles.length-1].close,trend:result.trend,verdict:liveVerdict,muted:liveMutedFlag},...h].slice(0,10));
       // Merge the fundamentals research once it lands — VALUE tab fills itself.
+      // Auto-pulled numbers start UNVERIFIED until the user checks them against
+      // a primary filing, consistent with the app's transparency rule.
       const fnd=await fundaPromise;
-      if(fnd.map) setFunda(prev=>({...prev,...fnd.map}));
-      setFundaMeta(fnd.meta);
+      if(fnd.map){
+        setFunda(prev=>({...prev,...fnd.map}));
+        setFundaAuto(Object.keys(fnd.map).reduce((a,k)=>(a[k]=true,a),{}));
+        setFundaVerified(false);
+      }
+      setFundaMeta(fnd.meta?{...fnd.meta,sym}:null);
       setTab("signals");
     }catch(e){setError(e.message||"Live fetch failed.");setTab("live");}
     finally{setFetching(false);}
@@ -2239,7 +2247,17 @@ function App() {
             )}
 
             <div style={card}>
-              <span style={lbl}>ENTER FUNDAMENTALS (leave blank if unknown)</span>
+              <div style={{display:"flex",justifyContent:"space-between",alignItems:"baseline",flexWrap:"wrap",gap:8,marginBottom:8}}>
+                <span style={{...lbl,marginBottom:0}}>ENTER FUNDAMENTALS (leave blank if unknown)</span>
+                {(()=>{const sym=(liveMeta?.sym||ticker||"").trim().toUpperCase();return sym?(
+                  <span style={{fontSize:9,color:DIM}}>
+                    Verify at primary source:{" "}
+                    <a href={"https://www.sec.gov/cgi-bin/browse-edgar?action=getcompany&ticker="+encodeURIComponent(sym)+"&type=10-K&dateb=&owner=include&count=10"} target="_blank" rel="noreferrer" style={{color:"#00bcd4"}}>SEC EDGAR ↗</a>
+                    {" · "}
+                    <a href={"https://stockanalysis.com/stocks/"+encodeURIComponent(sym.toLowerCase())+"/financials/"} target="_blank" rel="noreferrer" style={{color:"#00bcd4"}}>stockanalysis ↗</a>
+                  </span>
+                ):null;})()}
+              </div>
               <div style={{display:"grid",gridTemplateColumns:"1fr 1fr",gap:12}}>
                 {[
                   {k:"peTTM",label:"P/E RATIO",hint:"e.g. 18"},
@@ -2252,9 +2270,12 @@ function App() {
                   {k:"epsGrowthTTMYoy",label:"EPS GROWTH (decimal)",hint:"e.g. 0.15"},
                 ].map(f=>(
                   <div key={f.k}>
-                    <span style={{fontSize:9,color:DIM,letterSpacing:1,display:"block",marginBottom:4}}>{f.label}</span>
-                    <input style={inp} type="number" step="any" value={funda[f.k]} placeholder={f.hint}
-                      onChange={e=>setFunda(prev=>({...prev,[f.k]:e.target.value}))}/>
+                    <span style={{fontSize:9,color:DIM,letterSpacing:1,display:"block",marginBottom:4}}>
+                      {f.label}
+                      {fundaAuto[f.k]&&<span title="Auto-filled — unverified. Edit to take ownership of this number." style={{marginLeft:6,color:"#ffb74d",fontWeight:700}}>· auto</span>}
+                    </span>
+                    <input style={{...inp,...(fundaAuto[f.k]?{borderColor:"#ffb74d55"}:{})}} type="number" step="any" value={funda[f.k]} placeholder={f.hint}
+                      onChange={e=>{setFunda(prev=>({...prev,[f.k]:e.target.value}));setFundaAuto(prev=>{if(!prev[f.k])return prev;const n={...prev};delete n[f.k];return n;});}}/>
                   </div>
                 ))}
               </div>
@@ -2267,14 +2288,30 @@ function App() {
               </div>
             )}
             {fundaResult&&(()=>{
-              const gradeColor={A:"#00e676",B:"#69f0ae",C:"#ffd740",D:"#ff8a80",F:"#ff5252"}[fundaResult.grade];
+              // Transparency rule, applied to the grade: a verdict built on
+              // unverified auto-pulled numbers is shown muted until the user
+              // confirms them against a primary filing.
+              const autoCount=Object.keys(fundaAuto).length;
+              const unverified=autoCount>0&&!fundaVerified;
+              const trueColor={A:"#00e676",B:"#69f0ae",C:"#ffd740",D:"#ff8a80",F:"#ff5252"}[fundaResult.grade];
+              const gradeColor=unverified?"#90a4ae":trueColor;
               return(
                 <>
+                  {unverified&&(
+                    <div style={{...card,marginBottom:14,border:"1px solid rgba(255,167,38,0.3)",background:"rgba(255,167,38,0.05)"}}>
+                      <div style={{display:"flex",justifyContent:"space-between",alignItems:"center",gap:10,flexWrap:"wrap"}}>
+                        <div style={{fontSize:11,color:"#ffb74d",lineHeight:1.7}}>
+                          ⚖ <strong>UNVERIFIED</strong> — this grade rests on {autoCount} auto-pulled number{autoCount===1?"":"s"}. Check them against the primary filing (links above), then confirm. Until then the grade is shown muted.
+                        </div>
+                        <button style={{...pill(false),marginBottom:0,whiteSpace:"nowrap",color:"#00e676",borderColor:"#00e67699"}} onClick={()=>setFundaVerified(true)}>✓ I verified these</button>
+                      </div>
+                    </div>
+                  )}
                   <div style={{...card,background:"linear-gradient(135deg,#0e1320,#0b1025)"}}>
                     <div style={{display:"flex",alignItems:"center",gap:16,flexWrap:"wrap"}}>
                       <div style={{fontSize:48,fontWeight:700,color:gradeColor,lineHeight:1}}>{fundaResult.grade}</div>
                       <div style={{flex:1,minWidth:180}}>
-                        <div style={{fontSize:12,fontWeight:700,color:gradeColor,letterSpacing:1,marginBottom:4}}>VALUE GRADE {fundaResult.grade}</div>
+                        <div style={{fontSize:12,fontWeight:700,color:gradeColor,letterSpacing:1,marginBottom:4}}>VALUE GRADE {fundaResult.grade}{unverified?" · UNVERIFIED":fundaVerified&&autoCount>0?" · ✓ VERIFIED":""}</div>
                         <div style={{fontSize:11,color:"#90a4ae",lineHeight:1.7}}>{fundaResult.verdict}</div>
                       </div>
                     </div>
