@@ -25,7 +25,7 @@ a{text-decoration:none}
 <body>
 <div id="root"></div>
 <script type="text/babel" data-presets="react">
-const { useState, useRef, useEffect, useCallback } = React;
+const { useState, useRef, useEffect, useCallback, useMemo } = React;
 
 // ─── Sample data ───────────────────────────────────────────────────────────
 const SAMPLE = `Date,Open,High,Low,Close,Volume
@@ -920,6 +920,117 @@ function EquityCurve({curve}) {
   return <canvas ref={ref} style={{width:"100%",height:140,display:"block"}}/>;
 }
 
+// ─── Replay chart ───────────────────────────────────────────────────────────
+// Draws the candle window ENDING at `upTo`, so dragging the timeline scrubs the
+// chart through history. Overlays the signal that fired at the current bar (from
+// the precomputed `series`) and any trade entries/exits/levels up to that bar —
+// no lookahead: nothing past `upTo` is ever drawn.
+function ReplayChart({rows,upTo,series,trades}) {
+  const ref=useRef(null);
+  useEffect(()=>{
+    const cv=ref.current; if(!cv||rows.length<2) return;
+    const ctx=cv.getContext("2d"),W=cv.width,H=cv.height;
+    const PAD={l:58,r:10,t:12,b:24},cH=(H-PAD.t-PAD.b)*0.72,vH=(H-PAD.t-PAD.b)*0.2,gap=(H-PAD.t-PAD.b)*0.08;
+    ctx.clearRect(0,0,W,H);
+    const end=Math.max(1,Math.min(upTo,rows.length-1));
+    const n=Math.min(end+1,80);
+    const off=end+1-n;                 // global index of the first visible candle
+    const data=rows.slice(off,end+1);
+    const hi=Math.max(...data.map(d=>d.high)),lo=Math.min(...data.map(d=>d.low)),rng=hi-lo||1;
+    const maxVol=Math.max(...data.map(d=>d.volume))||1;
+    const cw=(W-PAD.l-PAD.r)/n;
+    const toX=i=>PAD.l+i*cw+cw/2;       // i is a VISIBLE index
+    const gX=g=>toX(g-off);             // g is a GLOBAL index
+    const toY=v=>PAD.t+(1-(v-lo)/rng)*cH;
+    const vBase=PAD.t+cH+gap+vH;
+    // Background + grid
+    ctx.fillStyle="#080b14"; ctx.fillRect(0,0,W,H);
+    [0,.25,.5,.75,1].forEach(f=>{
+      const price=lo+rng*(1-f),y=PAD.t+f*cH;
+      ctx.strokeStyle="#1a2035"; ctx.lineWidth=.5;
+      ctx.beginPath();ctx.moveTo(PAD.l,y);ctx.lineTo(W-PAD.r,y);ctx.stroke();
+      ctx.fillStyle="#37474f";ctx.font="9px monospace";ctx.textAlign="right";
+      ctx.fillText(price>=100?price.toFixed(2):price.toFixed(4),PAD.l-3,y+3);
+    });
+    // SMAs
+    const closes=data.map(d=>d.close);
+    [[5,"#ffd74099"],[10,"#00bcd499"],[20,"#e040fb99"]].forEach(([p,col])=>{
+      const per=parseInt(p); if(closes.length<per) return;
+      ctx.beginPath();ctx.strokeStyle=col;ctx.lineWidth=1.2;let first=true;
+      data.forEach((d,i)=>{
+        if(i<per-1)return;
+        const v=closes.slice(i-per+1,i+1).reduce((a,b)=>a+b,0)/per;
+        first?ctx.moveTo(toX(i),toY(v)):ctx.lineTo(toX(i),toY(v));first=false;
+      });ctx.stroke();
+    });
+    // Active trade (open at the current bar) → draw entry / SL / TP levels
+    const active=trades.find(t=>t.entryIdx<=end&&end<t.exitIdx);
+    if(active){
+      [[active.entry,"#00bcd4","ENTRY"],[active.sl,"#ff5252","SL"],[active.tp,"#00e676","TP"]].forEach(([v,col,lbl])=>{
+        if(v<lo||v>hi) return;
+        ctx.beginPath();ctx.strokeStyle=col+"cc";ctx.lineWidth=1;ctx.setLineDash([5,4]);
+        ctx.moveTo(PAD.l,toY(v));ctx.lineTo(W-PAD.r,toY(v));ctx.stroke();ctx.setLineDash([]);
+        ctx.fillStyle=col;ctx.font="bold 8px monospace";ctx.textAlign="left";
+        ctx.fillText(lbl,PAD.l+2,toY(v)-2);
+      });
+    }
+    // Candles
+    data.forEach((d,i)=>{
+      const up=d.close>=d.open,col=up?"#00e676":"#ff5252",x=toX(i);
+      const bt=toY(Math.max(d.open,d.close)),bb_=toY(Math.min(d.open,d.close));
+      ctx.strokeStyle=col;ctx.lineWidth=.8;
+      ctx.beginPath();ctx.moveTo(x,toY(d.high));ctx.lineTo(x,toY(d.low));ctx.stroke();
+      ctx.fillStyle=up?"#00e676":"#cc3333";
+      ctx.fillRect(x-cw*.38,bt,cw*.76,Math.max(bb_-bt,1));
+    });
+    // Trade entry / exit markers that have happened within the visible window
+    trades.forEach(t=>{
+      if(t.entryIdx>=off&&t.entryIdx<=end){
+        const x=gX(t.entryIdx),d=rows[t.entryIdx];
+        const col=t.dir==="BUY"?"#00e676":"#ff5252";
+        ctx.fillStyle=col;ctx.font="bold 10px monospace";ctx.textAlign="center";
+        t.dir==="BUY"?ctx.fillText("▲",x,toY(d.low)+13):ctx.fillText("▼",x,toY(d.high)-6);
+      }
+      if(t.exitIdx>=off&&t.exitIdx<=end&&t.exitIdx<=rows.length-1){
+        const x=gX(t.exitIdx),d=rows[t.exitIdx];
+        const col=t.result==="WIN"?"#00e676":"#ff5252";
+        ctx.fillStyle=col;ctx.font="9px monospace";ctx.textAlign="center";
+        ctx.fillText("✕",x,toY((d.high+d.low)/2));
+      }
+    });
+    // Current-bar marker + the signal that fired there
+    {
+      const li=data.length-1,d=data[li],x=toX(li);
+      const sg=series&&series[end];
+      const sig=sg?sg.signal:"HOLD";
+      const col=sig==="BUY"?"#00e676":sig==="SELL"?"#ff5252":"#ffa726";
+      const bt=toY(Math.max(d.open,d.close)),bbm=toY(Math.min(d.open,d.close));
+      ctx.strokeStyle=col;ctx.lineWidth=2;
+      ctx.strokeRect(x-cw*.5,bt-3,cw,(bbm-bt)+6);
+      ctx.fillStyle=col;ctx.font="bold 10px monospace";ctx.textAlign="center";
+      if(sig==="BUY")      ctx.fillText("▲ BUY",x,toY(d.high)-6);
+      else if(sig==="SELL")ctx.fillText("▼ SELL",x,toY(d.low)+20);
+      else                 ctx.fillText("◆",x,toY(d.high)-6);
+      // Vertical "now" line
+      ctx.strokeStyle=col+"55";ctx.lineWidth=.8;ctx.setLineDash([2,3]);
+      ctx.beginPath();ctx.moveTo(x,PAD.t);ctx.lineTo(x,PAD.t+cH);ctx.stroke();ctx.setLineDash([]);
+    }
+    // Volume
+    data.forEach((d,i)=>{
+      ctx.fillStyle=d.close>=d.open?"rgba(0,230,118,0.4)":"rgba(255,82,82,0.35)";
+      const bh=Math.max((d.volume/maxVol)*vH,1);
+      ctx.fillRect(toX(i)-cw*.38,vBase-bh,cw*.76,bh);
+    });
+    ctx.fillStyle="#37474f";ctx.font="8px monospace";ctx.textAlign="left";
+    ctx.fillText("VOL",PAD.l+2,PAD.t+cH+gap+8);
+    // X axis dates
+    ctx.fillStyle="#2a3a4a";ctx.font="8px monospace";ctx.textAlign="center";
+    const step=Math.max(1,Math.floor(n/6));
+    data.forEach((d,i)=>{if(i%step===0)ctx.fillText(d.date?.slice(5)||"",toX(i),H-4);});
+  },[rows,upTo,series,trades]);
+  return <canvas ref={ref} width={820} height={300} style={{width:"100%",height:300,display:"block"}}/>;
+}
+
 // ─── Main App ──────────────────────────────────────────────────────────────
 function App() {
   const [csv,       setCsv]      = useState("");
@@ -949,6 +1060,53 @@ function App() {
   const [resolution,setResolution]= useState("D");
   const [fetching,  setFetching]  = useState(false);
   const [liveMeta,  setLiveMeta]  = useState(null);
+  // ─ Replay state ─
+  const [replayIdx,     setReplayIdx]     = useState(0);
+  const [replayPlaying, setReplayPlaying] = useState(false);
+  const [replaySpeed,   setReplaySpeed]   = useState(220); // ms per bar
+  const REPLAY_START = 30; // first scorable bar (matches backtest/analysis start)
+
+  // Per-bar signal series — the signal/score AS IT WAS at each historical bar.
+  // Same scorer the backtest uses, so the replay shows exactly what fired live.
+  const replaySeries = useMemo(()=>{
+    if(!rows||rows.length<REPLAY_START+1) return null;
+    const scorer = mode==="position" ? scorePosition : scoreAt;
+    const out=new Array(rows.length).fill(null);
+    for(let i=REPLAY_START;i<rows.length;i++){
+      const s=scorer(rows.slice(0,i+1));
+      if(s) out[i]={score:s.score,signal:s.signal};
+    }
+    return out;
+  },[rows,mode]);
+
+  // Map each candle's date → its row index, so trade exit dates resolve to bars.
+  const dateToIdx = useMemo(()=>{
+    const m={}; rows.forEach((r,i)=>{m[r.date]=i;}); return m;
+  },[rows]);
+
+  // Backtest trades augmented with entry/exit bar indices for the overlay.
+  const replayTrades = useMemo(()=>{
+    if(!backtest?.trades) return [];
+    return backtest.trades.map(t=>({
+      ...t,
+      entryIdx: t.openIndex,
+      exitIdx: dateToIdx[t.exitDate] ?? (t.openIndex + (t.barsHeld||0)),
+    }));
+  },[backtest,dateToIdx]);
+
+  // When fresh data loads, park the playhead at the latest bar and stop playback.
+  useEffect(()=>{
+    setReplayPlaying(false);
+    setReplayIdx(rows.length ? rows.length-1 : 0);
+  },[rows]);
+
+  // Playback engine — advances one bar per tick; auto-stops at the end.
+  useEffect(()=>{
+    if(!replayPlaying) return;
+    if(replayIdx>=rows.length-1){ setReplayPlaying(false); return; }
+    const id=setTimeout(()=>setReplayIdx(i=>Math.min(i+1,rows.length-1)),replaySpeed);
+    return ()=>clearTimeout(id);
+  },[replayPlaying,replayIdx,rows.length,replaySpeed]);
 
   async function fetchLive(){
     const key=apiKey.trim();
@@ -1107,7 +1265,7 @@ function App() {
 
       {/* Tabs */}
       <div style={{background:BG3,borderBottom:"1px solid "+BORD,padding:"0 20px",display:"flex"}}>
-        {[["live","⚡ LIVE"],["input","▣ DATA"],["signals","◈ SIGNALS"],["backtest","⟲ BACKTEST"],["value","★ VALUE"],["position","⊞ SIZE"],["history","◷ HISTORY"]].map(([k,l])=>(
+        {[["live","⚡ LIVE"],["input","▣ DATA"],["signals","◈ SIGNALS"],["backtest","⟲ BACKTEST"],["replay","▶ REPLAY"],["value","★ VALUE"],["position","⊞ SIZE"],["history","◷ HISTORY"]].map(([k,l])=>(
           <button key={k} style={tBtn(tab===k)} onClick={()=>setTab(k)}>{l}</button>
         ))}
       </div>
@@ -1821,6 +1979,115 @@ function App() {
             )}
           </>
         )}
+
+        {/* ── REPLAY TAB ── */}
+        {tab==="replay"&&(()=>{
+          if(!rows.length||rows.length<REPLAY_START+1||!replaySeries){
+            return(
+              <div style={{textAlign:"center",padding:"60px 0",color:"#1e2a3a"}}>
+                <div style={{fontSize:50}}>▶</div>
+                <div style={{letterSpacing:3,fontSize:12,marginTop:14}}>NOTHING TO REPLAY</div>
+                <div style={{fontSize:10,color:FADE,marginTop:8,lineHeight:1.7}}>Load at least {REPLAY_START+1} candles, then scrub the timeline to<br/>watch every signal fire bar-by-bar against the real candles.</div>
+                <button style={{...runBtn,width:"auto",padding:"10px 30px",marginTop:20}} onClick={()=>setTab("input")}>← LOAD DATA</button>
+              </div>
+            );
+          }
+          const rIdx=Math.min(replayIdx,rows.length-1);
+          const rBar=rows[rIdx];
+          const rSig=replaySeries[rIdx];
+          const active=replayTrades.find(t=>t.entryIdx<=rIdx&&rIdx<t.exitIdx);
+          const closed=replayTrades.filter(t=>t.exitIdx<=rIdx);
+          const realized=closed.reduce((a,t)=>a+t.pnlPct,0);
+          const realWins=closed.filter(t=>t.pnlPct>0).length;
+          const unreal=active?(active.dir==="BUY"?(rBar.close-active.entry)/active.entry*100:(active.entry-rBar.close)/active.entry*100):null;
+          const atEnd=rIdx>=rows.length-1;
+          const pct=Math.round((rIdx-REPLAY_START)/Math.max(rows.length-1-REPLAY_START,1)*100);
+          const stepBtn={background:BG,border:"1px solid "+BORD,color:"#90a4ae",padding:"8px 12px",borderRadius:4,cursor:"pointer",fontFamily:"inherit",fontSize:13,fontWeight:700,minWidth:40};
+          return(
+            <>
+              <div style={card}>
+                <div style={{display:"flex",justifyContent:"space-between",alignItems:"center",flexWrap:"wrap",gap:8,marginBottom:10}}>
+                  <span style={{...lbl,marginBottom:0}}>▶ SIGNAL REPLAY · {ticker} · scrub history bar-by-bar</span>
+                  <span style={{fontSize:10,color:DIM}}>BAR {rIdx+1}/{rows.length} · {rBar.date} · {pct}%</span>
+                </div>
+                <ReplayChart rows={rows} upTo={rIdx} series={replaySeries} trades={replayTrades}/>
+                {/* Timeline scrubber */}
+                <input type="range" min={REPLAY_START} max={rows.length-1} step="1" value={rIdx}
+                  onChange={e=>{setReplayPlaying(false);setReplayIdx(parseInt(e.target.value));}}
+                  style={{width:"100%",accentColor:"#00bcd4",marginTop:12}}/>
+                {/* Transport controls */}
+                <div style={{display:"flex",gap:8,alignItems:"center",flexWrap:"wrap",marginTop:10}}>
+                  <button style={stepBtn} title="Restart from first signal" onClick={()=>{setReplayPlaying(false);setReplayIdx(REPLAY_START);}}>⏮</button>
+                  <button style={stepBtn} title="Step back" onClick={()=>{setReplayPlaying(false);setReplayIdx(i=>Math.max(REPLAY_START,i-1));}}>◀</button>
+                  <button style={{...runBtn,width:"auto",padding:"9px 26px"}}
+                    onClick={()=>{ if(atEnd&&!replayPlaying) setReplayIdx(REPLAY_START); setReplayPlaying(p=>!p); }}>
+                    {replayPlaying?"❚❚ PAUSE":(atEnd?"↻ REPLAY":"▶ PLAY")}
+                  </button>
+                  <button style={stepBtn} title="Step forward" onClick={()=>{setReplayPlaying(false);setReplayIdx(i=>Math.min(rows.length-1,i+1));}}>▶</button>
+                  <button style={stepBtn} title="Jump to latest" onClick={()=>{setReplayPlaying(false);setReplayIdx(rows.length-1);}}>⏭</button>
+                  <span style={{fontSize:9,color:DIM,letterSpacing:1,marginLeft:6}}>SPEED</span>
+                  {[["0.5×",440],["1×",220],["2×",110],["4×",55]].map(([l,ms])=>(
+                    <button key={l} style={{...pill(replaySpeed===ms),marginBottom:0}} onClick={()=>setReplaySpeed(ms)}>{l}</button>
+                  ))}
+                </div>
+              </div>
+
+              {/* Live readout at the current bar */}
+              <div style={{display:"flex",gap:12,flexWrap:"wrap"}}>
+                <div style={{...card,flex:1,minWidth:240,marginBottom:14}}>
+                  <span style={lbl}>◈ SIGNAL AT THIS BAR</span>
+                  <div style={{display:"flex",alignItems:"center",gap:12,flexWrap:"wrap"}}>
+                    <Badge signal={rSig?rSig.signal:"HOLD"}/>
+                    <div style={{fontSize:11,color:DIM}}>
+                      <div>O {fmt(rBar.open)} · H {fmt(rBar.high)}</div>
+                      <div>L {fmt(rBar.low)} · C <span style={{color:"#dce6f0",fontWeight:700}}>{fmt(rBar.close)}</span></div>
+                    </div>
+                  </div>
+                  {rSig&&<ConfBar pct={rSig.score}/>}
+                  <div style={{marginTop:10,fontSize:10,color:FADE,lineHeight:1.7}}>
+                    This is the exact signal the engine would have produced using only candles up to {rBar.date} — no future data. {rSig?(rSig.signal==="BUY"?"A long entry queues for the next bar's open.":rSig.signal==="SELL"?"A short entry queues for the next bar's open.":"No entry — conviction below threshold."):"Warming up indicators."}
+                  </div>
+                </div>
+
+                {/* Position / equity panel */}
+                <div style={{...card,flex:1,minWidth:240,marginBottom:14}}>
+                  <span style={lbl}>⊞ OPEN POSITION &amp; EQUITY</span>
+                  {active?(
+                    <div style={{padding:10,background:"#060810",borderRadius:4,marginBottom:10}}>
+                      <div style={{display:"flex",justifyContent:"space-between",marginBottom:6}}>
+                        <span style={{color:active.dir==="BUY"?"#00e676":"#ff5252",fontWeight:700,fontSize:12}}>{active.dir==="BUY"?"▲ LONG":"▼ SHORT"} OPEN</span>
+                        <span style={{color:unreal>=0?"#00e676":"#ff5252",fontWeight:700,fontSize:12}}>{unreal>=0?"+":""}{unreal.toFixed(2)}% unrl.</span>
+                      </div>
+                      <div style={{fontSize:10,color:DIM,lineHeight:1.8}}>
+                        Entry {fmt(active.entry)} · SL <span style={{color:"#ff5252"}}>{fmt(active.sl)}</span> · TP <span style={{color:"#00e676"}}>{fmt(active.tp)}</span><br/>
+                        Opened {active.entryDate} · {rIdx-active.entryIdx} bar(s) held
+                      </div>
+                    </div>
+                  ):(
+                    <div style={{padding:10,background:"#060810",borderRadius:4,marginBottom:10,fontSize:11,color:FADE}}>Flat — no open position at this bar.</div>
+                  )}
+                  <div style={{display:"grid",gridTemplateColumns:"1fr 1fr",gap:10}}>
+                    <div style={{background:"#060810",padding:10,borderRadius:4}}>
+                      <div style={{fontSize:9,color:DIM,letterSpacing:1,marginBottom:4}}>REALIZED P&amp;L</div>
+                      <div style={{fontSize:16,fontWeight:700,color:realized>=0?"#00e676":"#ff5252"}}>{realized>=0?"+":""}{realized.toFixed(2)}%</div>
+                    </div>
+                    <div style={{background:"#060810",padding:10,borderRadius:4}}>
+                      <div style={{fontSize:9,color:DIM,letterSpacing:1,marginBottom:4}}>TRADES CLOSED</div>
+                      <div style={{fontSize:16,fontWeight:700,color:"#90a4ae"}}>{closed.length}<span style={{fontSize:10,color:FADE}}> · {realWins}W/{closed.length-realWins}L</span></div>
+                    </div>
+                  </div>
+                  <div style={{marginTop:10,fontSize:9,color:FADE,lineHeight:1.7}}>
+                    Equity accumulates only from trades that have CLOSED by this bar — exactly what you'd have banked watching it unfold live, net of your configured costs.
+                  </div>
+                </div>
+              </div>
+
+              <div style={{background:"rgba(0,188,212,0.04)",border:"1px solid rgba(0,188,212,0.12)",borderRadius:4,padding:10,fontSize:9,color:FADE,lineHeight:1.8}}>
+                ▶ The replay reconstructs each bar's signal from history alone — no lookahead. Markers: ▲/▼ = trade entry, ✕ = exit, dashed lines = the active trade's entry/SL/TP. It mirrors the BACKTEST engine exactly, so what you watch here is what was tested. EDUCATIONAL ONLY.
+              </div>
+            </>
+          );
+        })()}
 
         {/* ── VALUE TAB ── */}
         {tab==="value"&&(
