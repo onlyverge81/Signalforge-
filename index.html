@@ -1185,7 +1185,8 @@ function App() {
     setRows(data);
     setAnalysis(result);
     // Run backtest if we have enough history
-    setBacktest(data.length >= 40 ? runBacktest(data, scorer, SL, TP, costs, null, hold) : null);
+    const bt = data.length >= 40 ? runBacktest(data, scorer, SL, TP, costs, null, hold) : null;
+    setBacktest(bt);
     setAbTest(data.length >= 40 ? {
       current: runBacktest(data, scorer, SL, TP, costs, null, hold),
       legacy:  runBacktest(data, scoreFlat, SL, TP, costs),
@@ -1202,10 +1203,15 @@ function App() {
     } else {
       setOosTest(null);
     }
+    // Freeze the transparency verdict AT LOG TIME — the history is an audit
+    // trail of how confident the tool was then, not a number we re-judge later.
+    const loggedVerdict = bt?.stats?.significance || null;
+    const loggedMuted   = loggedVerdict!=="SIGNIFICANT" && loggedVerdict!=="SUGGESTIVE";
     setHistory(h => [{
       time: new Date().toLocaleTimeString(),
       ticker, signal: result.signal, confidence: result.confidence,
       price: data[data.length-1].close, trend: result.trend,
+      verdict: loggedVerdict, muted: loggedMuted,
     }, ...h].slice(0,10));
     setTab("signals");
   }
@@ -2299,29 +2305,46 @@ function App() {
                 <table style={{width:"100%",borderCollapse:"collapse",fontSize:11}}>
                   <thead>
                     <tr style={{color:DIM,fontSize:9,letterSpacing:1}}>
-                      {["TIME","TICKER","SIGNAL","CONFIDENCE","PRICE","TREND"].map(h=>(
+                      {["TIME","TICKER","SIGNAL","CONFIDENCE","PRICE","TREND","EDGE"].map(h=>(
                         <td key={h} style={{padding:"4px 8px",borderBottom:"1px solid "+BORD}}>{h}</td>
                       ))}
                     </tr>
                   </thead>
                   <tbody>
-                    {history.map((h,i)=>(
+                    {history.map((h,i)=>{
+                      // Same transparency rule, frozen at log time: an old signal
+                      // shows its loud color only if the edge was established THEN.
+                      const sigCol=h.muted?"#90a4ae":(h.signal==="BUY"?"#00e676":h.signal==="SELL"?"#ff5252":"#ffd740");
+                      const edge=h.verdict===undefined?null:h.verdict; // pre-update rows have no verdict
+                      const eCfg={
+                        "SIGNIFICANT":["#00e676","✓ PROVEN"],
+                        "SUGGESTIVE":["#ffd740","~ SUGGESTIVE"],
+                        "NOT SIGNIFICANT":["#90a4ae","✗ NOT SIG."],
+                        "TOO FEW TRADES":["#90a4ae","· TOO FEW"],
+                      };
+                      const [eCol,eTxt]=eCfg[edge]||["#546e7a","— no test"];
+                      return(
                       <tr key={i} style={{borderBottom:"1px solid "+BG2}}>
                         <td style={{padding:"8px 8px",color:FADE}}>{h.time}</td>
                         <td style={{padding:"8px 8px",color:"#dce6f0",fontWeight:700}}>{h.ticker}</td>
                         <td style={{padding:"8px 8px"}}>
-                          <span style={{color:h.signal==="BUY"?"#00e676":h.signal==="SELL"?"#ff5252":"#ffd740",fontWeight:700}}>{h.signal==="BUY"?"▲ ":h.signal==="SELL"?"▼ ":"◆ "}{h.signal}</span>
+                          <span style={{color:sigCol,fontWeight:700}}>{h.signal==="BUY"?"▲ ":h.signal==="SELL"?"▼ ":"◆ "}{h.signal}{h.muted?" ·":""}</span>
                         </td>
                         <td style={{padding:"8px 8px"}}>
                           <span style={{color:h.confidence>=70?"#00e676":h.confidence>=45?"#ffd740":"#ff5252"}}>{h.confidence}%</span>
                         </td>
                         <td style={{padding:"8px 8px",color:"#90a4ae"}}>{fmt(h.price)}</td>
                         <td style={{padding:"8px 8px",color:tCol(h.trend)}}>{h.trend}</td>
+                        <td style={{padding:"8px 8px",fontSize:9,fontWeight:700,color:eCol}}>{eTxt}</td>
                       </tr>
-                    ))}
+                      );
+                    })}
                   </tbody>
                 </table>
               )}
+              <div style={{marginTop:10,fontSize:9,color:FADE,lineHeight:1.7}}>
+                ⚖ EDGE is frozen at the moment each signal was logged — muted (gray) signals were not backed by a statistically established edge at that time. This is an audit trail, so older rows keep the verdict they were given, never re-judged.
+              </div>
             </div>
             <button style={runBtn} onClick={()=>setHistory([])}>CLEAR HISTORY</button>
           </>
