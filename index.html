@@ -2,7 +2,7 @@
 <html lang="en">
 <head>
 <meta charset="UTF-8"/>
-<meta http-equiv="Content-Security-Policy" content="default-src 'self'; script-src 'self' 'unsafe-inline' 'unsafe-eval' https://unpkg.com; style-src 'self' 'unsafe-inline' https://fonts.googleapis.com; font-src 'self' https://fonts.gstatic.com; img-src 'self' data:; connect-src 'self' https://api.twelvedata.com https://data.sec.gov https://www.sec.gov; object-src 'none'; base-uri 'self'; form-action 'self'"/>
+<meta http-equiv="Content-Security-Policy" content="default-src 'self'; script-src 'self' 'unsafe-inline' 'unsafe-eval' https://unpkg.com; style-src 'self' 'unsafe-inline' https://fonts.googleapis.com; font-src 'self' https://fonts.gstatic.com; img-src 'self' data:; connect-src 'self' https://api.twelvedata.com https://data.sec.gov https://www.sec.gov https://*.workers.dev; object-src 'none'; base-uri 'self'; form-action 'self'"/>
 <meta name="viewport" content="width=device-width,initial-scale=1,maximum-scale=1"/>
 <meta name="theme-color" content="#080b14"/>
 <title>SignalForge — Live Trading Analyzer</title>
@@ -677,10 +677,16 @@ function valueScore(m){
 // right horizon for a Buffett-style screen. A browser's fetch to SEC can be
 // blocked by CORS; on ANY failure we degrade to manual entry + primary-source
 // links rather than ever showing a wrong number. Never throws into the caller.
+// Route SEC requests directly, or through an optional CORS proxy (a Cloudflare
+// Worker — see /sec-proxy) when the browser can't reach data.sec.gov itself.
+// The proxy also sets SEC's required User-Agent, which browsers can't.
+function secFetch(url, proxy){
+  return proxy ? fetch(proxy.replace(/\/+$/,"")+"/?url="+encodeURIComponent(url)) : fetch(url);
+}
 let _secTickerMap=null;
-async function secCik(sym){
+async function secCik(sym, proxy){
   if(!_secTickerMap){
-    const r=await fetch("https://www.sec.gov/files/company_tickers.json");
+    const r=await secFetch("https://www.sec.gov/files/company_tickers.json", proxy);
     if(!r.ok) throw new Error("ticker map "+r.status);
     _secTickerMap=await r.json();
   }
@@ -732,14 +738,14 @@ function secInstant(node){ // latest point-in-time (balance-sheet) value
   return arr[0].val;
 }
 function secFirst(facts,names){ for(const n of names){ if(facts[n]) return facts[n]; } return null; }
-async function fetchFundamentals(sym, market, price){
+async function fetchFundamentals(sym, market, price, proxy){
   if(market!=="Stocks"){
     return {meta:{ok:false,skip:true,msg:market==="ETFs"?"ETFs are funds — they don't file company income statements, so a P/E-style grade doesn't apply.":market+" has no company filings — the VALUE grade applies to US-listed stocks."}};
   }
   try{
-    const cik=await secCik(sym);
+    const cik=await secCik(sym, proxy);
     if(!cik) return {meta:{ok:false,msg:"\""+sym+"\" isn't in SEC EDGAR (US-listed operating companies only). Enter the numbers manually, or use the verify links."}};
-    const r=await fetch("https://data.sec.gov/api/xbrl/companyfacts/CIK"+cik+".json");
+    const r=await secFetch("https://data.sec.gov/api/xbrl/companyfacts/CIK"+cik+".json", proxy);
     if(!r.ok) return {meta:{ok:false,msg:"SEC EDGAR returned "+r.status+" for "+sym+". Enter manually or use the verify links."}};
     const j=await r.json();
     const G=(j.facts&&j.facts["us-gaap"])||{}, D=(j.facts&&j.facts["dei"])||{};
@@ -1171,6 +1177,7 @@ function App() {
   const [funda,     setFunda]     = useState({peTTM:"",pbAnnual:"",["totalDebt/totalEquityAnnual"]:"",roeTTM:"",netProfitMarginTTM:"",currentRatioAnnual:"",revenueGrowthTTMYoy:"",epsGrowthTTMYoy:""});
   const fundaResult = (()=>{ const m={}; let any=false; for(const k in funda){ if(funda[k]!==""&&!isNaN(parseFloat(funda[k]))){ m[k]=parseFloat(funda[k]); any=true; } } return any?valueScore(m):null; })();
   const [apiKey,    setApiKey]    = useState((typeof localStorage!=="undefined"&&localStorage.getItem("sf_td_key"))||"");
+  const [secProxy,  setSecProxy]  = useState((typeof localStorage!=="undefined"&&localStorage.getItem("sf_sec_proxy"))||""); // optional CORS proxy for SEC EDGAR
   const [resolution,setResolution]= useState("D");
   const [fetching,  setFetching]  = useState(false);
   const [liveMeta,  setLiveMeta]  = useState(null);
@@ -1264,7 +1271,7 @@ function App() {
       setLiveMeta({sym,when:new Date().toLocaleTimeString(),count:candles.length,resolution});
       // Launch the fundamentals research in parallel — it never blocks the chart/signal.
       // SEC EDGAR (primary filings) needs the live price to derive P/E and P/B.
-      const fundaPromise=fetchFundamentals(sym,market,candles[candles.length-1].close);
+      const fundaPromise=fetchFundamentals(sym,market,candles[candles.length-1].close,secProxy.trim());
       const isPos=mode==="position";
       const scorer=isPos?scorePosition:scoreAt;
       const hold=isPos;
@@ -1431,6 +1438,11 @@ function App() {
               <span style={lbl}>TWELVE DATA API KEY</span>
               <input style={inp} type="password" value={apiKey} onChange={e=>setApiKey(e.target.value)} placeholder="Paste your free Twelve Data key…"/>
               <div style={{fontSize:10,color:DIM,lineHeight:1.9,marginTop:8}}>No key? <a href="https://twelvedata.com" target="_blank" rel="noreferrer" style={{color:"#00bcd4"}}>twelvedata.com</a> → sign up free → copy key. Saved on this device only.</div>
+              <div style={{marginTop:14,paddingTop:14,borderTop:"1px solid "+BORD}}>
+                <span style={lbl}>SEC EDGAR PROXY URL — optional</span>
+                <input style={inp} value={secProxy} onChange={e=>{setSecProxy(e.target.value);try{localStorage.setItem("sf_sec_proxy",e.target.value.trim());}catch(_){}}} placeholder="https://sec-proxy.your-name.workers.dev"/>
+                <div style={{fontSize:10,color:DIM,lineHeight:1.8,marginTop:8}}>Fundamentals come from <strong style={{color:"#90a4ae"}}>SEC EDGAR</strong> (primary filings). If your browser can't reach SEC directly (CORS), deploy the one-file Cloudflare Worker in <code style={{color:"#00bcd4"}}>/sec-proxy</code> and paste its URL here. Leave blank to fetch SEC directly.</div>
+              </div>
             </div>
             <div style={{display:"grid",gridTemplateColumns:"1fr 1fr",gap:14}}>
               <div style={card}><span style={lbl}>TICKER</span><input style={{...inp,fontSize:15}} value={ticker} onChange={e=>setTicker(e.target.value.toUpperCase())} placeholder="AAPL"/>
