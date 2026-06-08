@@ -2,6 +2,7 @@
 <html lang="en">
 <head>
 <meta charset="UTF-8"/>
+<meta http-equiv="Content-Security-Policy" content="default-src 'self'; script-src 'self' 'unsafe-inline' 'unsafe-eval' https://unpkg.com; style-src 'self' 'unsafe-inline' https://fonts.googleapis.com; font-src 'self' https://fonts.gstatic.com; img-src 'self' data:; connect-src 'self' https://api.twelvedata.com; object-src 'none'; base-uri 'self'; form-action 'self'"/>
 <meta name="viewport" content="width=device-width,initial-scale=1,maximum-scale=1"/>
 <meta name="theme-color" content="#080b14"/>
 <title>SignalForge — Live Trading Analyzer</title>
@@ -200,12 +201,51 @@ function divergence(closes,n=10) {
   return null;
 }
 
+// ─── SFA12: SignalForge Average tracker (composite of SMA5/10/20 + trend %) ──
+// Independent indicator — a single bold line that rides the SMA bundle, plus a
+// momentum readout (average of the three SMAs' % move over a `lookback` window;
+// the 12-candle default is what names it SFA12). The series begins at candle 30
+// so it coincides with the ANALYSIS-START marker. This does NOT feed the live
+// signal — analyze() casts an optional shadow vote separately for the Old-vs-New
+// comparison panel only.
+function sfa12Series(rows, startIdx=30, lookback=12){
+  const closes=rows.map(d=>d.close);
+  // comp[i] = (SMA5+SMA10+SMA20)/3 at candle i, or null until SMA20 exists (i>=19)
+  const comp=[];
+  for(let i=0;i<closes.length;i++){
+    if(i<19){ comp.push(null); continue; }
+    const sl=closes.slice(0,i+1);
+    comp.push((sma(sl,5)+sma(sl,10)+sma(sl,20))/3);
+  }
+  // % change of an n-period SMA over `lookback` candles ending at candle i
+  const pctAt=(i,n)=>{
+    if(i-lookback<19) return null;
+    const a=sma(closes.slice(0,i-lookback+1),n), b=sma(closes.slice(0,i+1),n);
+    if(a==null||b==null||a===0) return null;
+    return (b-a)/a*100;
+  };
+  // Tracker line points — only from startIdx (=30) onward, to align with the marker
+  const series=[];
+  for(let i=startIdx;i<closes.length;i++){ if(comp[i]!=null) series.push({i,value:comp[i]}); }
+  // Latest-candle readout
+  const li=closes.length-1, sl=closes.slice(0,li+1);
+  const s5=sma(sl,5), s10=sma(sl,10), s20=sma(sl,20);
+  const p5=pctAt(li,5), p10=pctAt(li,10), p20=pctAt(li,20);
+  const pct=(p5!=null&&p10!=null&&p20!=null)?parseFloat(((p5+p10+p20)/3).toFixed(2)):null;
+  let state="SIDEWAYS";
+  if(s5!=null&&s10!=null&&s20!=null&&pct!=null){
+    if(s5>s10&&s10>s20&&pct>0) state="UPTREND";
+    else if(s5<s10&&s10<s20&&pct<0) state="DOWNTREND";
+  }
+  return { value: comp[li], pct, state, lookback, series };
+}
+
 // ─── Shared signal logic: weighted votes + confluence + conflict penalty ─────
 // Used by BOTH analyze() and scoreAt() so live signals and backtest stay identical.
 // Each indicator casts a directional vote (+1 bullish / -1 bearish / 0 neutral)
 // with a reliability weight. Final signal requires confluence (3+ aligned) AND
 // a strong enough weighted score, with conflicting votes dampening the result.
-function computeSignal(ctx) {
+function computeSignal(ctx, extraVotes=[]) {
   const {R,M,s5,s10,s20,s50,trend,S,B,last,pats,div,volSig,ADX,OBV,VWAP} = ctx;
   const votes=[];
   if(R!=null)  votes.push({n:"RSI",   dir:R<40?1:R>60?-1:0, w:2});
@@ -226,6 +266,9 @@ function computeSignal(ctx) {
   if(ADX) votes.push({n:"ADX", dir:ADX.plusDI>ADX.minusDI?1:-1, w:ADX.adx>25?3:ADX.adx>20?1.5:0.5});
   if(OBV) votes.push({n:"OBV", dir:OBV.rising?1:-1, w:2});
   if(VWAP)votes.push({n:"VWAP",dir:last.close>VWAP?1:-1, w:1.5});
+  // Optional extra votes (default none ⇒ live engine + backtest unchanged).
+  // Used only for the SFA12 "New Logic" shadow comparison.
+  if(extraVotes.length) votes.push(...extraVotes);
 
   const active=votes.filter(v=>v.dir!==0);
   const bull=active.filter(v=>v.dir>0).length;
@@ -275,10 +318,23 @@ function analyze(data, ticker, market, strategy, slMult, tpMult) {
   const volSig=recV>avgV*1.15?"CONFIRMING":recV<avgV*0.85?"DIVERGING":"NEUTRAL";
 
   // Score via shared weighted+confluence logic
-  const sigResult=computeSignal({R,M,s5,s10,s20,s50,trend,S,B,last,pats,div,volSig,ADX,OBV,VWAP});
+  const ctx={R,M,s5,s10,s20,s50,trend,S,B,last,pats,div,volSig,ADX,OBV,VWAP};
+  const sigResult=computeSignal(ctx);
   const score=sigResult.score;
   const signal=sigResult.signal;
   const confidence=sigResult.confidence;
+
+  // SFA12 tracker (independent indicator — does NOT affect the live result above).
+  const sfa12=sfa12Series(data);
+  // Old-vs-New shadow comparison: re-run the SAME engine WITH SFA12 cast as one
+  // weighted vote. This is preview-only; it never feeds `signal`/levels/backtest.
+  const sfa12Vote={n:"SFA12", dir: sfa12.state==="UPTREND"?1 : sfa12.state==="DOWNTREND"?-1 : 0, w:2}; // w tunable
+  const pick=o=>({signal:o.signal,confidence:o.confidence,score:o.score,bull:o.bull,bear:o.bear});
+  let sfa12Compare=null;
+  if(sfa12.pct!=null){ // only once the lookback has filled (enough candles)
+    const sigNew=computeSignal(ctx, sfa12Vote.dir===0?[]:[sfa12Vote]);
+    sfa12Compare={ old:pick(sigResult), new:pick(sigNew), vote:sfa12Vote, changed: sigResult.signal!==sigNew.signal };
+  }
 
   // Levels
   const sup=Math.min(...data.slice(-Math.min(20,data.length)).map(d=>d.low));
@@ -297,6 +353,7 @@ function analyze(data, ticker, market, strategy, slMult, tpMult) {
     tp1:parseFloat(tp1.toFixed(4)),tp2:parseFloat(tp2.toFixed(4)),rr,
     support:parseFloat(sup.toFixed(4)),resistance:parseFloat(res.toFixed(4)),
     score,
+    sfa12, sfa12Compare,
     confluence:{bull:sigResult.bull,bear:sigResult.bear,conflict:sigResult.conflict},
     indicators:{
       rsi:{v:R,label:rsiLabel},
@@ -656,6 +713,29 @@ function Chart({rows,analysis}) {
         first?ctx.moveTo(toX(i),toY(v)):ctx.lineTo(toX(i),toY(v));first=false;
       });ctx.stroke();
     });
+    // SFA12 tracker line — composite of SMA5/10/20, color-coded by trend state.
+    // series[] holds GLOBAL indices (starting at c30); map to the visible window
+    // exactly like the ANALYSIS-START marker so the line begins at that point.
+    {
+      const sfa12=analysis?.sfa12;
+      if(sfa12?.series?.length){
+        const offset=rows.length-n;
+        const sfaCol=sfa12.state==="UPTREND"?"#00e676":sfa12.state==="DOWNTREND"?"#ff5252":"#ffd740";
+        ctx.beginPath();ctx.strokeStyle=sfaCol;ctx.lineWidth=2.4;
+        ctx.shadowColor=sfaCol;ctx.shadowBlur=6;
+        let first=true,lastPt=null;
+        sfa12.series.forEach(pt=>{
+          const vi=pt.i-offset; if(vi<0||vi>=n) return;
+          const x=toX(vi),y=toY(pt.value);
+          first?ctx.moveTo(x,y):ctx.lineTo(x,y);first=false;lastPt={x,y};
+        });
+        ctx.stroke();ctx.shadowBlur=0;
+        if(lastPt){
+          ctx.fillStyle=sfaCol;ctx.font="bold 9px monospace";ctx.textAlign="left";
+          ctx.fillText("SFA12",lastPt.x+4,lastPt.y-4);
+        }
+      }
+    }
     // BB bands
     const bbV=analysis?.indicators?.bb?.v;
     if(bbV){
@@ -1231,6 +1311,7 @@ function App() {
                   <span style={{color:"#ffd740"}}>── SMA5</span>
                   <span style={{color:"#00bcd4"}}>── SMA10</span>
                   <span style={{color:"#e040fb"}}>── SMA20</span>
+                  {analysis.sfa12&&<span style={{color:analysis.sfa12.state==="UPTREND"?"#00e676":analysis.sfa12.state==="DOWNTREND"?"#ff5252":"#ffd740",fontWeight:700}}>━ SFA12</span>}
                   <span style={{color:"#546e7a"}}>── BB Bands</span>
                   <span style={{color:"#00bcd4"}}>-- ENTRY</span>
                   <span style={{color:"#ff5252"}}>-- SL</span>
@@ -1286,6 +1367,7 @@ function App() {
                 <IndCard name="STOCH 14" sig={analysis.indicators.stoch.v>75?"BEARISH":analysis.indicators.stoch.v<25?"BULLISH":"NEUTRAL"} val={(analysis.indicators.stoch.v||"—")+" · "+analysis.indicators.stoch.label}/>
                 <IndCard name="MACD" sig={analysis.indicators.macd.sig} val={analysis.indicators.macd.desc}/>
                 <IndCard name="MOVING AVG" sig={analysis.indicators.ma.sig} val={analysis.indicators.ma.s5?"SMA5 "+fmt(analysis.indicators.ma.s5)+(analysis.indicators.ma.s5>analysis.indicators.ma.s10?" > ":" < ")+"SMA10 "+fmt(analysis.indicators.ma.s10):"Insufficient data"}/>
+                <IndCard name="SFA12 (TRACKER)" sig={analysis.sfa12.state==="UPTREND"?"BULLISH":analysis.sfa12.state==="DOWNTREND"?"BEARISH":"NEUTRAL"} val={analysis.sfa12.pct!=null?"composite "+fmt(analysis.sfa12.value)+" · "+(analysis.sfa12.pct>=0?"+":"")+analysis.sfa12.pct+"% over "+analysis.sfa12.lookback+" candles":"Insufficient data"}/>
                 <IndCard name="BOLLINGER" sig={analysis.indicators.bb.sig} val={analysis.indicators.bb.v?"U:"+fmt(analysis.indicators.bb.v.upper)+" M:"+fmt(analysis.indicators.bb.v.middle)+" L:"+fmt(analysis.indicators.bb.v.lower):"Insufficient data"}/>
                 <IndCard name="VOLUME" sig={analysis.indicators.vol.sig==="CONFIRMING"?"BULLISH":analysis.indicators.vol.sig==="DIVERGING"?"BEARISH":"NEUTRAL"} val={"Recent "+(analysis.indicators.vol.recent/1e6).toFixed(1)+"M vs avg "+(analysis.indicators.vol.avg/1e6).toFixed(1)+"M"}/>
                 {analysis.indicators.adx&&<IndCard name="ADX (TREND STR)" sig={analysis.indicators.adx.sig} val={"ADX "+analysis.indicators.adx.adx+" "+(analysis.indicators.adx.adx>25?"(strong)":analysis.indicators.adx.adx>20?"(building)":"(weak/range)")+" · +DI "+analysis.indicators.adx.plusDI+" / -DI "+analysis.indicators.adx.minusDI}/>}
@@ -1293,6 +1375,42 @@ function App() {
                 {analysis.indicators.vwap&&<IndCard name="VWAP" sig={analysis.indicators.vwap.sig} val={"VWAP "+fmt(analysis.indicators.vwap.v)+" — price "+(analysis.indicators.vwap.sig==="BULLISH"?"above (bullish)":"below (bearish)")}/>}
               </div>
             </div>
+
+            {/* SFA12 — Old (live engine) vs New (+SFA12) shadow comparison. Preview only. */}
+            {analysis.sfa12Compare&&(()=>{
+              const cmp=analysis.sfa12Compare;
+              const dScore=parseFloat((cmp.new.score-cmp.old.score).toFixed(1));
+              const scoreCol=s=>s>0?"#00e676":s<0?"#ff5252":"#ffd740";
+              const vd=cmp.vote.dir;
+              const col=(o,note)=>(
+                <div style={{background:BG,borderRadius:4,padding:12,border:"1px solid "+BORD}}>
+                  <div style={{fontSize:9,color:DIM,letterSpacing:2,marginBottom:8}}>{note}</div>
+                  <Badge signal={o.signal}/>
+                  <div style={{marginTop:10,fontSize:11,color:DIM,lineHeight:1.9}}>
+                    Confidence <b style={{color:"#dce6f0"}}>{o.confidence}%</b><br/>
+                    Score <b style={{color:scoreCol(o.score)}}>{o.score>0?"+":""}{o.score}</b>
+                    {" · "}<span style={{color:"#00e676"}}>{o.bull}↑</span> / <span style={{color:"#ff5252"}}>{o.bear}↓</span>
+                  </div>
+                </div>
+              );
+              return (
+                <div style={card}>
+                  <span style={lbl}>◈ SIGNAL LOGIC — OLD (LIVE ENGINE) vs NEW (+ SFA12)</span>
+                  <div style={{display:"grid",gridTemplateColumns:"1fr 1fr",gap:12}}>
+                    {col(cmp.old,"OLD · LIVE ENGINE")}
+                    {col(cmp.new,"NEW · PREVIEW (+ SFA12)")}
+                  </div>
+                  <div style={{marginTop:10,fontSize:10,color:DIM,lineHeight:1.8}}>
+                    SFA12 vote: <b style={{color:vd>0?"#00e676":vd<0?"#ff5252":"#ffd740"}}>{vd>0?"+1 bullish":vd<0?"−1 bearish":"neutral (no vote)"}</b>
+                    {" · weight "+cmp.vote.w+" · Score Δ "}<b style={{color:scoreCol(dScore)}}>{dScore>0?"+":""}{dScore}</b>
+                    {cmp.changed
+                      ? <span style={{marginLeft:8,padding:"2px 8px",borderRadius:3,background:"rgba(255,167,38,0.12)",border:"1px solid #ffa72655",color:"#ffa726",fontWeight:700}}>{cmp.old.signal} → {cmp.new.signal}</span>
+                      : <span style={{marginLeft:8,color:FADE}}>no change — SFA12 agrees with the engine</span>}
+                  </div>
+                  <div style={{marginTop:6,fontSize:9,color:FADE}}>NEW is preview-only — SFA12 does not affect the live signal, trade levels, or backtest.</div>
+                </div>
+              );
+            })()}
 
             {/* Levels + Patterns */}
             <div style={{display:"grid",gridTemplateColumns:"1fr 1fr",gap:14}}>
