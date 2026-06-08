@@ -2,7 +2,7 @@
 <html lang="en">
 <head>
 <meta charset="UTF-8"/>
-<meta http-equiv="Content-Security-Policy" content="default-src 'self'; script-src 'self' 'unsafe-inline' 'unsafe-eval' https://unpkg.com; style-src 'self' 'unsafe-inline' https://fonts.googleapis.com; font-src 'self' https://fonts.gstatic.com; img-src 'self' data:; connect-src 'self' https://api.twelvedata.com; object-src 'none'; base-uri 'self'; form-action 'self'"/>
+<meta http-equiv="Content-Security-Policy" content="default-src 'self'; script-src 'self' 'unsafe-inline' 'unsafe-eval' https://unpkg.com; style-src 'self' 'unsafe-inline' https://fonts.googleapis.com; font-src 'self' https://fonts.gstatic.com; img-src 'self' data:; connect-src 'self' https://api.twelvedata.com https://data.sec.gov https://www.sec.gov; object-src 'none'; base-uri 'self'; form-action 'self'"/>
 <meta name="viewport" content="width=device-width,initial-scale=1,maximum-scale=1"/>
 <meta name="theme-color" content="#080b14"/>
 <title>SignalForge — Live Trading Analyzer</title>
@@ -669,44 +669,78 @@ function valueScore(m){
   return hasData ? {cheap,healthy,growing,total,grade,verdict,reasons,flags} : null;
 }
 
-// ─── Auto-research fundamentals (Twelve Data /statistics) ────────────────────
-// Best-effort: maps the statistics payload into the VALUE screen's inputs so
-// "Fetch Live Data" also pulls the business numbers, not just the chart.
-// Equities/ETFs only — FX/crypto/commodities have no company fundamentals.
-// Tolerant of the API's field naming and normalizes %/decimal so thresholds
-// read correctly. Never throws into the caller; returns {map?, meta}.
-async function fetchFundamentals(sym, key, market){
-  if(market==="Forex"||market==="Crypto"||market==="Commodities"){
-    return {meta:{ok:false,skip:true,msg:market+" has no company fundamentals — the VALUE grade applies to stocks & ETFs."}};
+// ─── Auto-research fundamentals — SEC EDGAR (primary filings) ────────────────
+// SEC EDGAR is the authoritative source: figures companies file under oath in
+// their 10-K/10-Q, with no aggregator in between and no API key. US-listed
+// operating companies only. We read the XBRL companyfacts feed and derive the
+// VALUE inputs from the most recent ANNUAL (10-K) figures — unambiguous, and the
+// right horizon for a Buffett-style screen. A browser's fetch to SEC can be
+// blocked by CORS; on ANY failure we degrade to manual entry + primary-source
+// links rather than ever showing a wrong number. Never throws into the caller.
+let _secTickerMap=null;
+async function secCik(sym){
+  if(!_secTickerMap){
+    const r=await fetch("https://www.sec.gov/files/company_tickers.json");
+    if(!r.ok) throw new Error("ticker map "+r.status);
+    _secTickerMap=await r.json();
+  }
+  for(const k in _secTickerMap){ if(String(_secTickerMap[k].ticker||"").toUpperCase()===sym) return String(_secTickerMap[k].cik_str).padStart(10,"0"); }
+  return null;
+}
+function secUnit(node){ return (node&&node.units)?(node.units[Object.keys(node.units)[0]]||[]):[]; }
+function secAnnual(node){ // most-recent-first annual (~365-day) values, one per fiscal year
+  const arr=secUnit(node).filter(e=>{ if(!e.start||!e.end||e.val==null) return false; const d=(new Date(e.end)-new Date(e.start))/864e5; return d>=350&&d<=380; });
+  arr.sort((a,b)=>new Date(b.end)-new Date(a.end));
+  const seen=new Set(),out=[];
+  for(const e of arr){ const y=new Date(e.end).getFullYear(); if(seen.has(y))continue; seen.add(y); out.push(e); }
+  return out;
+}
+function secInstant(node){ // latest point-in-time (balance-sheet) value
+  const arr=secUnit(node).filter(e=>e.end&&e.val!=null);
+  if(!arr.length) return null;
+  arr.sort((a,b)=>new Date(b.end)-new Date(a.end));
+  return arr[0].val;
+}
+function secFirst(facts,names){ for(const n of names){ if(facts[n]) return facts[n]; } return null; }
+async function fetchFundamentals(sym, market, price){
+  if(market!=="Stocks"){
+    return {meta:{ok:false,skip:true,msg:market==="ETFs"?"ETFs are funds — they don't file company income statements, so a P/E-style grade doesn't apply.":market+" has no company filings — the VALUE grade applies to US-listed stocks."}};
   }
   try{
-    const url="https://api.twelvedata.com/statistics?symbol="+encodeURIComponent(sym)+"&apikey="+encodeURIComponent(key);
-    const j=await (await fetch(url)).json();
-    if(j.status==="error"||j.code){
-      const msg=j.message||"Fundamentals unavailable.";
-      if(/grow|plan|upgrade|not available|access|permission|premium/i.test(msg))
-        return {meta:{ok:false,msg:"Your Twelve Data plan doesn't include /statistics — enter fundamentals manually below."}};
-      return {meta:{ok:false,msg:msg}};
-    }
-    const s=j.statistics||{}, vm=s.valuations_metrics||{}, fin=s.financials||{};
-    const inc=fin.income_statement||{}, bs=fin.balance_sheet||{};
-    const pick=(...c)=>{for(const v of c){if(v==null||v==="")continue;const n=parseFloat(v);if(!isNaN(n))return n;}return null;};
-    const asRatio=v=>v==null?null:(Math.abs(v)>5?v/100:v);   // D/E reported as % → ratio
-    const asDec  =v=>v==null?null:(Math.abs(v)>3?v/100:v);   // ROE/margin/growth % → decimal
-    const map={}, put=(k,v)=>{if(v!=null)map[k]=String(+v.toFixed(4));};
-    put("peTTM",                       pick(vm.trailing_pe, vm.pe_ratio, vm.pe_ratio_ttm));
-    put("pbAnnual",                    pick(vm.price_to_book_mrq, vm.price_to_book));
-    put("totalDebt/totalEquityAnnual", asRatio(pick(bs.total_debt_to_equity_mrq, bs.total_debt_to_equity)));
-    put("roeTTM",                      asDec(pick(fin.return_on_equity_ttm, fin.return_on_equity)));
-    put("netProfitMarginTTM",          asDec(pick(fin.profit_margin, fin.net_profit_margin)));
-    put("currentRatioAnnual",          pick(bs.current_ratio_mrq, bs.current_ratio));
-    put("revenueGrowthTTMYoy",         asDec(pick(inc.quarterly_revenue_growth, inc.revenue_growth)));
-    put("epsGrowthTTMYoy",             asDec(pick(inc.quarterly_earnings_growth_yoy, inc.earnings_growth)));
+    const cik=await secCik(sym);
+    if(!cik) return {meta:{ok:false,msg:"\""+sym+"\" isn't in SEC EDGAR (US-listed operating companies only). Enter the numbers manually, or use the verify links."}};
+    const r=await fetch("https://data.sec.gov/api/xbrl/companyfacts/CIK"+cik+".json");
+    if(!r.ok) return {meta:{ok:false,msg:"SEC EDGAR returned "+r.status+" for "+sym+". Enter manually or use the verify links."}};
+    const j=await r.json();
+    const G=(j.facts&&j.facts["us-gaap"])||{}, D=(j.facts&&j.facts["dei"])||{};
+    const epsA=secAnnual(secFirst(G,["EarningsPerShareDiluted","EarningsPerShareBasic"]));
+    const niA =secAnnual(secFirst(G,["NetIncomeLoss","ProfitLoss"]));
+    const revA=secAnnual(secFirst(G,["RevenueFromContractWithCustomerExcludingAssessedTax","Revenues","SalesRevenueNet","RevenueFromContractWithCustomerIncludingAssessedTax"]));
+    const equity=secInstant(secFirst(G,["StockholdersEquity","StockholdersEquityIncludingPortionAttributableToNoncontrollingInterest"]));
+    const shares=secInstant(secFirst(D,["EntityCommonStockSharesOutstanding"])||secFirst(G,["CommonStockSharesOutstanding"]));
+    const assetsC=secInstant(secFirst(G,["AssetsCurrent"]));
+    const liabC =secInstant(secFirst(G,["LiabilitiesCurrent"]));
+    const ltd=secInstant(secFirst(G,["LongTermDebtNoncurrent","LongTermDebt"]));
+    const std=secInstant(secFirst(G,["LongTermDebtCurrent","DebtCurrent"]));
+    const debt=(ltd!=null||std!=null)?((ltd||0)+(std||0)):null;
+    const eps0=epsA[0]&&epsA[0].val, eps1=epsA[1]&&epsA[1].val;
+    const ni0=niA[0]&&niA[0].val;
+    const rev0=revA[0]&&revA[0].val, rev1=revA[1]&&revA[1].val;
+    const map={}, put=(k,v)=>{ if(v!=null&&isFinite(v)) map[k]=String(+(+v).toFixed(4)); };
+    if(price&&eps0>0)            put("peTTM", price/eps0);
+    if(price&&equity>0&&shares>0)put("pbAnnual", price*shares/equity);
+    if(debt!=null&&equity>0)     put("totalDebt/totalEquityAnnual", debt/equity);
+    if(ni0!=null&&equity>0)      put("roeTTM", ni0/equity);
+    if(ni0!=null&&rev0>0)        put("netProfitMarginTTM", ni0/rev0);
+    if(assetsC!=null&&liabC>0)   put("currentRatioAnnual", assetsC/liabC);
+    if(rev0!=null&&rev1>0)       put("revenueGrowthTTMYoy", (rev0-rev1)/rev1);
+    if(eps0!=null&&eps1!=null&&eps1!==0) put("epsGrowthTTMYoy", (eps0-eps1)/Math.abs(eps1));
     const filled=Object.keys(map).length;
-    if(!filled) return {meta:{ok:false,msg:"No usable fundamental fields returned for "+sym+" — enter manually below."}};
-    return {map, meta:{ok:true,when:new Date().toLocaleTimeString(),filled,sym}};
+    if(!filled) return {meta:{ok:false,msg:"SEC EDGAR had no usable figures for "+sym+" (unusual filer/tags). Enter manually."}};
+    const fy=(epsA[0]||niA[0]||revA[0]||{}).end||null;
+    return {map, meta:{ok:true,source:"SEC EDGAR",entity:j.entityName||sym,cik,fy,when:new Date().toLocaleTimeString(),filled,sym}};
   }catch(e){
-    return {meta:{ok:false,msg:"Fundamentals lookup failed ("+(e.message||"network")+") — enter manually below."}};
+    return {meta:{ok:false,msg:"SEC EDGAR couldn't be reached from the browser ("+(e.message||"network/CORS")+"). The verify links open the filings directly — enter the numbers manually."}};
   }
 }
 
@@ -1195,7 +1229,8 @@ function App() {
       setCsv(csvText);
       setLiveMeta({sym,when:new Date().toLocaleTimeString(),count:candles.length,resolution});
       // Launch the fundamentals research in parallel — it never blocks the chart/signal.
-      const fundaPromise=fetchFundamentals(sym,key,market);
+      // SEC EDGAR (primary filings) needs the live price to derive P/E and P/B.
+      const fundaPromise=fetchFundamentals(sym,market,candles[candles.length-1].close);
       const isPos=mode==="position";
       const scorer=isPos?scorePosition:scoreAt;
       const hold=isPos;
@@ -1384,7 +1419,7 @@ function App() {
             {error&&<div style={{background:"rgba(255,82,82,0.08)",border:"1px solid rgba(255,82,82,0.3)",borderRadius:6,padding:12,color:"#ff8a80",fontSize:11,marginBottom:14,lineHeight:1.7}}>⚠ {error}</div>}
             <button style={{...runBtn,opacity:fetching?0.6:1}} onClick={fetchLive} disabled={fetching}>{fetching?"⏳ FETCHING…":"⬇  FETCH LIVE DATA & ANALYZE"}</button>
             {liveMeta&&<div style={{textAlign:"center",fontSize:10,color:"#00e676",marginTop:10}}>✓ {liveMeta.sym} · {liveMeta.count} candles · {liveMeta.when}</div>}
-            <div style={{fontSize:9,color:FADE,textAlign:"center",marginTop:8,lineHeight:1.6}}>Stocks: AAPL · Crypto: BTC/USD · Forex: EUR/USD · auto-fills VALUE fundamentals when available</div>
+            <div style={{fontSize:9,color:FADE,textAlign:"center",marginTop:8,lineHeight:1.6}}>Stocks: AAPL · Crypto: BTC/USD · Forex: EUR/USD · US stocks also auto-fill VALUE fundamentals from SEC EDGAR filings</div>
           </>
         )}
 
@@ -2211,7 +2246,7 @@ function App() {
             <div style={{...card,border:"1px solid rgba(255,215,64,0.25)"}}>
               <span style={lbl}>★ FUNDAMENTAL VALUE — Buffett-style screening</span>
               <div style={{fontSize:11,color:"#90a4ae",lineHeight:1.8}}>
-                Grades a business on <strong style={{color:"#ffd740"}}>cheapness + financial health + growth</strong> — the quantitative core of value investing. <strong style={{color:"#00e676"}}>Fetch Live Data auto-fills these from Twelve Data</strong>; or enter them by hand from any finance site (Yahoo Finance "Statistics" tab, stockanalysis.com, etc.).
+                Grades a business on <strong style={{color:"#ffd740"}}>cheapness + financial health + growth</strong> — the quantitative core of value investing. <strong style={{color:"#00e676"}}>Fetch Live Data auto-fills these straight from SEC EDGAR</strong> — the company's own 10-K filings, no aggregator in between (US-listed stocks). Every number stays editable and links back to the filing.
               </div>
               <div style={{marginTop:10,padding:10,borderRadius:4,background:"rgba(255,215,64,0.05)",border:"1px solid rgba(255,215,64,0.15)",fontSize:9,color:"#90a4ae",lineHeight:1.7}}>
                 ⚠ This covers the <strong>screenable ~80%</strong> of value investing. It cannot judge moat durability, brand power, or management quality — the qualitative ~20% that needs reading annual reports and years of judgment. A high grade means "worth deeper study," never "guaranteed buy."
@@ -2240,7 +2275,7 @@ function App() {
               <div style={{...card,marginBottom:14,border:"1px solid "+(fundaMeta.ok?"rgba(0,230,118,0.25)":"rgba(255,167,38,0.25)"),background:fundaMeta.ok?"rgba(0,230,118,0.04)":"rgba(255,167,38,0.04)"}}>
                 <div style={{fontSize:11,color:fundaMeta.ok?"#00e676":"#ffb74d",lineHeight:1.75}}>
                   {fundaMeta.ok
-                    ? "✓ Auto-filled "+fundaMeta.filled+" fundamental field"+(fundaMeta.filled===1?"":"s")+" for "+fundaMeta.sym+" from Twelve Data at "+fundaMeta.when+". Verify against a primary filing before relying on them — auto-data can lag a quarter or mis-map a field. Every value below is editable."
+                    ? "✓ Auto-filled "+fundaMeta.filled+" field"+(fundaMeta.filled===1?"":"s")+" for "+(fundaMeta.entity||fundaMeta.sym)+" from "+(fundaMeta.source||"primary filings")+(fundaMeta.fy?" — latest annual figures, fiscal period ending "+fundaMeta.fy:"")+" (pulled "+fundaMeta.when+"). P/E and P/B use today's price ÷ the filed annual figures; growth is year-over-year from the last two 10-Ks. Verify against the filing before relying on it — every value below is editable."
                     : "⚖ "+fundaMeta.msg}
                 </div>
               </div>
