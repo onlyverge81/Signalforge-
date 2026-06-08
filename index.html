@@ -2002,6 +2002,21 @@ function App() {
           const unreal=active?(active.dir==="BUY"?(rBar.close-active.entry)/active.entry*100:(active.entry-rBar.close)/active.entry*100):null;
           const atEnd=rIdx>=rows.length-1;
           const pct=Math.round((rIdx-REPLAY_START)/Math.max(rows.length-1-REPLAY_START,1)*100);
+          // ─ Transparency layer ─ the replay LOOKS authoritative, so tie its
+          // visual confidence to the real statistical verdict. Green/red P&L is
+          // EARNED only when the backtest is significant; otherwise it's shown
+          // muted and tagged "unproven" so a small lucky sample can't masquerade
+          // as a real edge just because the animation is pretty.
+          const sigVerdict=backtest?.stats?.significance;
+          const sigN=backtest?.stats?.total??0;
+          const proven=sigVerdict==="SIGNIFICANT";
+          const trustCfg={
+            "SIGNIFICANT":{c:"#00e676",t:"PROVEN EDGE",m:"30+ trades and the result is clear of random noise — the curve is trustworthy."},
+            "SUGGESTIVE":{c:"#ffd740",t:"SUGGESTIVE ONLY",m:"Hints of an edge, not conclusive. However good this looks, it is not yet proof."},
+            "NOT SIGNIFICANT":{c:"#ff8a80",t:"NOT SIGNIFICANT",m:"Statistically indistinguishable from random. The visuals are real; the edge is not established."},
+            "TOO FEW TRADES":{c:"#ff8a80",t:"TOO FEW TRADES",m:"Sample far too small to mean anything. Watch this as illustration, never as evidence."},
+          };
+          const tc=trustCfg[sigVerdict]||{c:DIM,t:"NO STATISTICAL READ",m:"Not enough completed trades to judge. Treat this purely as a visual walkthrough."};
           const stepBtn={background:BG,border:"1px solid "+BORD,color:"#90a4ae",padding:"8px 12px",borderRadius:4,cursor:"pointer",fontFamily:"inherit",fontSize:13,fontWeight:700,minWidth:40};
           return(
             <>
@@ -2029,6 +2044,12 @@ function App() {
                   {[["0.5×",440],["1×",220],["2×",110],["4×",55]].map(([l,ms])=>(
                     <button key={l} style={{...pill(replaySpeed===ms),marginBottom:0}} onClick={()=>setReplaySpeed(ms)}>{l}</button>
                   ))}
+                </div>
+                {/* Transparency ribbon — always visible, so the polished replay can
+                    never be read as proof the underlying edge is real. */}
+                <div style={{display:"flex",alignItems:"center",gap:10,padding:"9px 12px",borderRadius:4,background:tc.c+"11",border:"1px solid "+tc.c+"44",marginTop:12}}>
+                  <span style={{fontSize:9,fontWeight:700,letterSpacing:1,color:tc.c,whiteSpace:"nowrap"}}>⚖ {tc.t}</span>
+                  <span style={{fontSize:10,color:"#90a4ae",lineHeight:1.6}}>{tc.m} <span style={{color:FADE}}>· {sigN} trade{sigN===1?"":"s"} over {rows.length} bars · one path on one instrument, not a forward prediction.</span></span>
                 </div>
               </div>
 
@@ -2069,7 +2090,10 @@ function App() {
                   <div style={{display:"grid",gridTemplateColumns:"1fr 1fr",gap:10}}>
                     <div style={{background:"#060810",padding:10,borderRadius:4}}>
                       <div style={{fontSize:9,color:DIM,letterSpacing:1,marginBottom:4}}>REALIZED P&amp;L</div>
-                      <div style={{fontSize:16,fontWeight:700,color:realized>=0?"#00e676":"#ff5252"}}>{realized>=0?"+":""}{realized.toFixed(2)}%</div>
+                      <div style={{fontSize:16,fontWeight:700,color:proven?(realized>=0?"#00e676":"#ff5252"):"#90a4ae"}}>
+                        {realized>=0?"+":""}{realized.toFixed(2)}%
+                        {!proven&&<span style={{fontSize:9,color:FADE,fontWeight:400,marginLeft:6}}>unproven</span>}
+                      </div>
                     </div>
                     <div style={{background:"#060810",padding:10,borderRadius:4}}>
                       <div style={{fontSize:9,color:DIM,letterSpacing:1,marginBottom:4}}>TRADES CLOSED</div>
