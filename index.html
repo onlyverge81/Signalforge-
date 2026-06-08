@@ -2,7 +2,7 @@
 <html lang="en">
 <head>
 <meta charset="UTF-8"/>
-<meta http-equiv="Content-Security-Policy" content="default-src 'self'; script-src 'self' 'unsafe-inline' 'unsafe-eval' https://unpkg.com; style-src 'self' 'unsafe-inline' https://fonts.googleapis.com; font-src 'self' https://fonts.gstatic.com; img-src 'self' data:; connect-src 'self' https://api.twelvedata.com https://data.sec.gov https://www.sec.gov https://*.workers.dev; object-src 'none'; base-uri 'self'; form-action 'self'"/>
+<meta http-equiv="Content-Security-Policy" content="default-src 'self'; script-src 'self' 'unsafe-inline' 'unsafe-eval' https://unpkg.com; style-src 'self' 'unsafe-inline' https://fonts.googleapis.com; font-src 'self' https://fonts.gstatic.com; img-src 'self' data:; connect-src 'self' https://api.twelvedata.com https://data.sec.gov https://www.sec.gov https://*.workers.dev https://corsproxy.io https://api.allorigins.win; object-src 'none'; base-uri 'self'; form-action 'self'"/>
 <meta name="viewport" content="width=device-width,initial-scale=1,maximum-scale=1"/>
 <meta name="theme-color" content="#080b14"/>
 <title>SignalForge — Live Trading Analyzer</title>
@@ -677,11 +677,29 @@ function valueScore(m){
 // right horizon for a Buffett-style screen. A browser's fetch to SEC can be
 // blocked by CORS; on ANY failure we degrade to manual entry + primary-source
 // links rather than ever showing a wrong number. Never throws into the caller.
-// Route SEC requests directly, or through an optional CORS proxy (a Cloudflare
-// Worker — see /sec-proxy) when the browser can't reach data.sec.gov itself.
-// The proxy also sets SEC's required User-Agent, which browsers can't.
-function secFetch(url, proxy){
-  return proxy ? fetch(proxy.replace(/\/+$/,"")+"/?url="+encodeURIComponent(url)) : fetch(url);
+// Route SEC requests through a chain of transports, most-trusted first:
+//   the user's own proxy (if set) → built-in public CORS proxies → direct.
+// data.sec.gov blocks browser CORS, so a direct call usually fails; the public
+// proxies make fundamentals load with ZERO setup, while a self-hosted Worker
+// (see /sec-proxy) — tried first — keeps it fully under the user's control.
+// SEC filings are public data, so a public relay carries little privacy risk.
+const SEC_PUBLIC_PROXIES=["https://corsproxy.io/?url=","https://api.allorigins.win/raw?url="];
+function secProxyUrl(base, url){
+  base=base.trim();
+  return /=$/.test(base) ? base+encodeURIComponent(url)            // ...?url=  → append target
+                         : base.replace(/\/+$/,"")+"?url="+encodeURIComponent(url); // worker base
+}
+async function secFetch(url, userProxy){
+  const chain=[...(userProxy?[userProxy.trim()]:[]), ...SEC_PUBLIC_PROXIES, ""]; // "" = direct
+  let lastErr;
+  for(const p of chain){
+    try{
+      const r=await fetch(p ? secProxyUrl(p,url) : url);
+      if(r.ok) return r;
+      lastErr=new Error("HTTP "+r.status);
+    }catch(e){ lastErr=e; }
+  }
+  throw lastErr||new Error("all SEC transports failed");
 }
 let _secTickerMap=null;
 async function secCik(sym, proxy){
@@ -780,7 +798,7 @@ async function fetchFundamentals(sym, market, price, proxy){
     const basis=(niT&&niT.basis)||(revT&&revT.basis)||"TTM"; // TTM unless only an annual was available
     return {map, meta:{ok:true,source:"SEC EDGAR",entity:j.entityName||sym,cik,asof,basis,when:new Date().toLocaleTimeString(),filled,sym}};
   }catch(e){
-    return {meta:{ok:false,msg:"SEC EDGAR couldn't be reached from the browser ("+(e.message||"network/CORS")+"). The verify links open the filings directly — enter the numbers manually."}};
+    return {meta:{ok:false,msg:"SEC EDGAR couldn't be reached — your proxy, the built-in public proxies, and a direct call all failed ("+(e.message||"network/CORS")+"). The verify links open the filings directly — enter the numbers manually."}};
   }
 }
 
@@ -1439,9 +1457,9 @@ function App() {
               <input style={inp} type="password" value={apiKey} onChange={e=>setApiKey(e.target.value)} placeholder="Paste your free Twelve Data key…"/>
               <div style={{fontSize:10,color:DIM,lineHeight:1.9,marginTop:8}}>No key? <a href="https://twelvedata.com" target="_blank" rel="noreferrer" style={{color:"#00bcd4"}}>twelvedata.com</a> → sign up free → copy key. Saved on this device only.</div>
               <div style={{marginTop:14,paddingTop:14,borderTop:"1px solid "+BORD}}>
-                <span style={lbl}>SEC EDGAR PROXY URL — optional</span>
+                <span style={lbl}>SEC EDGAR PROXY URL — optional (blank = built-in)</span>
                 <input style={inp} value={secProxy} onChange={e=>{setSecProxy(e.target.value);try{localStorage.setItem("sf_sec_proxy",e.target.value.trim());}catch(_){}}} placeholder="https://sec-proxy.your-name.workers.dev"/>
-                <div style={{fontSize:10,color:DIM,lineHeight:1.8,marginTop:8}}>Fundamentals come from <strong style={{color:"#90a4ae"}}>SEC EDGAR</strong> (primary filings). If your browser can't reach SEC directly (CORS), deploy the one-file Cloudflare Worker in <code style={{color:"#00bcd4"}}>/sec-proxy</code> and paste its URL here. Leave blank to fetch SEC directly.</div>
+                <div style={{fontSize:10,color:DIM,lineHeight:1.8,marginTop:8}}>Fundamentals come from <strong style={{color:"#90a4ae"}}>SEC EDGAR</strong> (primary filings). Left blank, they load through a <strong style={{color:"#90a4ae"}}>built-in public proxy</strong> — zero setup. For full control, reliability &amp; privacy, deploy the one-file Cloudflare Worker in <code style={{color:"#00bcd4"}}>/sec-proxy</code> and paste its URL here — it's tried first.</div>
               </div>
             </div>
             <div style={{display:"grid",gridTemplateColumns:"1fr 1fr",gap:14}}>
