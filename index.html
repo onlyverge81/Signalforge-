@@ -669,6 +669,47 @@ function valueScore(m){
   return hasData ? {cheap,healthy,growing,total,grade,verdict,reasons,flags} : null;
 }
 
+// ─── Auto-research fundamentals (Twelve Data /statistics) ────────────────────
+// Best-effort: maps the statistics payload into the VALUE screen's inputs so
+// "Fetch Live Data" also pulls the business numbers, not just the chart.
+// Equities/ETFs only — FX/crypto/commodities have no company fundamentals.
+// Tolerant of the API's field naming and normalizes %/decimal so thresholds
+// read correctly. Never throws into the caller; returns {map?, meta}.
+async function fetchFundamentals(sym, key, market){
+  if(market==="Forex"||market==="Crypto"||market==="Commodities"){
+    return {meta:{ok:false,skip:true,msg:market+" has no company fundamentals — the VALUE grade applies to stocks & ETFs."}};
+  }
+  try{
+    const url="https://api.twelvedata.com/statistics?symbol="+encodeURIComponent(sym)+"&apikey="+encodeURIComponent(key);
+    const j=await (await fetch(url)).json();
+    if(j.status==="error"||j.code){
+      const msg=j.message||"Fundamentals unavailable.";
+      if(/grow|plan|upgrade|not available|access|permission|premium/i.test(msg))
+        return {meta:{ok:false,msg:"Your Twelve Data plan doesn't include /statistics — enter fundamentals manually below."}};
+      return {meta:{ok:false,msg:msg}};
+    }
+    const s=j.statistics||{}, vm=s.valuations_metrics||{}, fin=s.financials||{};
+    const inc=fin.income_statement||{}, bs=fin.balance_sheet||{};
+    const pick=(...c)=>{for(const v of c){if(v==null||v==="")continue;const n=parseFloat(v);if(!isNaN(n))return n;}return null;};
+    const asRatio=v=>v==null?null:(Math.abs(v)>5?v/100:v);   // D/E reported as % → ratio
+    const asDec  =v=>v==null?null:(Math.abs(v)>3?v/100:v);   // ROE/margin/growth % → decimal
+    const map={}, put=(k,v)=>{if(v!=null)map[k]=String(+v.toFixed(4));};
+    put("peTTM",                       pick(vm.trailing_pe, vm.pe_ratio, vm.pe_ratio_ttm));
+    put("pbAnnual",                    pick(vm.price_to_book_mrq, vm.price_to_book));
+    put("totalDebt/totalEquityAnnual", asRatio(pick(bs.total_debt_to_equity_mrq, bs.total_debt_to_equity)));
+    put("roeTTM",                      asDec(pick(fin.return_on_equity_ttm, fin.return_on_equity)));
+    put("netProfitMarginTTM",          asDec(pick(fin.profit_margin, fin.net_profit_margin)));
+    put("currentRatioAnnual",          pick(bs.current_ratio_mrq, bs.current_ratio));
+    put("revenueGrowthTTMYoy",         asDec(pick(inc.quarterly_revenue_growth, inc.revenue_growth)));
+    put("epsGrowthTTMYoy",             asDec(pick(inc.quarterly_earnings_growth_yoy, inc.earnings_growth)));
+    const filled=Object.keys(map).length;
+    if(!filled) return {meta:{ok:false,msg:"No usable fundamental fields returned for "+sym+" — enter manually below."}};
+    return {map, meta:{ok:true,when:new Date().toLocaleTimeString(),filled,sym}};
+  }catch(e){
+    return {meta:{ok:false,msg:"Fundamentals lookup failed ("+(e.message||"network")+") — enter manually below."}};
+  }
+}
+
 // ─── Formatting ────────────────────────────────────────────────────────────
 function fmt(v,dec) {
   if(v==null||isNaN(v)) return "—";
@@ -1065,6 +1106,7 @@ function App() {
   const [resolution,setResolution]= useState("D");
   const [fetching,  setFetching]  = useState(false);
   const [liveMeta,  setLiveMeta]  = useState(null);
+  const [fundaMeta, setFundaMeta] = useState(null); // provenance of auto-filled fundamentals
   // ─ Replay state ─
   const [replayIdx,     setReplayIdx]     = useState(0);
   const [replayPlaying, setReplayPlaying] = useState(false);
@@ -1150,6 +1192,8 @@ function App() {
       const csvText="Date,Open,High,Low,Close,Volume\n"+candles.map(d=>d.date+","+d.open+","+d.high+","+d.low+","+d.close+","+d.volume).join("\n");
       setCsv(csvText);
       setLiveMeta({sym,when:new Date().toLocaleTimeString(),count:candles.length,resolution});
+      // Launch the fundamentals research in parallel — it never blocks the chart/signal.
+      const fundaPromise=fetchFundamentals(sym,key,market);
       const isPos=mode==="position";
       const scorer=isPos?scorePosition:scoreAt;
       const hold=isPos;
@@ -1157,11 +1201,18 @@ function App() {
       const result=analyze(candles,sym,market,strategy,SL,TP);
       const liveScore=scorer(candles); if(liveScore){result.signal=liveScore.signal;result.modeScore=liveScore.score;}
       setRows(candles);setAnalysis(result);
-      setBacktest(candles.length>=40?runBacktest(candles,scorer,SL,TP,costs,null,hold):null);
+      const liveBt=candles.length>=40?runBacktest(candles,scorer,SL,TP,costs,null,hold):null;
+      setBacktest(liveBt);
       setAbTest(candles.length>=40?{current:runBacktest(candles,scorer,SL,TP,costs,null,hold),legacy:runBacktest(candles,scoreFlat,SL,TP,costs)}:null);
       if(candles.length>=60){const sp=Math.floor(candles.length*0.7);setOosTest({splitIdx:sp,trainPct:70,testPct:30,inSample:runBacktest(candles,scorer,SL,TP,costs,{start:30,end:sp},hold),outSample:runBacktest(candles,scorer,SL,TP,costs,{start:sp,end:candles.length},hold)});}else{setOosTest(null);}
       setSweep(null);
-      setHistory(h=>[{time:new Date().toLocaleTimeString(),ticker:sym,signal:result.signal,confidence:result.confidence,price:candles[candles.length-1].close,trend:result.trend},...h].slice(0,10));
+      const liveVerdict=liveBt?.stats?.significance||null;
+      const liveMutedFlag=liveVerdict!=="SIGNIFICANT"&&liveVerdict!=="SUGGESTIVE";
+      setHistory(h=>[{time:new Date().toLocaleTimeString(),ticker:sym,signal:result.signal,confidence:result.confidence,price:candles[candles.length-1].close,trend:result.trend,verdict:liveVerdict,muted:liveMutedFlag},...h].slice(0,10));
+      // Merge the fundamentals research once it lands — VALUE tab fills itself.
+      const fnd=await fundaPromise;
+      if(fnd.map) setFunda(prev=>({...prev,...fnd.map}));
+      setFundaMeta(fnd.meta);
       setTab("signals");
     }catch(e){setError(e.message||"Live fetch failed.");setTab("live");}
     finally{setFetching(false);}
@@ -2152,12 +2203,40 @@ function App() {
             <div style={{...card,border:"1px solid rgba(255,215,64,0.25)"}}>
               <span style={lbl}>★ FUNDAMENTAL VALUE — Buffett-style screening</span>
               <div style={{fontSize:11,color:"#90a4ae",lineHeight:1.8}}>
-                Grades a business on <strong style={{color:"#ffd740"}}>cheapness + financial health + growth</strong> — the quantitative core of value investing. Enter these manually from any finance site. Here, enter them manually from any finance site (Yahoo Finance "Statistics" tab, stockanalysis.com, etc.).
+                Grades a business on <strong style={{color:"#ffd740"}}>cheapness + financial health + growth</strong> — the quantitative core of value investing. <strong style={{color:"#00e676"}}>Fetch Live Data auto-fills these from Twelve Data</strong>; or enter them by hand from any finance site (Yahoo Finance "Statistics" tab, stockanalysis.com, etc.).
               </div>
               <div style={{marginTop:10,padding:10,borderRadius:4,background:"rgba(255,215,64,0.05)",border:"1px solid rgba(255,215,64,0.15)",fontSize:9,color:"#90a4ae",lineHeight:1.7}}>
                 ⚠ This covers the <strong>screenable ~80%</strong> of value investing. It cannot judge moat durability, brand power, or management quality — the qualitative ~20% that needs reading annual reports and years of judgment. A high grade means "worth deeper study," never "guaranteed buy."
               </div>
             </div>
+
+            {/* Mode lens — Position materializes the Buffett (owner) ideology;
+                Tactical treats fundamentals as a context filter. */}
+            <div style={{...card,border:"1px solid "+(mode==="position"?"rgba(0,188,212,0.3)":"rgba(0,230,118,0.25)")}}>
+              <div style={{display:"flex",alignItems:"center",gap:10,flexWrap:"wrap"}}>
+                <span style={{fontSize:9,fontWeight:700,letterSpacing:1,padding:"4px 10px",borderRadius:3,color:mode==="position"?"#00bcd4":"#00e676",background:(mode==="position"?"#00bcd4":"#00e676")+"15",border:"1px solid "+(mode==="position"?"#00bcd4":"#00e676")+"44"}}>{mode==="position"?"🐢 POSITION":"⚡ TACTICAL"}</span>
+                <span style={{fontSize:12,fontWeight:700,color:mode==="position"?"#00bcd4":"#00e676"}}>{mode==="position"?"BUFFETT LENS — fundamentals ARE the thesis":"TACTICAL LENS — fundamentals are context"}</span>
+              </div>
+              <div style={{fontSize:11,color:"#90a4ae",lineHeight:1.85,marginTop:8}}>
+                {mode==="position"
+                  ? "In POSITION mode SignalForge thinks like an owner: you're buying a business, not renting a chart. The value grade below is the PRIMARY decision — the price signal only tells you whether today is a sensible day to act on a company you'd be content to hold for years. This is where the engine closes the gap with Buffett's real edge: the chart shows the crowd's mood; these numbers show what you'd actually own."
+                  : "In TACTICAL mode the trade is driven by the signal; fundamentals are a sanity check — enough to avoid shorting a great company into strength or buying a broken one on a bounce. They inform conviction and holding period; they do not pull the trigger."}
+              </div>
+              <div style={{marginTop:8,fontSize:9,color:FADE,lineHeight:1.6}}>
+                Switch modes on the LIVE or DATA tab. {mode==="position"?"Tactical would treat the same grade as a filter, not the thesis.":"Position would treat the same grade as the thesis, not a filter."}
+              </div>
+            </div>
+
+            {/* Auto-fill provenance — transparency: auto-data must be verified. */}
+            {fundaMeta&&(
+              <div style={{...card,marginBottom:14,border:"1px solid "+(fundaMeta.ok?"rgba(0,230,118,0.25)":"rgba(255,167,38,0.25)"),background:fundaMeta.ok?"rgba(0,230,118,0.04)":"rgba(255,167,38,0.04)"}}>
+                <div style={{fontSize:11,color:fundaMeta.ok?"#00e676":"#ffb74d",lineHeight:1.75}}>
+                  {fundaMeta.ok
+                    ? "✓ Auto-filled "+fundaMeta.filled+" fundamental field"+(fundaMeta.filled===1?"":"s")+" for "+fundaMeta.sym+" from Twelve Data at "+fundaMeta.when+". Verify against a primary filing before relying on them — auto-data can lag a quarter or mis-map a field. Every value below is editable."
+                    : "⚖ "+fundaMeta.msg}
+                </div>
+              </div>
+            )}
 
             <div style={card}>
               <span style={lbl}>ENTER FUNDAMENTALS (leave blank if unknown)</span>
@@ -2220,19 +2299,33 @@ function App() {
                       {fundaResult.flags.map((f,i)=>(<div key={i} style={{fontSize:11,color:"#ff8a80",padding:"5px 0",borderBottom:"1px solid "+BG2,lineHeight:1.5}}>· {f}</div>))}
                     </div>
                   )}
-                  {analysis&&(
-                    <div style={{...card,border:"1px solid rgba(0,188,212,0.2)"}}>
-                      <span style={lbl}>◆ COMBINED VIEW — business quality × entry timing</span>
+                  {analysis&&(()=>{
+                    const isPos=mode==="position";
+                    const g=fundaResult.grade, good=g<="B", fair=g==="C";
+                    const sig=analysis.signal, up=analysis.trend==="UPTREND";
+                    const sigCol=sig==="BUY"?"#00e676":sig==="SELL"?"#ff5252":"#ffd740";
+                    // Position = owner's verdict (business first). Tactical = signal first, business as filter.
+                    const verdict = isPos
+                      ? (good ? (sig==="BUY"||up
+                            ? "★ BUFFETT ALIGNED — a quality business AND the market is constructive today. The rare case where the owner's thesis and the entry timing agree. Worth your deepest research."
+                            : "◆ OWNER'S OPPORTUNITY — a quality business the market is currently marking down. Buffett's favorite setup: weakness in PRICE is not weakness in the BUSINESS. Accumulate only if the thesis is intact — not because the chart turned green, and not in front of a broken fundamental story.")
+                        : fair ? "≈ FAIR BUSINESS — demand a wider margin of safety. An owner waits for a cheaper price or a stronger balance sheet rather than overpaying for mediocrity, whatever the chart says."
+                        : "✗ BUFFETT PASSES — the fundamentals don't justify ownership at any chart pattern. A falling price on a weak business is a value trap, not a bargain. In POSITION mode no technical signal rescues a grade-"+g+" business.")
+                      : (good ? "Your edge here is the "+sig+" signal; the grade-"+g+" business is a tailwind — you can give a winner more room than the signal alone would justify."
+                        : g>="D" ? "Trade the "+sig+" signal if it's there, but keep it SHORT — a grade-"+g+" business is no place to overstay. Don't let a momentum trade quietly become an accidental long-term investment."
+                        : "Trade the signal on its own merits; the business is unremarkable — neither a tailwind nor a red flag for how long you hold.");
+                    return(
+                    <div style={{...card,border:"1px solid "+(isPos?"rgba(0,188,212,0.25)":"rgba(0,230,118,0.2)")}}>
+                      <span style={lbl}>{isPos?"🐢 OWNER'S VERDICT — business first, price second":"⚡ TACTICAL VERDICT — signal first, business as filter"}</span>
                       <div style={{fontSize:11,color:"#90a4ae",lineHeight:1.9}}>
-                        Fundamentals grade <strong style={{color:gradeColor}}>{fundaResult.grade}</strong> ({fundaResult.verdict.split("—")[0].trim()}).
-                        Technical signal is <strong style={{color:analysis.signal==="BUY"?"#00e676":analysis.signal==="SELL"?"#ff5252":"#ffd740"}}>{analysis.signal}</strong> at {analysis.confidence}% confidence.{" "}
-                        {fundaResult.grade<="B"&&analysis.signal==="BUY"?"★ Rare alignment — a fundamentally sound business AND a technical buy signal. This is the Buffett-meets-timing sweet spot worth your deepest research.":
-                         fundaResult.grade<="B"&&analysis.signal!=="BUY"?"Good business, but technicals don't favor an entry right now. A patient value investor might accumulate anyway; a tactical trader would wait.":
-                         fundaResult.grade>="D"&&analysis.signal==="BUY"?"⚠ Technicals say buy, but fundamentals are weak — this could be a momentum trade on a poor business. Short-term only; not a Buffett hold.":
-                         "Neither fundamentals nor technicals are compelling here. Likely one to skip."}
+                        {isPos
+                          ? <>Value grade <strong style={{color:gradeColor}}>{g}</strong> ({fundaResult.verdict.split("—")[0].trim()}) is the thesis; price action ({<strong style={{color:sigCol}}>{sig}</strong>}, {analysis.confidence}%) is only the timing.</>
+                          : <>Signal <strong style={{color:sigCol}}>{sig}</strong> at {analysis.confidence}% drives the trade; the grade-<strong style={{color:gradeColor}}>{g}</strong> business is the filter.</>}
+                        <div style={{marginTop:8}}>{verdict}</div>
                       </div>
                     </div>
-                  )}
+                    );
+                  })()}
                 </>
               );
             })()}
