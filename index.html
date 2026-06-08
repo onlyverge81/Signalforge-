@@ -688,12 +688,42 @@ async function secCik(sym){
   return null;
 }
 function secUnit(node){ return (node&&node.units)?(node.units[Object.keys(node.units)[0]]||[]):[]; }
-function secAnnual(node){ // most-recent-first annual (~365-day) values, one per fiscal year
-  const arr=secUnit(node).filter(e=>{ if(!e.start||!e.end||e.val==null) return false; const d=(new Date(e.end)-new Date(e.start))/864e5; return d>=350&&d<=380; });
-  arr.sort((a,b)=>new Date(b.end)-new Date(a.end));
-  const seen=new Set(),out=[];
-  for(const e of arr){ const y=new Date(e.end).getFullYear(); if(seen.has(y))continue; seen.add(y); out.push(e); }
-  return out;
+function secDurations(node){ // duration (flow) entries with day-length
+  return secUnit(node).filter(e=>e.start&&e.end&&e.val!=null)
+    .map(e=>({val:e.val,start:e.start,end:e.end,days:Math.round((new Date(e.end)-new Date(e.start))/864e5)}));
+}
+// Trailing-twelve-month value from quarterly filings, the rolling way:
+// TTM = last full year (10-K) + current fiscal YTD − prior-year same YTD.
+// XBRL files the FY annual plus cumulative YTD periods; subtracting the
+// year-ago YTD rolls the window forward to the latest quarter. Falls back to
+// summing 4 quarters, then to the bare FY, so annual-only filers still work.
+function secTTM(node){
+  const all=secDurations(node);
+  if(!all.length) return null;
+  const annual=all.filter(e=>e.days>=350&&e.days<=380).sort((a,b)=>new Date(b.end)-new Date(a.end));
+  if(!annual.length){
+    const q=all.filter(e=>e.days>=80&&e.days<=100).sort((a,b)=>new Date(b.end)-new Date(a.end));
+    return q.length>=4 ? {val:q.slice(0,4).reduce((s,e)=>s+e.val,0),end:q[0].end,basis:"TTM"} : null;
+  }
+  const fy=annual[0];
+  const latestEnd=all.reduce((m,e)=>new Date(e.end)>new Date(m)?e.end:m, fy.end);
+  if(new Date(latestEnd)<=new Date(fy.end)) return {val:fy.val,end:fy.end,basis:"FY"}; // 10-K is newest
+  // current fiscal YTD = the longest cumulative period ending at the latest date
+  const ytdCur=all.filter(e=>e.end===latestEnd&&e.days<350).sort((a,b)=>b.days-a.days)[0];
+  if(!ytdCur) return {val:fy.val,end:fy.end,basis:"FY"};
+  const ytdPrior=all.filter(e=>Math.abs(e.days-ytdCur.days)<=12 && Math.abs(Math.round((new Date(ytdCur.end)-new Date(e.end))/864e5)-365)<=20)
+                    .sort((a,b)=>new Date(b.end)-new Date(a.end))[0];
+  if(!ytdPrior) return {val:fy.val,end:fy.end,basis:"FY"};
+  return {val: fy.val + ytdCur.val - ytdPrior.val, end: ytdCur.end, basis:"TTM"};
+}
+// Most-recent quarter vs the same quarter a year earlier — the sharpest, most
+// current growth read, straight off the latest 10-Q.
+function secQYoY(node){
+  const q=secDurations(node).filter(e=>e.days>=80&&e.days<=100).sort((a,b)=>new Date(b.end)-new Date(a.end));
+  if(!q.length) return null;
+  const cur=q[0];
+  const prior=q.find(e=>Math.abs(Math.round((new Date(cur.end)-new Date(e.end))/864e5)-365)<=25);
+  return (prior&&prior.val!==0)?(cur.val-prior.val)/Math.abs(prior.val):null;
 }
 function secInstant(node){ // latest point-in-time (balance-sheet) value
   const arr=secUnit(node).filter(e=>e.end&&e.val!=null);
@@ -713,9 +743,11 @@ async function fetchFundamentals(sym, market, price){
     if(!r.ok) return {meta:{ok:false,msg:"SEC EDGAR returned "+r.status+" for "+sym+". Enter manually or use the verify links."}};
     const j=await r.json();
     const G=(j.facts&&j.facts["us-gaap"])||{}, D=(j.facts&&j.facts["dei"])||{};
-    const epsA=secAnnual(secFirst(G,["EarningsPerShareDiluted","EarningsPerShareBasic"]));
-    const niA =secAnnual(secFirst(G,["NetIncomeLoss","ProfitLoss"]));
-    const revA=secAnnual(secFirst(G,["RevenueFromContractWithCustomerExcludingAssessedTax","Revenues","SalesRevenueNet","RevenueFromContractWithCustomerIncludingAssessedTax"]));
+    // Flow items → trailing twelve months from the quarterly filings.
+    const epsT=secTTM(secFirst(G,["EarningsPerShareDiluted","EarningsPerShareBasic"]));
+    const niT =secTTM(secFirst(G,["NetIncomeLoss","ProfitLoss"]));
+    const revT=secTTM(secFirst(G,["RevenueFromContractWithCustomerExcludingAssessedTax","Revenues","SalesRevenueNet","RevenueFromContractWithCustomerIncludingAssessedTax"]));
+    // Balance-sheet items → latest reported quarter (already current).
     const equity=secInstant(secFirst(G,["StockholdersEquity","StockholdersEquityIncludingPortionAttributableToNoncontrollingInterest"]));
     const shares=secInstant(secFirst(D,["EntityCommonStockSharesOutstanding"])||secFirst(G,["CommonStockSharesOutstanding"]));
     const assetsC=secInstant(secFirst(G,["AssetsCurrent"]));
@@ -723,22 +755,24 @@ async function fetchFundamentals(sym, market, price){
     const ltd=secInstant(secFirst(G,["LongTermDebtNoncurrent","LongTermDebt"]));
     const std=secInstant(secFirst(G,["LongTermDebtCurrent","DebtCurrent"]));
     const debt=(ltd!=null||std!=null)?((ltd||0)+(std||0)):null;
-    const eps0=epsA[0]&&epsA[0].val, eps1=epsA[1]&&epsA[1].val;
-    const ni0=niA[0]&&niA[0].val;
-    const rev0=revA[0]&&revA[0].val, rev1=revA[1]&&revA[1].val;
+    const eps=epsT&&epsT.val, ni=niT&&niT.val, rev=revT&&revT.val;
+    // Growth → latest quarter year-over-year.
+    const revG=secQYoY(secFirst(G,["RevenueFromContractWithCustomerExcludingAssessedTax","Revenues","SalesRevenueNet","RevenueFromContractWithCustomerIncludingAssessedTax"]));
+    const epsG=secQYoY(secFirst(G,["EarningsPerShareDiluted","EarningsPerShareBasic"]));
     const map={}, put=(k,v)=>{ if(v!=null&&isFinite(v)) map[k]=String(+(+v).toFixed(4)); };
-    if(price&&eps0>0)            put("peTTM", price/eps0);
+    if(price&&eps>0)             put("peTTM", price/eps);
     if(price&&equity>0&&shares>0)put("pbAnnual", price*shares/equity);
     if(debt!=null&&equity>0)     put("totalDebt/totalEquityAnnual", debt/equity);
-    if(ni0!=null&&equity>0)      put("roeTTM", ni0/equity);
-    if(ni0!=null&&rev0>0)        put("netProfitMarginTTM", ni0/rev0);
+    if(ni!=null&&equity>0)       put("roeTTM", ni/equity);
+    if(ni!=null&&rev>0)          put("netProfitMarginTTM", ni/rev);
     if(assetsC!=null&&liabC>0)   put("currentRatioAnnual", assetsC/liabC);
-    if(rev0!=null&&rev1>0)       put("revenueGrowthTTMYoy", (rev0-rev1)/rev1);
-    if(eps0!=null&&eps1!=null&&eps1!==0) put("epsGrowthTTMYoy", (eps0-eps1)/Math.abs(eps1));
+    if(revG!=null)               put("revenueGrowthTTMYoy", revG);
+    if(epsG!=null)               put("epsGrowthTTMYoy", epsG);
     const filled=Object.keys(map).length;
     if(!filled) return {meta:{ok:false,msg:"SEC EDGAR had no usable figures for "+sym+" (unusual filer/tags). Enter manually."}};
-    const fy=(epsA[0]||niA[0]||revA[0]||{}).end||null;
-    return {map, meta:{ok:true,source:"SEC EDGAR",entity:j.entityName||sym,cik,fy,when:new Date().toLocaleTimeString(),filled,sym}};
+    const asof=(niT||revT||epsT||{}).end||null;
+    const basis=(niT&&niT.basis)||(revT&&revT.basis)||"TTM"; // TTM unless only an annual was available
+    return {map, meta:{ok:true,source:"SEC EDGAR",entity:j.entityName||sym,cik,asof,basis,when:new Date().toLocaleTimeString(),filled,sym}};
   }catch(e){
     return {meta:{ok:false,msg:"SEC EDGAR couldn't be reached from the browser ("+(e.message||"network/CORS")+"). The verify links open the filings directly — enter the numbers manually."}};
   }
@@ -2275,7 +2309,7 @@ function App() {
               <div style={{...card,marginBottom:14,border:"1px solid "+(fundaMeta.ok?"rgba(0,230,118,0.25)":"rgba(255,167,38,0.25)"),background:fundaMeta.ok?"rgba(0,230,118,0.04)":"rgba(255,167,38,0.04)"}}>
                 <div style={{fontSize:11,color:fundaMeta.ok?"#00e676":"#ffb74d",lineHeight:1.75}}>
                   {fundaMeta.ok
-                    ? "✓ Auto-filled "+fundaMeta.filled+" field"+(fundaMeta.filled===1?"":"s")+" for "+(fundaMeta.entity||fundaMeta.sym)+" from "+(fundaMeta.source||"primary filings")+(fundaMeta.fy?" — latest annual figures, fiscal period ending "+fundaMeta.fy:"")+" (pulled "+fundaMeta.when+"). P/E and P/B use today's price ÷ the filed annual figures; growth is year-over-year from the last two 10-Ks. Verify against the filing before relying on it — every value below is editable."
+                    ? "✓ Auto-filled "+fundaMeta.filled+" field"+(fundaMeta.filled===1?"":"s")+" for "+(fundaMeta.entity||fundaMeta.sym)+" from "+(fundaMeta.source||"primary filings")+" — "+(fundaMeta.basis==="FY"?"latest annual 10-K figures":"trailing twelve months from the quarterly 10-Q filings")+(fundaMeta.asof?", as of "+fundaMeta.asof:"")+" (pulled "+fundaMeta.when+"). P/E uses today's price ÷ TTM EPS; growth is the latest quarter year-over-year. Verify against the filing before relying on it — every value below is editable."
                     : "⚖ "+fundaMeta.msg}
                 </div>
               </div>
