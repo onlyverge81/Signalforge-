@@ -677,7 +677,7 @@ function fmt(v,dec) {
 }
 
 // ─── Candlestick Chart ─────────────────────────────────────────────────────
-function Chart({rows,analysis}) {
+function Chart({rows,analysis,muted}) {
   const ref=useRef(null);
   useEffect(()=>{
     const cv=ref.current; if(!cv||rows.length<2) return;
@@ -809,7 +809,9 @@ function Chart({rows,analysis}) {
       const d=data[li];
       const x=toX(li);
       const sig=analysis.signal;
-      const col=sig==="BUY"?"#00e676":sig==="SELL"?"#ff5252":"#ffa726";
+      // Muted when the backtested edge isn't established — the chart shouldn't
+      // scream BUY in green when the strategy has no demonstrated edge here.
+      const col=muted?"#90a4ae":(sig==="BUY"?"#00e676":sig==="SELL"?"#ff5252":"#ffa726");
       // Glow ring around the last candle's body
       const bt=toY(Math.max(d.open,d.close)),bbm=toY(Math.min(d.open,d.close));
       ctx.strokeStyle=col;ctx.lineWidth=2;
@@ -839,14 +841,17 @@ function Chart({rows,analysis}) {
     ctx.fillStyle="#2a3a4a";ctx.font="8px monospace";ctx.textAlign="center";
     const step=Math.max(1,Math.floor(n/6));
     data.forEach((d,i)=>{if(i%step===0)ctx.fillText(d.date?.slice(5)||"",toX(i),H-4);});
-  },[rows,analysis]);
+  },[rows,analysis,muted]);
   return <canvas ref={ref} width={820} height={260} style={{width:"100%",height:260,display:"block"}}/>;
 }
 
 // ─── UI Components ─────────────────────────────────────────────────────────
-function Badge({signal}) {
+function Badge({signal,muted}) {
   const m={BUY:["#00e676","rgba(0,230,118,0.12)","▲"],SELL:["#ff5252","rgba(255,82,82,0.12)","▼"],HOLD:["#ffd740","rgba(255,215,64,0.12)","◆"]};
-  const s=(signal||"HOLD").toUpperCase();const[col,bg,icon]=m[s]||m.HOLD;
+  const s=(signal||"HOLD").toUpperCase();let[col,bg,icon]=m[s]||m.HOLD;
+  // Transparency rule: a verdict earns its loud color only when the edge behind
+  // it is at least suggestive. Otherwise it shows the call, muted, not as a green light.
+  if(muted){col="#90a4ae";bg="rgba(144,164,174,0.10)";}
   return <span style={{color:col,background:bg,border:"1px solid "+col+"55",padding:"5px 20px",borderRadius:4,fontSize:16,fontWeight:700,letterSpacing:3}}>{icon} {s}</span>;
 }
 function ConfBar({pct}) {
@@ -1107,6 +1112,17 @@ function App() {
     const id=setTimeout(()=>setReplayIdx(i=>Math.min(i+1,rows.length-1)),replaySpeed);
     return ()=>clearTimeout(id);
   },[replayPlaying,replayIdx,rows.length,replaySpeed]);
+
+  // ─── App-wide transparency rule ────────────────────────────────────────────
+  // A persuasive surface (signal badge, chart marker, headline return) earns its
+  // loud color ONLY when the backtested edge on THIS instrument is at least
+  // suggestive. Below that we mute to gray — the UI gets quieter exactly when it
+  // knows less. `significance` comes straight from the backtest's t-stat, so the
+  // same evidence gates every surface. No backtest (too little data) ⇒ muted.
+  const edgeVerdict = backtest?.stats?.significance;
+  const edgeProven  = edgeVerdict==="SIGNIFICANT";                 // strong: full color earned
+  const edgeShown   = edgeProven || edgeVerdict==="SUGGESTIVE";    // at least suggestive
+  const signalMuted = !edgeShown;                                  // mute persuasive surfaces
 
   async function fetchLive(){
     const key=apiKey.trim();
@@ -1446,7 +1462,10 @@ function App() {
                 <div>
                   <div style={{fontSize:10,color:FADE,letterSpacing:1,marginBottom:6}}>{ticker} · {market} · {strategy} · {rows.length} candles</div>
                   <div style={{display:"flex",alignItems:"center",gap:14,flexWrap:"wrap"}}>
-                    <Badge signal={analysis.signal}/>
+                    <Badge signal={analysis.signal} muted={signalMuted}/>
+                    {signalMuted&&(
+                      <span title="The backtested edge on this instrument isn't statistically established yet, so the signal is shown muted — a call, not a confirmed green light." style={{fontSize:9,fontWeight:700,letterSpacing:1,padding:"4px 10px",borderRadius:3,color:"#90a4ae",background:"rgba(144,164,174,0.10)",border:"1px solid #90a4ae44"}}>⚖ UNCONFIRMED EDGE</span>
+                    )}
                     <span style={{fontSize:9,fontWeight:700,letterSpacing:1,padding:"4px 10px",borderRadius:3,color:mode==="position"?"#00bcd4":"#00e676",background:(mode==="position"?"#00bcd4":"#00e676")+"15",border:"1px solid "+(mode==="position"?"#00bcd4":"#00e676")+"44"}}>{mode==="position"?"🐢 POSITION":"⚡ TACTICAL"}</span>
                     <span style={{fontSize:11,color:DIM}}>
                       <span style={{color:tCol(analysis.trend)}}>{analysis.trend}</span>{" · "}
@@ -1479,10 +1498,15 @@ function App() {
                   <span style={{color:"#ffa726"}}>┊ ANALYSIS START</span>
                   <span style={{color:"#dce6f0"}}>▢ LATEST SIGNAL ($$$ )</span>
                 </div>
-                <Chart rows={rows} analysis={analysis}/>
+                <Chart rows={rows} analysis={analysis} muted={signalMuted}/>
               </div>
 
               <ConfBar pct={analysis.confidence}/>
+              {signalMuted&&(
+                <div style={{marginTop:8,fontSize:9,color:FADE,lineHeight:1.7}}>
+                  ⚖ Shown muted: {edgeVerdict==="NOT SIGNIFICANT"?"the backtest on this instrument is statistically indistinguishable from random":edgeVerdict==="TOO FEW TRADES"?"too few backtested trades to establish an edge":"there isn't enough history to validate an edge"} — treat this as a candidate, not a confirmed signal. See the BACKTEST tab for the full statistical read.
+                </div>
+              )}
 
               {analysis.divergence&&(
                 <div style={{marginTop:10,padding:"8px 12px",background:analysis.divergence.type==="BULLISH"?"rgba(0,230,118,0.06)":"rgba(255,82,82,0.06)",border:"1px solid "+(analysis.divergence.type==="BULLISH"?"rgba(0,230,118,0.25)":"rgba(255,82,82,0.25)"),borderRadius:4,fontSize:10,color:analysis.divergence.type==="BULLISH"?"#00e676":"#ff5252"}}>
@@ -1742,9 +1766,12 @@ function App() {
                         <div style={{fontSize:9,color:DIM,letterSpacing:1,marginBottom:4}}>COST DRAG</div>
                         <div style={{fontSize:18,fontWeight:700,color:"#ffb74d"}}>−{backtest.stats.costDrag}%</div>
                       </div>
-                      <div style={{flex:1,minWidth:130,background:"#060810",padding:12,borderRadius:4,borderLeft:"3px solid "+(backtest.stats.totalReturn>=0?"#00e676":"#ff5252")}}>
+                      <div style={{flex:1,minWidth:130,background:"#060810",padding:12,borderRadius:4,borderLeft:"3px solid "+(edgeProven?(backtest.stats.totalReturn>=0?"#00e676":"#ff5252"):"#90a4ae")}}>
                         <div style={{fontSize:9,color:DIM,letterSpacing:1,marginBottom:4}}>NET RETURN (after costs)</div>
-                        <div style={{fontSize:18,fontWeight:700,color:backtest.stats.totalReturn>=0?"#00e676":"#ff5252"}}>{backtest.stats.totalReturn>=0?"+":""}{backtest.stats.totalReturn}%</div>
+                        <div style={{fontSize:18,fontWeight:700,color:edgeProven?(backtest.stats.totalReturn>=0?"#00e676":"#ff5252"):"#90a4ae"}}>
+                          {backtest.stats.totalReturn>=0?"+":""}{backtest.stats.totalReturn}%
+                          {!edgeProven&&<span style={{fontSize:9,color:FADE,fontWeight:400,marginLeft:6}}>unproven</span>}
+                        </div>
                       </div>
                     </div>
                   )}
