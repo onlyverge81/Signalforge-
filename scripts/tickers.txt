@@ -1,0 +1,57 @@
+# SignalForge fundamentals universe — one ticker per line, '#' starts a comment.
+# The nightly GitHub Action (fundamentals.yml) resolves each to its SEC CIK,
+# pulls the company's 10-K/10-Q XBRL facts, and writes fundamentals.json.
+# Add a US-listed operating company here and it appears in the app's AUTOPSY on
+# the next run. Non-stocks (BTC/USD, EUR/USD, ETFs) have no SEC filings — skip.
+
+# App quick-picks
+AAPL
+TSLA
+NVDA
+
+# Mentioned this session
+CMCSA
+
+# Mega-cap tech
+MSFT
+GOOGL
+AMZN
+META
+
+# Semis & hardware
+AMD
+INTC
+QCOM
+CSCO
+ORCL
+IBM
+
+# Consumer & retail
+WMT
+COST
+KO
+PEP
+PG
+MCD
+NKE
+DIS
+SBUX
+
+# Financials
+JPM
+BAC
+V
+MA
+
+# Health & industrials
+JNJ
+UNH
+PFE
+CAT
+BA
+
+# Energy & telecom
+XOM
+CVX
+T
+VZ
