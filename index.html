@@ -851,6 +851,49 @@ function convictionModifier(overall, mode, analysis){
   return {adjConfidence:adj, base, delta:adj-base, note, capped};
 }
 
+// ─── Phase-2 merit fusion — gated, bounded, and OFF until evidence earns it ───
+// Unlike convictionModifier (which only nudges CONFIDENCE), this may change the
+// SIGNAL itself — but ONLY when BOTH gates are open: the fundamentals are
+// user-verified AND the cross-sectional study established a real, OOS-consistent
+// merit→return edge (study.json → meritEdgeProven). Until then it is a no-op, so
+// the trade signal stays purely technical and the price-only backtest that gates
+// everything is never contaminated. Bounded to one defensible step: verified-weak
+// fundamentals veto a long; a verified grade-A business can lift a neutral price
+// signal to a long in the owner's (POSITION) lens. Never invents a short, never
+// overrides a price SELL.
+function fuseMerit(rawSignal, grade, mode, gates){
+  const g=gates||{};
+  if(!g.verified || !g.edgeProven){
+    return {signal:rawSignal, changed:false, active:false,
+      reason: !g.edgeProven
+        ? "Merits gated out — the evidence harness hasn't established a forward-return edge, so the signal is price-only."
+        : "Merits gated out — these fundamentals aren't verified yet (AUTOPSY tab)."};
+  }
+  if(!grade) return {signal:rawSignal, changed:false, active:true, reason:"Edge established, but no fundamentals to fuse for this name."};
+  let signal=rawSignal, reason="Verified merits are consistent with the price signal.";
+  if(rawSignal==="BUY" && grade>="D"){
+    signal="HOLD"; reason="Verified weak fundamentals (grade "+grade+") veto the long — the business doesn't back the breakout.";
+  } else if(mode==="position" && rawSignal==="HOLD" && grade==="A"){
+    signal="BUY"; reason="Verified grade-A business lifts a neutral price signal to a long (owner's lens, edge established).";
+  }
+  return {signal, changed:signal!==rawSignal, active:true, reason};
+}
+
+// ─── Valuation anchor — Graham-number margin of safety (transparent) ──────────
+// Intrinsic ≈ √(22.5 · EPS · BVPS) (Graham's rule of thumb). With P/E and P/B
+// already in hand, intrinsic/price reduces to √(22.5 / (P/E · P/B)), so the
+// margin of safety needs no extra inputs. mosPct > 0 ⇒ price below fair value.
+function valuationAnchor(m){
+  if(!m) return null;
+  const num=v=>(v==null||isNaN(v))?null:Number(v);
+  const pe=num(m.peTTM), pb=num(m.pbAnnual);
+  if(!(pe>0)||!(pb>0)) return null;
+  const intrinsicOverPrice=Math.sqrt(22.5/(pe*pb));
+  const mosPct=(1 - 1/intrinsicOverPrice)*100;
+  const verdict = mosPct>=25?"DEEP DISCOUNT" : mosPct>=0?"BELOW FAIR VALUE" : mosPct>=-25?"ABOVE FAIR VALUE" : "RICHLY PRICED";
+  return {intrinsicOverPrice, mosPct, verdict};
+}
+
 // ─── Fundamentals from the precomputed SEC database ──────────────────────────
 // SEC EDGAR is the authoritative source (figures filed under oath in 10-K/10-Q),
 // but a browser can't fetch it directly (CORS). So a nightly GitHub Action pulls
@@ -1276,6 +1319,7 @@ function App() {
   const fundaMetrics = (()=>{ const m={}; let any=false; for(const k in funda){ if(funda[k]!==""&&!isNaN(parseFloat(funda[k]))){ m[k]=parseFloat(funda[k]); any=true; } } return any?m:null; })();
   const fundaResult  = fundaMetrics ? valueScore(fundaMetrics) : null;
   const fundaAutopsy = fundaMetrics ? companyAutopsy(fundaMetrics) : null;
+  const valAnchor    = fundaMetrics ? valuationAnchor(fundaMetrics) : null; // Graham margin of safety
   const [apiKey,    setApiKey]    = useState((typeof localStorage!=="undefined"&&localStorage.getItem("sf_td_key"))||"");
   // Precomputed SEC fundamentals, fetched same-origin (built nightly in CI).
   const [fundaDB,   setFundaDB]   = useState(null);
@@ -1363,6 +1407,12 @@ function App() {
   const edgeMuted   = !edgeShown;                                  // muted because the EDGE is unproven
   const dataSuspect = !!(dataAudit && dataAudit.suspect);          // muted because the INPUTS are corrupt
   const signalMuted = edgeMuted || dataSuspect;                    // either reason mutes persuasive surfaces
+
+  // Phase-2 merit fusion — a DISPLAY overlay only (never touches scoreAt/runBacktest, so the
+  // price-only backtest stays honest). Dormant unless fundamentals are verified AND the evidence
+  // harness proved a forward-return edge; otherwise displaySignal === the raw price signal.
+  const meritFusion  = analysis ? fuseMerit(analysis.signal, fundaResult?.grade, mode, {verified:fundaVerified, edgeProven:meritEdgeProven}) : null;
+  const displaySignal= meritFusion ? meritFusion.signal : (analysis?analysis.signal:null);
 
   async function fetchLive(){
     const key=apiKey.trim();
@@ -1738,9 +1788,12 @@ function App() {
                 <div>
                   <div style={{fontSize:10,color:FADE,letterSpacing:1,marginBottom:6}}>{ticker} · {market} · {strategy} · {rows.length} candles</div>
                   <div style={{display:"flex",alignItems:"center",gap:14,flexWrap:"wrap"}}>
-                    <Badge signal={analysis.signal} muted={signalMuted}/>
+                    <Badge signal={displaySignal} muted={signalMuted}/>
                     {signalMuted&&(
                       <span title="The backtested edge on this instrument isn't statistically established yet, so the signal is shown muted — a call, not a confirmed green light." style={{fontSize:9,fontWeight:700,letterSpacing:1,padding:"4px 10px",borderRadius:3,color:"#90a4ae",background:"rgba(144,164,174,0.10)",border:"1px solid #90a4ae44"}}>⚖ UNCONFIRMED EDGE</span>
+                    )}
+                    {meritFusion&&meritFusion.changed&&(
+                      <span title={meritFusion.reason} style={{fontSize:9,fontWeight:700,letterSpacing:1,padding:"4px 10px",borderRadius:3,color:"#00bcd4",background:"rgba(0,188,212,0.10)",border:"1px solid #00bcd444"}}>✚ MERIT-FUSED</span>
                     )}
                     <span style={{fontSize:9,fontWeight:700,letterSpacing:1,padding:"4px 10px",borderRadius:3,color:mode==="position"?"#00bcd4":"#00e676",background:(mode==="position"?"#00bcd4":"#00e676")+"15",border:"1px solid "+(mode==="position"?"#00bcd4":"#00e676")+"44"}}>{mode==="position"?"🐢 POSITION":"⚡ TACTICAL"}</span>
                     <span style={{fontSize:11,color:DIM}}>
@@ -2678,6 +2731,21 @@ function App() {
                       ))}
                     </div>
                   </div>
+                  {valAnchor&&(
+                    <div style={card}>
+                      <span style={lbl}>⚖ VALUATION ANCHOR — Graham margin of safety</span>
+                      <div style={{display:"flex",alignItems:"center",gap:16,flexWrap:"wrap",marginTop:4}}>
+                        <div>
+                          <div style={{fontSize:30,fontWeight:700,lineHeight:1,color:unverified?"#90a4ae":(valAnchor.mosPct>=0?"#00e676":"#ff5252")}}>{valAnchor.mosPct>=0?"+":""}{valAnchor.mosPct.toFixed(0)}%</div>
+                          <div style={{fontSize:9,color:DIM,letterSpacing:1,marginTop:4}}>MARGIN OF SAFETY</div>
+                        </div>
+                        <div style={{flex:1,minWidth:180}}>
+                          <div style={{fontSize:12,fontWeight:700,letterSpacing:1,marginBottom:4,color:unverified?"#90a4ae":(valAnchor.mosPct>=0?"#00e676":"#ff8a80")}}>{valAnchor.verdict}{unverified?" · UNVERIFIED":""}</div>
+                          <div style={{fontSize:10,color:"#90a4ae",lineHeight:1.7}}>Graham fair value ≈ √(22.5 · EPS · BVPS) ≈ <b>{valAnchor.intrinsicOverPrice.toFixed(2)}×</b> the current price. A positive margin means price sits below that classic anchor; negative means you're paying up for quality. A rule of thumb, not a target.</div>
+                        </div>
+                      </div>
+                    </div>
+                  )}
                   {fundaResult.reasons.length>0&&(
                     <div style={card}>
                       <span style={lbl}>✓ STRENGTHS</span>
