@@ -395,6 +395,80 @@ function analyze(data, ticker, market, strategy, slMult, tpMult) {
   };
 }
 
+// ─── Market Outlook → Correction Period Price ──────────────────────────────
+// Pulls the three major US markets via liquid ETF proxies (DIA=Dow,
+// SPY=S&P 500, QQQ=Nasdaq-100), SUMS their realtime daily Gain/Loss %, applies
+// that combined % to the stock's realtime price for a dollar delta, then
+// projects a "Market Correction Period Price": ADD the delta in an uptrend,
+// SUBTRACT it in a downtrend. Every % here is close-to-prev-close, so the live
+// projection and the historical backtest share one consistent definition.
+const OUTLOOK_PROXIES=[["DIA","Dow"],["SPY","S&P 500"],["QQQ","Nasdaq"]];
+
+// [{date,close,pct}] where pct = % change vs the previous close (first bar null).
+function idxPctSeries(candles){
+  const out=[];
+  for(let i=0;i<candles.length;i++){
+    const c=candles[i].close, p=i>0?candles[i-1].close:null;
+    out.push({date:candles[i].date, close:c, pct:p?(c-p)/p*100:null});
+  }
+  return out;
+}
+
+// Live projection + a directional-accuracy backtest.
+//   stock : analysed candle array (needs .date/.close)
+//   trend : analysis.trend ("UPTREND" | "DOWNTREND" | "SIDEWAYS") for the live call
+//   idx   : { DIA:[candles], SPY:[candles], QQQ:[candles] }
+function buildOutlook(stock, trend, idx){
+  if(!stock||stock.length<2||!idx) return null;
+  const syms=OUTLOOK_PROXIES.map(p=>p[0]);
+  if(syms.some(s=>!idx[s]||idx[s].length<2)) return null;
+  const series={}; syms.forEach(s=>series[s]=idxPctSeries(idx[s]));
+
+  // ── Live: SUM each proxy's latest close-to-prev-close % ──
+  const markets=OUTLOOK_PROXIES.map(([sym,label])=>{
+    const sr=series[sym], last=sr[sr.length-1];
+    return {sym,label,pct:last.pct,price:last.close};
+  });
+  if(markets.some(m=>m.pct==null)) return null;
+  const combined=markets.reduce((a,m)=>a+m.pct,0);
+  const price=stock[stock.length-1].close;
+  const delta=price*combined/100;
+  const up=price+delta, down=price-delta;
+  const active=trend==="UPTREND"?"UP":trend==="DOWNTREND"?"DOWN":"NEUTRAL";
+  const correctionPrice=active==="UP"?up:active==="DOWN"?down:null;
+
+  // ── Backtest: directional accuracy of the projection vs the NEXT bar ──
+  // Per-bar trend = close vs trailing SMA20 (every historical bar gets a
+  // direction). For each bar i that has a combined% for its date, an SMA20, and
+  // a next bar:  predMove = (trendUp?+1:-1) * close[i] * combined/100 ; a hit is
+  // sign(predMove) === sign(close[i+1]-close[i]). Baseline = trend-only direction
+  // (ignores the market overlay) so we can see whether the overlay adds anything.
+  const maps={}; syms.forEach(s=>{maps[s]=new Map(); series[s].forEach(r=>{if(r.pct!=null)maps[s].set(r.date,r.pct);});});
+  const closes=stock.map(d=>d.close);
+  let n=0,hits=0,baseHits=0,errSum=0,pctErrSum=0;
+  for(let i=20;i<stock.length-1;i++){
+    const sma20=sma(closes.slice(0,i+1),20); if(sma20==null) continue;
+    const date=stock[i].date;
+    let comb=0,ok=true;
+    for(const s of syms){ const v=maps[s].get(date); if(v==null){ok=false;break;} comb+=v; }
+    if(!ok) continue;
+    const trendUp=closes[i]>=sma20;
+    const predMove=(trendUp?1:-1)*closes[i]*comb/100;
+    const projected=closes[i]+predMove;
+    const actualMove=closes[i+1]-closes[i];
+    if(predMove===0||actualMove===0) continue;
+    n++;
+    if(Math.sign(predMove)===Math.sign(actualMove)) hits++;
+    if((trendUp?1:-1)===Math.sign(actualMove)) baseHits++;
+    errSum+=Math.abs(projected-closes[i+1]);
+    pctErrSum+=Math.abs(projected-closes[i+1])/closes[i+1]*100;
+  }
+  const acc=n?hits/n*100:null, baseline=n?baseHits/n*100:null;
+  const backtest=n?{n,acc,baseline,edge:acc-baseline,avgErr:errSum/n,avgPctErr:pctErrSum/n}:null;
+
+  return {markets,combined,price,delta,up,down,active,trend,correctionPrice,backtest};
+}
+
 // ─── Backtest engine ─────────────────────────────────────────────────────────
 // Computes the signal score using the same logic as analyze(), but for a given
 // slice of data ending at index i. Returns just the score + signal.
@@ -1144,6 +1218,7 @@ function App() {
   const [resolution,setResolution]= useState("D");
   const [fetching,  setFetching]  = useState(false);
   const [liveMeta,  setLiveMeta]  = useState(null);
+  const [outlook,   setOutlook]   = useState(null); // Market Outlook → correction-period price (live only)
   const [fundaMeta, setFundaMeta] = useState(null); // provenance of auto-filled fundamentals
   const [fundaAuto, setFundaAuto] = useState({});   // which fields came from auto-fetch (vs hand-entered)
   const [fundaVerified, setFundaVerified] = useState(false); // user confirmed auto-data against a primary source
@@ -1211,7 +1286,7 @@ function App() {
     if(!key){setError("Enter your free Twelve Data API key first (twelvedata.com).");setTab("live");return;}
     const sym=ticker.trim().toUpperCase();
     if(!sym){setError("Enter a ticker symbol.");return;}
-    setFetching(true);setError("");
+    setFetching(true);setError("");setOutlook(null);
     try{localStorage.setItem("sf_td_key",key);}catch(e){}
     try{
       const intervalMap={"1":"1min","5":"5min","15":"15min","30":"30min","60":"1h","D":"1day","W":"1week"};
@@ -1258,6 +1333,18 @@ function App() {
         setFundaVerified(false);
       }
       setFundaMeta(fnd.meta?{...fnd.meta,sym}:null);
+      // ── Market Outlook (best-effort; 3 extra proxy fetches, never blocks the signal) ──
+      try{
+        const proxies=OUTLOOK_PROXIES.map(p=>p[0]);
+        const idxArrs=await Promise.all(proxies.map(async ps=>{
+          const u="https://api.twelvedata.com/time_series?symbol="+encodeURIComponent(ps)+"&interval="+interval+"&outputsize=300&apikey="+encodeURIComponent(key);
+          const r=await fetch(u); const d=await r.json();
+          if(!d.values||!d.values.length) throw new Error("no outlook data for "+ps);
+          return d.values.slice().reverse().map(v=>({date:v.datetime,close:+parseFloat(v.close).toFixed(4)})).filter(x=>x.close>0);
+        }));
+        const idx={}; proxies.forEach((ps,i)=>idx[ps]=idxArrs[i]);
+        setOutlook(buildOutlook(candles, result.trend, idx));
+      }catch(_){ setOutlook(null); }
       setTab("signals");
     }catch(e){setError(e.message||"Live fetch failed.");setTab("live");}
     finally{setFetching(false);}
@@ -1265,6 +1352,7 @@ function App() {
 
   function run(slOverride, tpOverride, costOverride) {
     setError("");
+    setOutlook(null); // Outlook needs live market data; not available on the CSV path
     const data = parseCSV(csv);
     if (data.length < 10) { setError("Need at least 10 rows. Click LOAD SAMPLE to see the expected format."); return; }
     const isPos = mode==="position";
@@ -1383,7 +1471,7 @@ function App() {
 
       {/* Tabs */}
       <div style={{background:BG3,borderBottom:"1px solid "+BORD,padding:"0 20px",display:"flex"}}>
-        {[["live","⚡ LIVE"],["input","▣ DATA"],["signals","◈ SIGNALS"],["backtest","⟲ BACKTEST"],["replay","▶ REPLAY"],["value","✚ AUTOPSY"],["position","⊞ SIZE"],["history","◷ HISTORY"]].map(([k,l])=>(
+        {[["live","⚡ LIVE"],["input","▣ DATA"],["signals","◈ SIGNALS"],["outlook","◎ OUTLOOK"],["backtest","⟲ BACKTEST"],["replay","▶ REPLAY"],["value","✚ AUTOPSY"],["position","⊞ SIZE"],["history","◷ HISTORY"]].map(([k,l])=>(
           <button key={k} style={tBtn(tab===k)} onClick={()=>setTab(k)}>{l}</button>
         ))}
       </div>
@@ -1767,6 +1855,94 @@ function App() {
             <div style={{background:"rgba(255,215,64,0.03)",border:"1px solid rgba(255,215,64,0.10)",borderRadius:4,padding:10,fontSize:9,color:FADE,lineHeight:1.8,marginTop:14}}>
               ⚠ EDUCATIONAL PURPOSES ONLY — Not financial advice. Always consult a licensed financial advisor before trading.
             </div>
+          </>
+        )}
+
+        {/* ── OUTLOOK TAB ── */}
+        {tab==="outlook"&&(
+          <>
+            {!outlook&&(
+              <div style={{textAlign:"center",padding:"60px 0"}}>
+                <div style={{fontSize:13,color:DIM}}>No market outlook yet.</div>
+                <div style={{fontSize:11,color:FADE,marginTop:8,maxWidth:420,margin:"8px auto 0"}}>Run <b style={{color:"#00e676"}}>FETCH LIVE DATA</b> — the Outlook pulls the Dow, S&amp;P 500 &amp; Nasdaq in real time and projects a correction-period price. (Not available on the manual CSV path; index data may also be briefly rate-limited on the free tier.)</div>
+              </div>
+            )}
+            {outlook&&(()=>{
+              const o=outlook;
+              const cCol=o.combined>=0?"#00e676":"#ff5252";
+              const sgn=v=>(v>=0?"+":"")+v.toFixed(2);
+              const bt=o.backtest, MUT="#90a4ae";
+              // Transparency rule: treat the edge as real only with a reasonable
+              // sample that also beats the trend-only baseline. Otherwise muted.
+              const proven=bt&&bt.n>=20&&bt.edge>0&&bt.acc>50, muted=!proven;
+              return(
+                <>
+                  <div style={card}>
+                    <span style={lbl}>◎ MARKET CORRECTION PERIOD PRICE</span>
+                    <div style={{fontSize:11,color:DIM,lineHeight:1.6,marginBottom:14}}>
+                      Sums the three major US markets' realtime daily move, applies that combined % to {(liveMeta?.sym||"the stock")}'s price for a dollar delta, then projects the price for the current phase — <b style={{color:"#00e676"}}>+ delta</b> in an uptrend, <b style={{color:"#ff5252"}}>− delta</b> in a downtrend.
+                    </div>
+                    <div style={{display:"grid",gridTemplateColumns:"repeat(3,1fr)",gap:8,marginBottom:12}}>
+                      {o.markets.map(m=>(
+                        <div key={m.sym} style={{background:BG3,borderRadius:4,padding:"10px 12px",textAlign:"center"}}>
+                          <div style={{fontSize:9,color:DIM,letterSpacing:1}}>{m.label.toUpperCase()} · {m.sym}</div>
+                          <div style={{fontSize:18,fontWeight:700,color:m.pct>=0?"#00e676":"#ff5252",marginTop:4}}>{sgn(m.pct)}%</div>
+                        </div>
+                      ))}
+                    </div>
+                    <div style={{display:"flex",justifyContent:"space-between",alignItems:"center",background:BG3,borderRadius:4,padding:"10px 14px",marginBottom:12}}>
+                      <span style={{fontSize:11,color:DIM,letterSpacing:1}}>COMBINED MARKET MOVE (sum)</span>
+                      <span style={{fontSize:16,fontWeight:700,color:cCol}}>{sgn(o.combined)}%</span>
+                    </div>
+                    <div style={{display:"flex",gap:10,marginBottom:4,fontSize:11,color:DIM}}>
+                      <div style={{flex:1}}>Realtime price<div style={{fontSize:15,color:"#cfd8dc",fontWeight:700,marginTop:2}}>{fmt(o.price)}</div></div>
+                      <div style={{flex:1}}>Dollar delta<div style={{fontSize:15,color:cCol,fontWeight:700,marginTop:2}}>{(o.delta>=0?"+$":"−$")+Math.abs(o.delta).toFixed(2)}</div></div>
+                      <div style={{flex:1}}>Trend<div style={{fontSize:15,color:tCol(o.trend),fontWeight:700,marginTop:2}}>{o.trend}</div></div>
+                    </div>
+                    <div style={{textAlign:"center",padding:"16px 0 2px",borderTop:"1px solid "+BORD,marginTop:12}}>
+                      <div style={{fontSize:10,color:DIM,letterSpacing:2}}>MARKET CORRECTION PERIOD PRICE</div>
+                      {o.active==="NEUTRAL"?(
+                        <>
+                          <div style={{fontSize:12,color:"#ffd740",marginTop:6}}>SIDEWAYS — both scenarios shown</div>
+                          <div style={{display:"flex",justifyContent:"center",gap:32,marginTop:8}}>
+                            <div><div style={{fontSize:10,color:DIM}}>uptrend +</div><div style={{fontSize:22,fontWeight:800,color:"#00e676"}}>{fmt(o.up)}</div></div>
+                            <div><div style={{fontSize:10,color:DIM}}>downtrend −</div><div style={{fontSize:22,fontWeight:800,color:"#ff5252"}}>{fmt(o.down)}</div></div>
+                          </div>
+                        </>
+                      ):(
+                        <>
+                          <div style={{fontSize:34,fontWeight:800,color:o.active==="UP"?"#00e676":"#ff5252",marginTop:4}}>{fmt(o.correctionPrice)}</div>
+                          <div style={{fontSize:11,color:DIM,marginTop:4}}>{fmt(o.price)+" "+(o.active==="UP"?"+":"−")+" $"+Math.abs(o.delta).toFixed(2)+" delta"}</div>
+                        </>
+                      )}
+                    </div>
+                  </div>
+
+                  <div style={card}>
+                    <span style={lbl}>⟲ DIRECTIONAL BACKTEST — does the projection point the right way?</span>
+                    {!bt&&<div style={{fontSize:11,color:DIM}}>Not enough overlapping history to backtest (need ~20+ aligned bars).</div>}
+                    {bt&&(
+                      <>
+                        {muted&&<div style={{fontSize:10,color:MUT,background:"rgba(144,164,174,0.08)",border:"1px solid rgba(144,164,174,0.25)",borderRadius:4,padding:"8px 10px",marginBottom:12}}>⚠ No demonstrated edge — {bt.n<20?"sample too small ("+bt.n+" bars)":"projection does not beat trend-alone"}. Treat the figures below as descriptive, not predictive.</div>}
+                        <div style={{display:"grid",gridTemplateColumns:"repeat(2,1fr)",gap:10}}>
+                          <div style={{background:BG3,borderRadius:4,padding:"12px 14px"}}>
+                            <div style={{fontSize:9,color:DIM,letterSpacing:1}}>DIRECTIONAL ACCURACY</div>
+                            <div style={{fontSize:24,fontWeight:800,color:muted?MUT:(bt.acc>50?"#00e676":"#ff5252")}}>{bt.acc.toFixed(1)}%</div>
+                            <div style={{fontSize:10,color:DIM,marginTop:2}}>vs {bt.baseline.toFixed(1)}% trend-only ({(bt.edge>=0?"+":"")+bt.edge.toFixed(1)} pts)</div>
+                          </div>
+                          <div style={{background:BG3,borderRadius:4,padding:"12px 14px"}}>
+                            <div style={{fontSize:9,color:DIM,letterSpacing:1}}>AVG PROJECTION ERROR</div>
+                            <div style={{fontSize:24,fontWeight:800,color:muted?MUT:"#cfd8dc"}}>{fmt(bt.avgErr)}</div>
+                            <div style={{fontSize:10,color:DIM,marginTop:2}}>{bt.avgPctErr.toFixed(2)}% of price · n={bt.n} bars</div>
+                          </div>
+                        </div>
+                        <div style={{fontSize:10,color:FADE,marginTop:12,lineHeight:1.6}}>Per bar: trend = close vs SMA20; projected = close ± (close × that day's combined market %); a "hit" = projection and the next bar moved the same way. 50% ≈ a coin flip.</div>
+                      </>
+                    )}
+                  </div>
+                </>
+              );
+            })()}
           </>
         )}
 
