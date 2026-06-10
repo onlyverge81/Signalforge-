@@ -31,7 +31,7 @@ const { useState, useRef, useEffect, useCallback, useMemo } = React;
 const SAMPLE = `Date,Open,High,Low,Close,Volume
 2026-04-01,169.20,171.80,168.50,171.25,52000000
 2026-04-02,171.25,173.40,170.10,172.80,48500000
-2026-04-03,172.80,174.20,170.90,170.40,61200000
+2026-04-03,172.80,174.20,170.40,170.40,61200000
 2026-04-04,170.40,171.00,166.80,167.25,78900000
 2026-04-05,167.25,168.50,164.60,165.80,92300000
 2026-04-07,165.80,166.20,162.10,163.70,105100000
@@ -40,7 +40,7 @@ const SAMPLE = `Date,Open,High,Low,Close,Volume
 2026-04-10,168.60,171.50,168.00,170.90,57200000
 2026-04-11,170.90,173.70,170.40,173.20,49800000
 2026-04-12,173.20,176.40,172.90,175.80,54600000
-2026-04-14,175.80,177.10,174.50,174.20,46900000
+2026-04-14,175.80,177.10,174.20,174.20,46900000
 2026-04-15,174.20,175.00,171.80,172.50,51300000
 2026-04-16,172.50,174.20,171.10,173.70,48700000
 2026-04-17,173.70,178.50,173.20,177.80,72100000
@@ -51,11 +51,11 @@ const SAMPLE = `Date,Open,High,Low,Close,Volume
 2026-04-24,181.60,184.30,181.00,183.90,55800000
 2026-04-25,183.90,185.70,182.80,185.20,49300000
 2026-04-28,185.20,187.40,184.90,186.80,43100000
-2026-04-29,186.80,188.10,185.50,184.20,56700000
+2026-04-29,186.80,188.10,184.20,184.20,56700000
 2026-04-30,184.20,185.00,181.80,182.50,61400000
 2026-05-01,182.50,185.20,181.10,184.75,52000000
 2026-05-02,184.75,186.80,183.40,185.90,38500000
-2026-05-03,185.90,187.50,184.20,183.10,51200000
+2026-05-03,185.90,187.50,183.10,183.10,51200000
 2026-05-04,183.10,184.00,179.80,180.25,68900000
 2026-05-05,180.25,181.50,177.60,178.40,72300000
 2026-05-06,178.40,179.20,175.10,176.80,85100000`;
@@ -88,6 +88,74 @@ function parseCSV(raw) {
       };
     }).filter(d => !isNaN(d.close) && d.close > 0);
   } catch { return []; }
+}
+
+// ─── Data-integrity audit ───────────────────────────────────────────────────
+// The whole engine — signal, ATR stops, backtest, t-stat gate — trusts these
+// OHLCV bars blindly. A single unadjusted split or a frozen feed silently flips
+// the live signal and swings the backtest, with no error thrown. This scans the
+// parsed series for the defects real feeds carry and reports them, so the UI can
+// mute a signal built on corrupted inputs — the same principle as edge muting.
+// Pure & defensive: never throws, returns {issues:[{level,code,msg}], suspect}.
+function auditData(rows){
+  const issues=[];
+  if(!rows||rows.length<5) return {issues,suspect:false};
+  const n=rows.length;
+  const add=(level,code,msg)=>issues.push({level,code,msg});
+
+  // 1) Malformed bars: high<low, or open/close outside the [low,high] range.
+  let bad=0;
+  for(const d of rows){
+    if(d.high<d.low) bad++;
+    else if(d.close>d.high+1e-9||d.close<d.low-1e-9||d.open>d.high+1e-9||d.open<d.low-1e-9) bad++;
+  }
+  if(bad) add("SEVERE","ohlc", bad+" bar"+(bad>1?"s have":" has")+" impossible OHLC values (high<low, or open/close outside the range) — the feed is malformed.");
+
+  // 2) Date order / duplicates / gaps (only when dates parse).
+  const ts=rows.map(d=>Date.parse(d.date));
+  if(ts.every(t=>!isNaN(t))){
+    let dup=0,back=0;
+    for(let i=1;i<n;i++){ if(ts[i]===ts[i-1])dup++; else if(ts[i]<ts[i-1])back++; }
+    if(dup) add("WARN","dupdate", dup+" duplicate timestamp"+(dup>1?"s":"")+" — the same bar appears more than once.");
+    if(back) add("WARN","unordered", back+" out-of-order bar"+(back>1?"s":"")+" — dates aren't monotonic, but every indicator assumes chronological order.");
+    const gaps=[]; for(let i=1;i<n;i++){const dt=ts[i]-ts[i-1]; if(dt>0)gaps.push(dt);}
+    if(gaps.length){
+      const med=gaps.slice().sort((a,b)=>a-b)[Math.floor(gaps.length/2)];
+      let big=0; for(const g of gaps) if(g>med*3.5 && g>med+1.5*864e5) big++; // >3.5× typical spacing AND >~1.5d
+      if(big) add("WARN","gap", big+" gap"+(big>1?"s":"")+" in the series (missing bars vs the typical spacing) — backtest windows may straddle holes.");
+    }
+  } else {
+    add("WARN","nodates","Bars have no parseable dates — gap and ordering checks were skipped.");
+  }
+
+  // 3) Discontinuities, sized against the instrument's OWN volatility.
+  //    A reverting spike = bad print (flag even when modest). A persistent
+  //    >35% jump = likely an unadjusted split/dividend. Genuine 20-30% news
+  //    gaps (persistent, sub-35%) are left alone to avoid false alarms.
+  const rets=[]; for(let i=1;i<n;i++){ if(rows[i-1].close>0) rets.push(Math.abs((rows[i].close-rows[i-1].close)/rows[i-1].close)); }
+  const sorted=rets.slice().sort((a,b)=>a-b);
+  const medAbs=sorted.length?sorted[Math.floor(sorted.length/2)]:0;
+  const candLimit=Math.max(0.18, medAbs*6);
+  const splitLimit=Math.max(0.35, medAbs*8);
+  let split=0,outlier=0;
+  for(let i=1;i<n;i++){
+    const c0=rows[i-1].close,c1=rows[i].close; if(!(c0>0))continue;
+    const r=(c1-c0)/c0; if(Math.abs(r)<=candLimit) continue;
+    const r2=(i+1<n&&c1>0)?(rows[i+1].close-c1)/c1:0;
+    const reverts=Math.sign(r2)===-Math.sign(r)&&Math.abs(r2)>=Math.abs(r)*0.6;
+    if(reverts) outlier++;
+    else if(Math.abs(r)>splitLimit) split++;
+  }
+  if(split)   add("SEVERE","jump", split+" price discontinuit"+(split>1?"ies":"y")+" far beyond this instrument's normal range — typically an unadjusted split/dividend; it distorts trend, ATR stops and the backtest.");
+  if(outlier) add("SEVERE","outlier", outlier+" single-bar spike"+(outlier>1?"s that revert":" that reverts")+" — a bad print/tick rather than a real move.");
+
+  // 4) Stale / frozen feed: a run of identical closes.
+  let run=1,maxRun=1;
+  for(let i=1;i<n;i++){ if(rows[i].close===rows[i-1].close){ run++; if(run>maxRun)maxRun=run; } else run=1; }
+  if(maxRun>=5)      add("SEVERE","frozen","A frozen stretch of "+maxRun+" identical closes — a stale feed; the volatility and signals computed across it are meaningless.");
+  else if(maxRun>=3) add("WARN","flat","A flat stretch of "+maxRun+" identical closes — possibly thin or stale data.");
+
+  return {issues, suspect:issues.some(i=>i.level==="SEVERE")};
 }
 
 // ─── Technical Analysis ────────────────────────────────────────────────────
@@ -1256,6 +1324,10 @@ function App() {
     }));
   },[backtest,dateToIdx]);
 
+  // Integrity scan of the loaded bars — recomputed whenever the data changes,
+  // so it covers every ingest path (CSV, paste, live fetch) without touching them.
+  const dataAudit = useMemo(()=>auditData(rows),[rows]);
+
   // When fresh data loads, park the playhead at the latest bar and stop playback.
   useEffect(()=>{
     setReplayPlaying(false);
@@ -1279,7 +1351,9 @@ function App() {
   const edgeVerdict = backtest?.stats?.significance;
   const edgeProven  = edgeVerdict==="SIGNIFICANT";                 // strong: full color earned
   const edgeShown   = edgeProven || edgeVerdict==="SUGGESTIVE";    // at least suggestive
-  const signalMuted = !edgeShown;                                  // mute persuasive surfaces
+  const edgeMuted   = !edgeShown;                                  // muted because the EDGE is unproven
+  const dataSuspect = !!(dataAudit && dataAudit.suspect);          // muted because the INPUTS are corrupt
+  const signalMuted = edgeMuted || dataSuspect;                    // either reason mutes persuasive surfaces
 
   async function fetchLive(){
     const key=apiKey.trim();
@@ -1320,7 +1394,7 @@ function App() {
       if(candles.length>=60){const sp=Math.floor(candles.length*0.7);setOosTest({splitIdx:sp,trainPct:70,testPct:30,inSample:runBacktest(candles,scorer,SL,TP,costs,{start:30,end:sp},hold),outSample:runBacktest(candles,scorer,SL,TP,costs,{start:sp,end:candles.length},hold)});}else{setOosTest(null);}
       setSweep(null);
       const liveVerdict=liveBt?.stats?.significance||null;
-      const liveMutedFlag=liveVerdict!=="SIGNIFICANT"&&liveVerdict!=="SUGGESTIVE";
+      const liveMutedFlag=(liveVerdict!=="SIGNIFICANT"&&liveVerdict!=="SUGGESTIVE")||auditData(candles).suspect;
       setHistory(h=>[{time:new Date().toLocaleTimeString(),ticker:sym,signal:result.signal,confidence:result.confidence,price:candles[candles.length-1].close,trend:result.trend,verdict:liveVerdict,muted:liveMutedFlag},...h].slice(0,10));
       // Fill the AUTOPSY from the precomputed SEC database (same-origin, instant).
       // P/E and P/B are derived from the live price; the rest are filed figures.
@@ -1390,7 +1464,7 @@ function App() {
     // Freeze the transparency verdict AT LOG TIME — the history is an audit
     // trail of how confident the tool was then, not a number we re-judge later.
     const loggedVerdict = bt?.stats?.significance || null;
-    const loggedMuted   = loggedVerdict!=="SIGNIFICANT" && loggedVerdict!=="SUGGESTIVE";
+    const loggedMuted   = (loggedVerdict!=="SIGNIFICANT" && loggedVerdict!=="SUGGESTIVE") || auditData(data).suspect;
     setHistory(h => [{
       time: new Date().toLocaleTimeString(),
       ticker, signal: result.signal, confidence: result.confidence,
@@ -1675,6 +1749,26 @@ function App() {
                 )}
               </div>
 
+              {dataAudit&&dataAudit.issues.length>0&&(
+                <div style={{marginTop:12,padding:"10px 12px",borderRadius:4,
+                  background:dataSuspect?"rgba(255,82,82,0.06)":"rgba(255,215,64,0.05)",
+                  border:"1px solid "+(dataSuspect?"rgba(255,82,82,0.30)":"rgba(255,215,64,0.20)")}}>
+                  <div style={{fontSize:10,fontWeight:700,letterSpacing:1,color:dataSuspect?"#ff8a80":"#ffd740",marginBottom:6}}>
+                    ⚠ DATA INTEGRITY {dataSuspect?"— SIGNAL MUTED":"— ADVISORY"}
+                  </div>
+                  {dataAudit.issues.map((it,i)=>(
+                    <div key={i} style={{fontSize:10,color:"#90a4ae",lineHeight:1.7}}>
+                      <span style={{color:it.level==="SEVERE"?"#ff8a80":"#ffd740"}}>{it.level==="SEVERE"?"● ":"○ "}</span>{it.msg}
+                    </div>
+                  ))}
+                  <div style={{fontSize:9,color:FADE,lineHeight:1.6,marginTop:6}}>
+                    {dataSuspect
+                      ?"The engine reads these bars as-is, so a corrupted input would silently distort the signal, ATR stops and the backtest. The signal is muted until the data is cleaned — same rule as an unproven edge."
+                      :"These won't necessarily invalidate the read, but they're worth knowing before you trust the levels."}
+                  </div>
+                </div>
+              )}
+
               {/* Chart */}
               <div style={{marginTop:14,background:"#060810",borderRadius:4,padding:"6px 0"}}>
                 <div style={{display:"flex",gap:14,fontSize:9,color:FADE,paddingLeft:60,marginBottom:4,flexWrap:"wrap"}}>
@@ -1713,7 +1807,7 @@ function App() {
                   </div>
                 );
               })()}
-              {signalMuted&&(
+              {edgeMuted&&(
                 <div style={{marginTop:8,fontSize:9,color:FADE,lineHeight:1.7}}>
                   ⚖ Shown muted: {edgeVerdict==="NOT SIGNIFICANT"?"the backtest on this instrument is statistically indistinguishable from random":edgeVerdict==="TOO FEW TRADES"?"too few backtested trades to establish an edge":"there isn't enough history to validate an edge"} — treat this as a candidate, not a confirmed signal. See the BACKTEST tab for the full statistical read.
                 </div>
