@@ -1867,7 +1867,7 @@ function App() {
                   <span style={{color:"#ffd740"}}>── SMA5</span>
                   <span style={{color:"#00bcd4"}}>── SMA10</span>
                   <span style={{color:"#e040fb"}}>── SMA20</span>
-                  {analysis.sfa12&&<span style={{color:analysis.sfa12.state==="UPTREND"?"#00e676":analysis.sfa12.state==="DOWNTREND"?"#ff5252":"#ffd740",fontWeight:700}}>━ SFA12</span>}
+                  {analysis.sfa12&&<span style={{color:analysis.sfa12.state==="UPTREND"?"#00e676":analysis.sfa12.state==="DOWNTREND"?"#ff5252":"#ffd740",fontWeight:700}}>━ SFA12{analysis.sfa12.value!=null?" ("+fmt(analysis.sfa12.value)+")":""}</span>}
                   <span style={{color:"#546e7a"}}>── BB Bands</span>
                   <span style={{color:"#00bcd4"}}>-- ENTRY</span>
                   <span style={{color:"#ff5252"}}>-- SL</span>
