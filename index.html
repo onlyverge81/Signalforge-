@@ -537,6 +537,24 @@ function buildOutlook(stock, trend, idx){
   return {markets,combined,price,delta,up,down,active,trend,correctionPrice,backtest};
 }
 
+// ─── Phase-3 macro regime — condition conviction on the market, when earned ───
+// Reuses buildOutlook's DIA/SPY/QQQ overlay (no new data path). `combined` is the
+// summed risk-proxy move (sentiment sign); `backtest.edge` is acc − trend-only
+// baseline. Same honest gate as everywhere: the regime only CONDITIONS the
+// display when the overlay actually beat its own baseline over enough bars —
+// otherwise it's shown for context only and changes nothing.
+function macroRegime(outlook){
+  if(!outlook) return null;
+  const c=outlook.combined, bt=outlook.backtest;
+  const regime = c>0.3?"RISK-ON" : c<-0.3?"RISK-OFF" : "NEUTRAL";
+  const proven = !!(bt && bt.n>=30 && bt.edge>2);
+  const note = proven
+    ? "Market overlay beats its trend-only baseline by "+bt.edge.toFixed(1)+"pp over "+bt.n+" bars — regime conditioning is earned."
+    : (bt ? "Market overlay does NOT clear its trend-only baseline ("+(bt.edge>=0?"+":"")+bt.edge.toFixed(1)+"pp, n="+bt.n+") — regime shown for context only."
+          : "Not enough overlapping market history to validate the overlay — context only.");
+  return {regime, proven, combined:c, note};
+}
+
 // ─── Backtest engine ─────────────────────────────────────────────────────────
 // Computes the signal score using the same logic as analyze(), but for a given
 // slice of data ending at index i. Returns just the score + signal.
@@ -1413,6 +1431,9 @@ function App() {
   // harness proved a forward-return edge; otherwise displaySignal === the raw price signal.
   const meritFusion  = analysis ? fuseMerit(analysis.signal, fundaResult?.grade, mode, {verified:fundaVerified, edgeProven:meritEdgeProven}) : null;
   const displaySignal= meritFusion ? meritFusion.signal : (analysis?analysis.signal:null);
+  // Phase-3 macro regime (live only, from the OUTLOOK overlay). Conditions the
+  // displayed conviction only when proven; otherwise informational.
+  const macro        = outlook ? macroRegime(outlook) : null;
 
   async function fetchLive(){
     const key=apiKey.trim();
@@ -1795,6 +1816,10 @@ function App() {
                     {meritFusion&&meritFusion.changed&&(
                       <span title={meritFusion.reason} style={{fontSize:9,fontWeight:700,letterSpacing:1,padding:"4px 10px",borderRadius:3,color:"#00bcd4",background:"rgba(0,188,212,0.10)",border:"1px solid #00bcd444"}}>✚ MERIT-FUSED</span>
                     )}
+                    {macro&&(()=>{
+                      const rc=!macro.proven?"#90a4ae":macro.regime==="RISK-ON"?"#00e676":macro.regime==="RISK-OFF"?"#ff8a80":"#ffd740";
+                      return <span title={macro.note} style={{fontSize:9,fontWeight:700,letterSpacing:1,padding:"4px 10px",borderRadius:3,color:rc,background:rc+"1a",border:"1px solid "+rc+"44"}}>🌐 {macro.regime}{macro.proven?"":" · CONTEXT"}</span>;
+                    })()}
                     <span style={{fontSize:9,fontWeight:700,letterSpacing:1,padding:"4px 10px",borderRadius:3,color:mode==="position"?"#00bcd4":"#00e676",background:(mode==="position"?"#00bcd4":"#00e676")+"15",border:"1px solid "+(mode==="position"?"#00bcd4":"#00e676")+"44"}}>{mode==="position"?"🐢 POSITION":"⚡ TACTICAL"}</span>
                     <span style={{fontSize:11,color:DIM}}>
                       <span style={{color:tCol(analysis.trend)}}>{analysis.trend}</span>{" · "}
@@ -1854,8 +1879,16 @@ function App() {
               {fundaAutopsy&&(()=>{
                 // The autopsy grade overlays conviction WITHOUT touching the raw
                 // signal/confidence above. Muted until auto-data is verified.
-                const cm=convictionModifier(fundaAutopsy.overall, mode, analysis);
+                let cm=convictionModifier(fundaAutopsy.overall, mode, analysis);
                 if(!cm) return null;
+                // Phase-3: a PROVEN risk-off regime caps long conviction (bounded −15,
+                // floor 20); a proven risk-on regime is noted as a tailwind. Off unless earned.
+                let macroNote="";
+                const longish=analysis.signal==="BUY"||(mode==="position"&&analysis.trend==="UPTREND");
+                if(macro&&macro.proven&&longish){
+                  if(macro.regime==="RISK-OFF"){ const cap=Math.max(20,cm.adjConfidence-15); macroNote=" 🌐 Risk-off regime caps long conviction (−"+(cm.adjConfidence-cap)+")."; cm={...cm,adjConfidence:cap,delta:cap-cm.base,capped:true}; }
+                  else if(macro.regime==="RISK-ON"){ macroNote=" 🌐 Risk-on regime is a tailwind for the long."; }
+                }
                 const autoCount=Object.keys(fundaAuto).length;
                 const unv=autoCount>0&&!fundaVerified;
                 const col=unv?"#90a4ae":(cm.adjConfidence>=70?"#00e676":cm.adjConfidence>=45?"#ffd740":"#ff5252");
@@ -1865,7 +1898,20 @@ function App() {
                       <span>{cm.capped?"⛔ ":"✚ "}ADJUSTED CONVICTION <span style={{color:DIM}}>· {mode==="position"?"OWNER":"TACTICAL"} lens · grade {fundaAutopsy.overall}</span></span>
                       <span style={{color:col,fontWeight:700}}>{cm.adjConfidence}% <span style={{color:DIM,fontWeight:400}}>({cm.delta>0?"+":""}{cm.delta} vs raw {cm.base}%)</span></span>
                     </div>
-                    <div style={{fontSize:9,color:FADE,lineHeight:1.6,marginTop:5}}>{cm.note} The raw signal above is unchanged.{unv?" Shown muted until you verify the fundamentals (AUTOPSY tab).":""}</div>
+                    <div style={{fontSize:9,color:FADE,lineHeight:1.6,marginTop:5}}>{cm.note}{macroNote} The raw signal above is unchanged.{unv?" Shown muted until you verify the fundamentals (AUTOPSY tab).":""}</div>
+                  </div>
+                );
+              })()}
+              {!fundaAutopsy&&macro&&macro.proven&&(()=>{
+                const longish=analysis.signal==="BUY"||(mode==="position"&&analysis.trend==="UPTREND");
+                if(!longish||macro.regime==="NEUTRAL") return null;
+                const head=macro.regime==="RISK-OFF";
+                return(
+                  <div style={{marginTop:8,padding:"8px 12px",borderRadius:4,fontSize:10,lineHeight:1.6,
+                    background:head?"rgba(255,82,82,0.06)":"rgba(0,230,118,0.06)",
+                    border:"1px solid "+(head?"rgba(255,82,82,0.25)":"rgba(0,230,118,0.25)"),
+                    color:head?"#ff8a80":"#00e676"}}>
+                    🌐 {head?"RISK-OFF macro headwind":"RISK-ON macro tailwind"} — {macro.note} {head?"Treat this long as lower-conviction while the regime holds.":"The market backdrop supports the long."}
                   </div>
                 );
               })()}
@@ -2050,6 +2096,16 @@ function App() {
                       <span style={{fontSize:11,color:DIM,letterSpacing:1}}>COMBINED MARKET MOVE (sum)</span>
                       <span style={{fontSize:16,fontWeight:700,color:cCol}}>{sgn(o.combined)}%</span>
                     </div>
+                    {macro&&(
+                      <div style={{background:BG3,borderRadius:4,padding:"10px 14px",marginBottom:12,
+                        border:"1px solid "+(!macro.proven?"rgba(144,164,174,0.25)":macro.regime==="RISK-ON"?"rgba(0,230,118,0.30)":macro.regime==="RISK-OFF"?"rgba(255,82,82,0.30)":"rgba(255,215,64,0.30)")}}>
+                        <div style={{display:"flex",justifyContent:"space-between",alignItems:"center"}}>
+                          <span style={{fontSize:11,color:DIM,letterSpacing:1}}>🌐 MACRO REGIME <span style={{color:FADE}}>· {macro.proven?"conditions the signal":"context only"}</span></span>
+                          <span style={{fontSize:14,fontWeight:700,color:!macro.proven?MUT:(macro.regime==="RISK-ON"?"#00e676":macro.regime==="RISK-OFF"?"#ff8a80":"#ffd740")}}>{macro.regime}</span>
+                        </div>
+                        <div style={{fontSize:9,color:FADE,lineHeight:1.6,marginTop:5}}>{macro.note}</div>
+                      </div>
+                    )}
                     <div style={{display:"flex",gap:10,marginBottom:4,fontSize:11,color:DIM}}>
                       <div style={{flex:1}}>Realtime price<div style={{fontSize:15,color:"#cfd8dc",fontWeight:700,marginTop:2}}>{fmt(o.price)}</div></div>
                       <div style={{flex:1}}>Dollar delta<div style={{fontSize:15,color:cCol,fontWeight:700,marginTop:2}}>{(o.delta>=0?"+$":"−$")+Math.abs(o.delta).toFixed(2)}</div></div>
