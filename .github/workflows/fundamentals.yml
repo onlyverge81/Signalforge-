@@ -51,16 +51,24 @@ jobs:
           SEC_USER_AGENT: "SignalForge fundamentals builder (${{ github.repository }})"
         run: node scripts/build-fundamentals.mjs
 
-      - name: Commit fundamentals.json if it changed
+      # Merit-evidence harness: reconstruct point-in-time merit from the SEC XBRL
+      # history + adjusted monthly prices, and write study.json (the gate Phase 2
+      # reads). Best-effort — never fail the deploy if a price vendor hiccups.
+      - name: Build study.json (merit evidence)
+        env:
+          SEC_USER_AGENT: "SignalForge study builder (${{ github.repository }})"
+        run: node scripts/build-study.mjs || echo "study build skipped (non-fatal)"
+
+      - name: Commit refreshed data if it changed
         run: |
           git config user.name "github-actions[bot]"
           git config user.email "github-actions[bot]@users.noreply.github.com"
-          if ! git diff --quiet -- fundamentals.json; then
-            git add fundamentals.json
-            git commit -m "chore: refresh SEC fundamentals.json"
+          if ! git diff --quiet -- fundamentals.json study.json; then
+            git add fundamentals.json study.json
+            git commit -m "chore: refresh SEC fundamentals.json + study.json"
             git push
           else
-            echo "fundamentals.json unchanged — nothing to commit."
+            echo "fundamentals.json / study.json unchanged — nothing to commit."
           fi
 
       - name: Configure Pages

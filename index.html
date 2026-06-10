@@ -31,7 +31,7 @@ const { useState, useRef, useEffect, useCallback, useMemo } = React;
 const SAMPLE = `Date,Open,High,Low,Close,Volume
 2026-04-01,169.20,171.80,168.50,171.25,52000000
 2026-04-02,171.25,173.40,170.10,172.80,48500000
-2026-04-03,172.80,174.20,170.90,170.40,61200000
+2026-04-03,172.80,174.20,170.40,170.40,61200000
 2026-04-04,170.40,171.00,166.80,167.25,78900000
 2026-04-05,167.25,168.50,164.60,165.80,92300000
 2026-04-07,165.80,166.20,162.10,163.70,105100000
@@ -40,7 +40,7 @@ const SAMPLE = `Date,Open,High,Low,Close,Volume
 2026-04-10,168.60,171.50,168.00,170.90,57200000
 2026-04-11,170.90,173.70,170.40,173.20,49800000
 2026-04-12,173.20,176.40,172.90,175.80,54600000
-2026-04-14,175.80,177.10,174.50,174.20,46900000
+2026-04-14,175.80,177.10,174.20,174.20,46900000
 2026-04-15,174.20,175.00,171.80,172.50,51300000
 2026-04-16,172.50,174.20,171.10,173.70,48700000
 2026-04-17,173.70,178.50,173.20,177.80,72100000
@@ -51,11 +51,11 @@ const SAMPLE = `Date,Open,High,Low,Close,Volume
 2026-04-24,181.60,184.30,181.00,183.90,55800000
 2026-04-25,183.90,185.70,182.80,185.20,49300000
 2026-04-28,185.20,187.40,184.90,186.80,43100000
-2026-04-29,186.80,188.10,185.50,184.20,56700000
+2026-04-29,186.80,188.10,184.20,184.20,56700000
 2026-04-30,184.20,185.00,181.80,182.50,61400000
 2026-05-01,182.50,185.20,181.10,184.75,52000000
 2026-05-02,184.75,186.80,183.40,185.90,38500000
-2026-05-03,185.90,187.50,184.20,183.10,51200000
+2026-05-03,185.90,187.50,183.10,183.10,51200000
 2026-05-04,183.10,184.00,179.80,180.25,68900000
 2026-05-05,180.25,181.50,177.60,178.40,72300000
 2026-05-06,178.40,179.20,175.10,176.80,85100000`;
@@ -88,6 +88,74 @@ function parseCSV(raw) {
       };
     }).filter(d => !isNaN(d.close) && d.close > 0);
   } catch { return []; }
+}
+
+// ─── Data-integrity audit ───────────────────────────────────────────────────
+// The whole engine — signal, ATR stops, backtest, t-stat gate — trusts these
+// OHLCV bars blindly. A single unadjusted split or a frozen feed silently flips
+// the live signal and swings the backtest, with no error thrown. This scans the
+// parsed series for the defects real feeds carry and reports them, so the UI can
+// mute a signal built on corrupted inputs — the same principle as edge muting.
+// Pure & defensive: never throws, returns {issues:[{level,code,msg}], suspect}.
+function auditData(rows){
+  const issues=[];
+  if(!rows||rows.length<5) return {issues,suspect:false};
+  const n=rows.length;
+  const add=(level,code,msg)=>issues.push({level,code,msg});
+
+  // 1) Malformed bars: high<low, or open/close outside the [low,high] range.
+  let bad=0;
+  for(const d of rows){
+    if(d.high<d.low) bad++;
+    else if(d.close>d.high+1e-9||d.close<d.low-1e-9||d.open>d.high+1e-9||d.open<d.low-1e-9) bad++;
+  }
+  if(bad) add("SEVERE","ohlc", bad+" bar"+(bad>1?"s have":" has")+" impossible OHLC values (high<low, or open/close outside the range) — the feed is malformed.");
+
+  // 2) Date order / duplicates / gaps (only when dates parse).
+  const ts=rows.map(d=>Date.parse(d.date));
+  if(ts.every(t=>!isNaN(t))){
+    let dup=0,back=0;
+    for(let i=1;i<n;i++){ if(ts[i]===ts[i-1])dup++; else if(ts[i]<ts[i-1])back++; }
+    if(dup) add("WARN","dupdate", dup+" duplicate timestamp"+(dup>1?"s":"")+" — the same bar appears more than once.");
+    if(back) add("WARN","unordered", back+" out-of-order bar"+(back>1?"s":"")+" — dates aren't monotonic, but every indicator assumes chronological order.");
+    const gaps=[]; for(let i=1;i<n;i++){const dt=ts[i]-ts[i-1]; if(dt>0)gaps.push(dt);}
+    if(gaps.length){
+      const med=gaps.slice().sort((a,b)=>a-b)[Math.floor(gaps.length/2)];
+      let big=0; for(const g of gaps) if(g>med*3.5 && g>med+1.5*864e5) big++; // >3.5× typical spacing AND >~1.5d
+      if(big) add("WARN","gap", big+" gap"+(big>1?"s":"")+" in the series (missing bars vs the typical spacing) — backtest windows may straddle holes.");
+    }
+  } else {
+    add("WARN","nodates","Bars have no parseable dates — gap and ordering checks were skipped.");
+  }
+
+  // 3) Discontinuities, sized against the instrument's OWN volatility.
+  //    A reverting spike = bad print (flag even when modest). A persistent
+  //    >35% jump = likely an unadjusted split/dividend. Genuine 20-30% news
+  //    gaps (persistent, sub-35%) are left alone to avoid false alarms.
+  const rets=[]; for(let i=1;i<n;i++){ if(rows[i-1].close>0) rets.push(Math.abs((rows[i].close-rows[i-1].close)/rows[i-1].close)); }
+  const sorted=rets.slice().sort((a,b)=>a-b);
+  const medAbs=sorted.length?sorted[Math.floor(sorted.length/2)]:0;
+  const candLimit=Math.max(0.18, medAbs*6);
+  const splitLimit=Math.max(0.35, medAbs*8);
+  let split=0,outlier=0;
+  for(let i=1;i<n;i++){
+    const c0=rows[i-1].close,c1=rows[i].close; if(!(c0>0))continue;
+    const r=(c1-c0)/c0; if(Math.abs(r)<=candLimit) continue;
+    const r2=(i+1<n&&c1>0)?(rows[i+1].close-c1)/c1:0;
+    const reverts=Math.sign(r2)===-Math.sign(r)&&Math.abs(r2)>=Math.abs(r)*0.6;
+    if(reverts) outlier++;
+    else if(Math.abs(r)>splitLimit) split++;
+  }
+  if(split)   add("SEVERE","jump", split+" price discontinuit"+(split>1?"ies":"y")+" far beyond this instrument's normal range — typically an unadjusted split/dividend; it distorts trend, ATR stops and the backtest.");
+  if(outlier) add("SEVERE","outlier", outlier+" single-bar spike"+(outlier>1?"s that revert":" that reverts")+" — a bad print/tick rather than a real move.");
+
+  // 4) Stale / frozen feed: a run of identical closes.
+  let run=1,maxRun=1;
+  for(let i=1;i<n;i++){ if(rows[i].close===rows[i-1].close){ run++; if(run>maxRun)maxRun=run; } else run=1; }
+  if(maxRun>=5)      add("SEVERE","frozen","A frozen stretch of "+maxRun+" identical closes — a stale feed; the volatility and signals computed across it are meaningless.");
+  else if(maxRun>=3) add("WARN","flat","A flat stretch of "+maxRun+" identical closes — possibly thin or stale data.");
+
+  return {issues, suspect:issues.some(i=>i.level==="SEVERE")};
 }
 
 // ─── Technical Analysis ────────────────────────────────────────────────────
@@ -469,6 +537,24 @@ function buildOutlook(stock, trend, idx){
   return {markets,combined,price,delta,up,down,active,trend,correctionPrice,backtest};
 }
 
+// ─── Phase-3 macro regime — condition conviction on the market, when earned ───
+// Reuses buildOutlook's DIA/SPY/QQQ overlay (no new data path). `combined` is the
+// summed risk-proxy move (sentiment sign); `backtest.edge` is acc − trend-only
+// baseline. Same honest gate as everywhere: the regime only CONDITIONS the
+// display when the overlay actually beat its own baseline over enough bars —
+// otherwise it's shown for context only and changes nothing.
+function macroRegime(outlook){
+  if(!outlook) return null;
+  const c=outlook.combined, bt=outlook.backtest;
+  const regime = c>0.3?"RISK-ON" : c<-0.3?"RISK-OFF" : "NEUTRAL";
+  const proven = !!(bt && bt.n>=30 && bt.edge>2);
+  const note = proven
+    ? "Market overlay beats its trend-only baseline by "+bt.edge.toFixed(1)+"pp over "+bt.n+" bars — regime conditioning is earned."
+    : (bt ? "Market overlay does NOT clear its trend-only baseline ("+(bt.edge>=0?"+":"")+bt.edge.toFixed(1)+"pp, n="+bt.n+") — regime shown for context only."
+          : "Not enough overlapping market history to validate the overlay — context only.");
+  return {regime, proven, combined:c, note};
+}
+
 // ─── Backtest engine ─────────────────────────────────────────────────────────
 // Computes the signal score using the same logic as analyze(), but for a given
 // slice of data ending at index i. Returns just the score + signal.
@@ -781,6 +867,49 @@ function convictionModifier(overall, mode, analysis){
   }
   adj=Math.round(adj);
   return {adjConfidence:adj, base, delta:adj-base, note, capped};
+}
+
+// ─── Phase-2 merit fusion — gated, bounded, and OFF until evidence earns it ───
+// Unlike convictionModifier (which only nudges CONFIDENCE), this may change the
+// SIGNAL itself — but ONLY when BOTH gates are open: the fundamentals are
+// user-verified AND the cross-sectional study established a real, OOS-consistent
+// merit→return edge (study.json → meritEdgeProven). Until then it is a no-op, so
+// the trade signal stays purely technical and the price-only backtest that gates
+// everything is never contaminated. Bounded to one defensible step: verified-weak
+// fundamentals veto a long; a verified grade-A business can lift a neutral price
+// signal to a long in the owner's (POSITION) lens. Never invents a short, never
+// overrides a price SELL.
+function fuseMerit(rawSignal, grade, mode, gates){
+  const g=gates||{};
+  if(!g.verified || !g.edgeProven){
+    return {signal:rawSignal, changed:false, active:false,
+      reason: !g.edgeProven
+        ? "Merits gated out — the evidence harness hasn't established a forward-return edge, so the signal is price-only."
+        : "Merits gated out — these fundamentals aren't verified yet (AUTOPSY tab)."};
+  }
+  if(!grade) return {signal:rawSignal, changed:false, active:true, reason:"Edge established, but no fundamentals to fuse for this name."};
+  let signal=rawSignal, reason="Verified merits are consistent with the price signal.";
+  if(rawSignal==="BUY" && grade>="D"){
+    signal="HOLD"; reason="Verified weak fundamentals (grade "+grade+") veto the long — the business doesn't back the breakout.";
+  } else if(mode==="position" && rawSignal==="HOLD" && grade==="A"){
+    signal="BUY"; reason="Verified grade-A business lifts a neutral price signal to a long (owner's lens, edge established).";
+  }
+  return {signal, changed:signal!==rawSignal, active:true, reason};
+}
+
+// ─── Valuation anchor — Graham-number margin of safety (transparent) ──────────
+// Intrinsic ≈ √(22.5 · EPS · BVPS) (Graham's rule of thumb). With P/E and P/B
+// already in hand, intrinsic/price reduces to √(22.5 / (P/E · P/B)), so the
+// margin of safety needs no extra inputs. mosPct > 0 ⇒ price below fair value.
+function valuationAnchor(m){
+  if(!m) return null;
+  const num=v=>(v==null||isNaN(v))?null:Number(v);
+  const pe=num(m.peTTM), pb=num(m.pbAnnual);
+  if(!(pe>0)||!(pb>0)) return null;
+  const intrinsicOverPrice=Math.sqrt(22.5/(pe*pb));
+  const mosPct=(1 - 1/intrinsicOverPrice)*100;
+  const verdict = mosPct>=25?"DEEP DISCOUNT" : mosPct>=0?"BELOW FAIR VALUE" : mosPct>=-25?"ABOVE FAIR VALUE" : "RICHLY PRICED";
+  return {intrinsicOverPrice, mosPct, verdict};
 }
 
 // ─── Fundamentals from the precomputed SEC database ──────────────────────────
@@ -1208,6 +1337,7 @@ function App() {
   const fundaMetrics = (()=>{ const m={}; let any=false; for(const k in funda){ if(funda[k]!==""&&!isNaN(parseFloat(funda[k]))){ m[k]=parseFloat(funda[k]); any=true; } } return any?m:null; })();
   const fundaResult  = fundaMetrics ? valueScore(fundaMetrics) : null;
   const fundaAutopsy = fundaMetrics ? companyAutopsy(fundaMetrics) : null;
+  const valAnchor    = fundaMetrics ? valuationAnchor(fundaMetrics) : null; // Graham margin of safety
   const [apiKey,    setApiKey]    = useState((typeof localStorage!=="undefined"&&localStorage.getItem("sf_td_key"))||"");
   // Precomputed SEC fundamentals, fetched same-origin (built nightly in CI).
   const [fundaDB,   setFundaDB]   = useState(null);
@@ -1215,6 +1345,15 @@ function App() {
     fetch("./fundamentals.json").then(r=>r.ok?r.json():null).then(j=>{ if(alive&&j&&typeof j==="object") setFundaDB(j); }).catch(()=>{});
     return ()=>{ alive=false; };
   },[]);
+  // Merit-evidence study (built in CI by scripts/build-study.mjs). Read-only here.
+  // `meritEdgeProven` is the gate: fundamentals may move the signal ONLY when the
+  // cross-sectional study shows a real, OOS-consistent, placebo-surviving edge.
+  const [study, setStudy] = useState(null);
+  useEffect(()=>{ let alive=true;
+    fetch("./study.json").then(r=>r.ok?r.json():null).then(j=>{ if(alive&&j&&typeof j==="object") setStudy(j); }).catch(()=>{});
+    return ()=>{ alive=false; };
+  },[]);
+  const meritEdgeProven = !!(study && study.meritEdgeProven);
   const [resolution,setResolution]= useState("D");
   const [fetching,  setFetching]  = useState(false);
   const [liveMeta,  setLiveMeta]  = useState(null);
@@ -1256,6 +1395,10 @@ function App() {
     }));
   },[backtest,dateToIdx]);
 
+  // Integrity scan of the loaded bars — recomputed whenever the data changes,
+  // so it covers every ingest path (CSV, paste, live fetch) without touching them.
+  const dataAudit = useMemo(()=>auditData(rows),[rows]);
+
   // When fresh data loads, park the playhead at the latest bar and stop playback.
   useEffect(()=>{
     setReplayPlaying(false);
@@ -1279,7 +1422,18 @@ function App() {
   const edgeVerdict = backtest?.stats?.significance;
   const edgeProven  = edgeVerdict==="SIGNIFICANT";                 // strong: full color earned
   const edgeShown   = edgeProven || edgeVerdict==="SUGGESTIVE";    // at least suggestive
-  const signalMuted = !edgeShown;                                  // mute persuasive surfaces
+  const edgeMuted   = !edgeShown;                                  // muted because the EDGE is unproven
+  const dataSuspect = !!(dataAudit && dataAudit.suspect);          // muted because the INPUTS are corrupt
+  const signalMuted = edgeMuted || dataSuspect;                    // either reason mutes persuasive surfaces
+
+  // Phase-2 merit fusion — a DISPLAY overlay only (never touches scoreAt/runBacktest, so the
+  // price-only backtest stays honest). Dormant unless fundamentals are verified AND the evidence
+  // harness proved a forward-return edge; otherwise displaySignal === the raw price signal.
+  const meritFusion  = analysis ? fuseMerit(analysis.signal, fundaResult?.grade, mode, {verified:fundaVerified, edgeProven:meritEdgeProven}) : null;
+  const displaySignal= meritFusion ? meritFusion.signal : (analysis?analysis.signal:null);
+  // Phase-3 macro regime (live only, from the OUTLOOK overlay). Conditions the
+  // displayed conviction only when proven; otherwise informational.
+  const macro        = outlook ? macroRegime(outlook) : null;
 
   async function fetchLive(){
     const key=apiKey.trim();
@@ -1320,7 +1474,7 @@ function App() {
       if(candles.length>=60){const sp=Math.floor(candles.length*0.7);setOosTest({splitIdx:sp,trainPct:70,testPct:30,inSample:runBacktest(candles,scorer,SL,TP,costs,{start:30,end:sp},hold),outSample:runBacktest(candles,scorer,SL,TP,costs,{start:sp,end:candles.length},hold)});}else{setOosTest(null);}
       setSweep(null);
       const liveVerdict=liveBt?.stats?.significance||null;
-      const liveMutedFlag=liveVerdict!=="SIGNIFICANT"&&liveVerdict!=="SUGGESTIVE";
+      const liveMutedFlag=(liveVerdict!=="SIGNIFICANT"&&liveVerdict!=="SUGGESTIVE")||auditData(candles).suspect;
       setHistory(h=>[{time:new Date().toLocaleTimeString(),ticker:sym,signal:result.signal,confidence:result.confidence,price:candles[candles.length-1].close,trend:result.trend,verdict:liveVerdict,muted:liveMutedFlag},...h].slice(0,10));
       // Fill the AUTOPSY from the precomputed SEC database (same-origin, instant).
       // P/E and P/B are derived from the live price; the rest are filed figures.
@@ -1390,7 +1544,7 @@ function App() {
     // Freeze the transparency verdict AT LOG TIME — the history is an audit
     // trail of how confident the tool was then, not a number we re-judge later.
     const loggedVerdict = bt?.stats?.significance || null;
-    const loggedMuted   = loggedVerdict!=="SIGNIFICANT" && loggedVerdict!=="SUGGESTIVE";
+    const loggedMuted   = (loggedVerdict!=="SIGNIFICANT" && loggedVerdict!=="SUGGESTIVE") || auditData(data).suspect;
     setHistory(h => [{
       time: new Date().toLocaleTimeString(),
       ticker, signal: result.signal, confidence: result.confidence,
@@ -1471,7 +1625,7 @@ function App() {
 
       {/* Tabs */}
       <div style={{background:BG3,borderBottom:"1px solid "+BORD,padding:"0 20px",display:"flex"}}>
-        {[["live","⚡ LIVE"],["input","▣ DATA"],["signals","◈ SIGNALS"],["outlook","◎ OUTLOOK"],["backtest","⟲ BACKTEST"],["replay","▶ REPLAY"],["value","✚ AUTOPSY"],["position","⊞ SIZE"],["history","◷ HISTORY"]].map(([k,l])=>(
+        {[["live","⚡ LIVE"],["input","▣ DATA"],["signals","◈ SIGNALS"],["outlook","◎ OUTLOOK"],["backtest","⟲ BACKTEST"],["replay","▶ REPLAY"],["value","✚ AUTOPSY"],["evidence","🔬 EVIDENCE"],["position","⊞ SIZE"],["history","◷ HISTORY"]].map(([k,l])=>(
           <button key={k} style={tBtn(tab===k)} onClick={()=>setTab(k)}>{l}</button>
         ))}
       </div>
@@ -1655,10 +1809,17 @@ function App() {
                 <div>
                   <div style={{fontSize:10,color:FADE,letterSpacing:1,marginBottom:6}}>{ticker} · {market} · {strategy} · {rows.length} candles</div>
                   <div style={{display:"flex",alignItems:"center",gap:14,flexWrap:"wrap"}}>
-                    <Badge signal={analysis.signal} muted={signalMuted}/>
+                    <Badge signal={displaySignal} muted={signalMuted}/>
                     {signalMuted&&(
                       <span title="The backtested edge on this instrument isn't statistically established yet, so the signal is shown muted — a call, not a confirmed green light." style={{fontSize:9,fontWeight:700,letterSpacing:1,padding:"4px 10px",borderRadius:3,color:"#90a4ae",background:"rgba(144,164,174,0.10)",border:"1px solid #90a4ae44"}}>⚖ UNCONFIRMED EDGE</span>
                     )}
+                    {meritFusion&&meritFusion.changed&&(
+                      <span title={meritFusion.reason} style={{fontSize:9,fontWeight:700,letterSpacing:1,padding:"4px 10px",borderRadius:3,color:"#00bcd4",background:"rgba(0,188,212,0.10)",border:"1px solid #00bcd444"}}>✚ MERIT-FUSED</span>
+                    )}
+                    {macro&&(()=>{
+                      const rc=!macro.proven?"#90a4ae":macro.regime==="RISK-ON"?"#00e676":macro.regime==="RISK-OFF"?"#ff8a80":"#ffd740";
+                      return <span title={macro.note} style={{fontSize:9,fontWeight:700,letterSpacing:1,padding:"4px 10px",borderRadius:3,color:rc,background:rc+"1a",border:"1px solid "+rc+"44"}}>🌐 {macro.regime}{macro.proven?"":" · CONTEXT"}</span>;
+                    })()}
                     <span style={{fontSize:9,fontWeight:700,letterSpacing:1,padding:"4px 10px",borderRadius:3,color:mode==="position"?"#00bcd4":"#00e676",background:(mode==="position"?"#00bcd4":"#00e676")+"15",border:"1px solid "+(mode==="position"?"#00bcd4":"#00e676")+"44"}}>{mode==="position"?"🐢 POSITION":"⚡ TACTICAL"}</span>
                     <span style={{fontSize:11,color:DIM}}>
                       <span style={{color:tCol(analysis.trend)}}>{analysis.trend}</span>{" · "}
@@ -1674,6 +1835,26 @@ function App() {
                   </div>
                 )}
               </div>
+
+              {dataAudit&&dataAudit.issues.length>0&&(
+                <div style={{marginTop:12,padding:"10px 12px",borderRadius:4,
+                  background:dataSuspect?"rgba(255,82,82,0.06)":"rgba(255,215,64,0.05)",
+                  border:"1px solid "+(dataSuspect?"rgba(255,82,82,0.30)":"rgba(255,215,64,0.20)")}}>
+                  <div style={{fontSize:10,fontWeight:700,letterSpacing:1,color:dataSuspect?"#ff8a80":"#ffd740",marginBottom:6}}>
+                    ⚠ DATA INTEGRITY {dataSuspect?"— SIGNAL MUTED":"— ADVISORY"}
+                  </div>
+                  {dataAudit.issues.map((it,i)=>(
+                    <div key={i} style={{fontSize:10,color:"#90a4ae",lineHeight:1.7}}>
+                      <span style={{color:it.level==="SEVERE"?"#ff8a80":"#ffd740"}}>{it.level==="SEVERE"?"● ":"○ "}</span>{it.msg}
+                    </div>
+                  ))}
+                  <div style={{fontSize:9,color:FADE,lineHeight:1.6,marginTop:6}}>
+                    {dataSuspect
+                      ?"The engine reads these bars as-is, so a corrupted input would silently distort the signal, ATR stops and the backtest. The signal is muted until the data is cleaned — same rule as an unproven edge."
+                      :"These won't necessarily invalidate the read, but they're worth knowing before you trust the levels."}
+                  </div>
+                </div>
+              )}
 
               {/* Chart */}
               <div style={{marginTop:14,background:"#060810",borderRadius:4,padding:"6px 0"}}>
@@ -1698,8 +1879,16 @@ function App() {
               {fundaAutopsy&&(()=>{
                 // The autopsy grade overlays conviction WITHOUT touching the raw
                 // signal/confidence above. Muted until auto-data is verified.
-                const cm=convictionModifier(fundaAutopsy.overall, mode, analysis);
+                let cm=convictionModifier(fundaAutopsy.overall, mode, analysis);
                 if(!cm) return null;
+                // Phase-3: a PROVEN risk-off regime caps long conviction (bounded −15,
+                // floor 20); a proven risk-on regime is noted as a tailwind. Off unless earned.
+                let macroNote="";
+                const longish=analysis.signal==="BUY"||(mode==="position"&&analysis.trend==="UPTREND");
+                if(macro&&macro.proven&&longish){
+                  if(macro.regime==="RISK-OFF"){ const cap=Math.max(20,cm.adjConfidence-15); macroNote=" 🌐 Risk-off regime caps long conviction (−"+(cm.adjConfidence-cap)+")."; cm={...cm,adjConfidence:cap,delta:cap-cm.base,capped:true}; }
+                  else if(macro.regime==="RISK-ON"){ macroNote=" 🌐 Risk-on regime is a tailwind for the long."; }
+                }
                 const autoCount=Object.keys(fundaAuto).length;
                 const unv=autoCount>0&&!fundaVerified;
                 const col=unv?"#90a4ae":(cm.adjConfidence>=70?"#00e676":cm.adjConfidence>=45?"#ffd740":"#ff5252");
@@ -1709,11 +1898,24 @@ function App() {
                       <span>{cm.capped?"⛔ ":"✚ "}ADJUSTED CONVICTION <span style={{color:DIM}}>· {mode==="position"?"OWNER":"TACTICAL"} lens · grade {fundaAutopsy.overall}</span></span>
                       <span style={{color:col,fontWeight:700}}>{cm.adjConfidence}% <span style={{color:DIM,fontWeight:400}}>({cm.delta>0?"+":""}{cm.delta} vs raw {cm.base}%)</span></span>
                     </div>
-                    <div style={{fontSize:9,color:FADE,lineHeight:1.6,marginTop:5}}>{cm.note} The raw signal above is unchanged.{unv?" Shown muted until you verify the fundamentals (AUTOPSY tab).":""}</div>
+                    <div style={{fontSize:9,color:FADE,lineHeight:1.6,marginTop:5}}>{cm.note}{macroNote} The raw signal above is unchanged.{unv?" Shown muted until you verify the fundamentals (AUTOPSY tab).":""}</div>
                   </div>
                 );
               })()}
-              {signalMuted&&(
+              {!fundaAutopsy&&macro&&macro.proven&&(()=>{
+                const longish=analysis.signal==="BUY"||(mode==="position"&&analysis.trend==="UPTREND");
+                if(!longish||macro.regime==="NEUTRAL") return null;
+                const head=macro.regime==="RISK-OFF";
+                return(
+                  <div style={{marginTop:8,padding:"8px 12px",borderRadius:4,fontSize:10,lineHeight:1.6,
+                    background:head?"rgba(255,82,82,0.06)":"rgba(0,230,118,0.06)",
+                    border:"1px solid "+(head?"rgba(255,82,82,0.25)":"rgba(0,230,118,0.25)"),
+                    color:head?"#ff8a80":"#00e676"}}>
+                    🌐 {head?"RISK-OFF macro headwind":"RISK-ON macro tailwind"} — {macro.note} {head?"Treat this long as lower-conviction while the regime holds.":"The market backdrop supports the long."}
+                  </div>
+                );
+              })()}
+              {edgeMuted&&(
                 <div style={{marginTop:8,fontSize:9,color:FADE,lineHeight:1.7}}>
                   ⚖ Shown muted: {edgeVerdict==="NOT SIGNIFICANT"?"the backtest on this instrument is statistically indistinguishable from random":edgeVerdict==="TOO FEW TRADES"?"too few backtested trades to establish an edge":"there isn't enough history to validate an edge"} — treat this as a candidate, not a confirmed signal. See the BACKTEST tab for the full statistical read.
                 </div>
@@ -1894,6 +2096,16 @@ function App() {
                       <span style={{fontSize:11,color:DIM,letterSpacing:1}}>COMBINED MARKET MOVE (sum)</span>
                       <span style={{fontSize:16,fontWeight:700,color:cCol}}>{sgn(o.combined)}%</span>
                     </div>
+                    {macro&&(
+                      <div style={{background:BG3,borderRadius:4,padding:"10px 14px",marginBottom:12,
+                        border:"1px solid "+(!macro.proven?"rgba(144,164,174,0.25)":macro.regime==="RISK-ON"?"rgba(0,230,118,0.30)":macro.regime==="RISK-OFF"?"rgba(255,82,82,0.30)":"rgba(255,215,64,0.30)")}}>
+                        <div style={{display:"flex",justifyContent:"space-between",alignItems:"center"}}>
+                          <span style={{fontSize:11,color:DIM,letterSpacing:1}}>🌐 MACRO REGIME <span style={{color:FADE}}>· {macro.proven?"conditions the signal":"context only"}</span></span>
+                          <span style={{fontSize:14,fontWeight:700,color:!macro.proven?MUT:(macro.regime==="RISK-ON"?"#00e676":macro.regime==="RISK-OFF"?"#ff8a80":"#ffd740")}}>{macro.regime}</span>
+                        </div>
+                        <div style={{fontSize:9,color:FADE,lineHeight:1.6,marginTop:5}}>{macro.note}</div>
+                      </div>
+                    )}
                     <div style={{display:"flex",gap:10,marginBottom:4,fontSize:11,color:DIM}}>
                       <div style={{flex:1}}>Realtime price<div style={{fontSize:15,color:"#cfd8dc",fontWeight:700,marginTop:2}}>{fmt(o.price)}</div></div>
                       <div style={{flex:1}}>Dollar delta<div style={{fontSize:15,color:cCol,fontWeight:700,marginTop:2}}>{(o.delta>=0?"+$":"−$")+Math.abs(o.delta).toFixed(2)}</div></div>
@@ -2575,6 +2787,21 @@ function App() {
                       ))}
                     </div>
                   </div>
+                  {valAnchor&&(
+                    <div style={card}>
+                      <span style={lbl}>⚖ VALUATION ANCHOR — Graham margin of safety</span>
+                      <div style={{display:"flex",alignItems:"center",gap:16,flexWrap:"wrap",marginTop:4}}>
+                        <div>
+                          <div style={{fontSize:30,fontWeight:700,lineHeight:1,color:unverified?"#90a4ae":(valAnchor.mosPct>=0?"#00e676":"#ff5252")}}>{valAnchor.mosPct>=0?"+":""}{valAnchor.mosPct.toFixed(0)}%</div>
+                          <div style={{fontSize:9,color:DIM,letterSpacing:1,marginTop:4}}>MARGIN OF SAFETY</div>
+                        </div>
+                        <div style={{flex:1,minWidth:180}}>
+                          <div style={{fontSize:12,fontWeight:700,letterSpacing:1,marginBottom:4,color:unverified?"#90a4ae":(valAnchor.mosPct>=0?"#00e676":"#ff8a80")}}>{valAnchor.verdict}{unverified?" · UNVERIFIED":""}</div>
+                          <div style={{fontSize:10,color:"#90a4ae",lineHeight:1.7}}>Graham fair value ≈ √(22.5 · EPS · BVPS) ≈ <b>{valAnchor.intrinsicOverPrice.toFixed(2)}×</b> the current price. A positive margin means price sits below that classic anchor; negative means you're paying up for quality. A rule of thumb, not a target.</div>
+                        </div>
+                      </div>
+                    </div>
+                  )}
                   {fundaResult.reasons.length>0&&(
                     <div style={card}>
                       <span style={lbl}>✓ STRENGTHS</span>
@@ -2620,6 +2847,109 @@ function App() {
                     </div>
                     );
                   })()}
+                </>
+              );
+            })()}
+          </>
+        )}
+
+        {/* ── EVIDENCE TAB — merit-evidence harness (does merit predict forward returns?) ── */}
+        {tab==="evidence"&&(
+          <>
+            {!study&&(
+              <div style={card}>
+                <span style={lbl}>🔬 MERIT EVIDENCE</span>
+                <div style={{fontSize:11,color:"#90a4ae",lineHeight:1.9}}>
+                  No study loaded. <code>study.json</code> is built nightly in CI (<code>scripts/build-study.mjs</code>):
+                  it reconstructs each name's merit <i>point-in-time</i> from SEC filings and tests whether higher
+                  merit actually predicted higher forward returns across the universe. Check back after the next build.
+                </div>
+              </div>
+            )}
+            {study&&(()=>{
+              const H=study.horizons[study.primary]||study.horizons["12m"];
+              const six=study.horizons["6m"]||H;
+              const vCol=v=>v==="SIGNIFICANT"?"#00e676":v==="SUGGESTIVE"?"#ffd740":"#90a4ae";
+              const placeboOk=H.placebo.verdict==="NOT SIGNIFICANT"||H.placebo.verdict==="TOO FEW PERIODS";
+              const proven=!!study.meritEdgeProven;
+              const pctOrDash=v=>v==null?"—":((v>=0?"+":"")+(v*100).toFixed(1)+"%");
+              return (
+                <>
+                  <div style={{...card,background:"linear-gradient(135deg,#0e1320,#0b1025)"}}>
+                    <span style={lbl}>🔬 MERIT EVIDENCE · does fundamental quality predict forward returns?</span>
+                    <div style={{display:"flex",justifyContent:"space-between",flexWrap:"wrap",gap:10,alignItems:"flex-start"}}>
+                      <div>
+                        <div style={{display:"flex",alignItems:"center",gap:12,flexWrap:"wrap"}}>
+                          <span style={{fontSize:22,fontWeight:700,color:vCol(H.significance)}}>{H.significance}</span>
+                          <span style={{fontSize:11,color:DIM}}>{study.primary} horizon · {H.periods} periods · {H.observations} obs</span>
+                        </div>
+                        <div style={{fontSize:11,color:"#90a4ae",marginTop:6}}>
+                          mean rank-IC <b style={{color:vCol(H.significance)}}>{H.meanIC>=0?"+":""}{H.meanIC}</b> (t {H.icT}) — {H.meanIC>0?"higher merit leaned toward higher forward return":"no positive relationship found"}.
+                        </div>
+                      </div>
+                      <span style={{fontSize:9,fontWeight:700,letterSpacing:1,padding:"5px 11px",borderRadius:3,
+                        color:proven?"#00e676":"#90a4ae",
+                        background:(proven?"rgba(0,230,118,0.10)":"rgba(144,164,174,0.10)"),
+                        border:"1px solid "+(proven?"#00e67644":"#90a4ae44")}}>
+                        {proven?"✓ MERIT EDGE ESTABLISHED":"⚖ MERIT EDGE NOT ESTABLISHED"}
+                      </span>
+                    </div>
+                    <div style={{display:"grid",gridTemplateColumns:"repeat(auto-fit,minmax(150px,1fr))",gap:10,marginTop:14}}>
+                      {[
+                        {l:"OUT-OF-SAMPLE IC",v:(H.oos.outSample.meanIC>=0?"+":"")+H.oos.outSample.meanIC,s:H.oos.outSample.verdict+" · n="+H.oos.outSample.n,c:vCol(H.oos.outSample.verdict)},
+                        {l:"IN-SAMPLE IC",v:(H.oos.inSample.meanIC>=0?"+":"")+H.oos.inSample.meanIC,s:H.oos.inSample.verdict+" · n="+H.oos.inSample.n,c:vCol(H.oos.inSample.verdict)},
+                        {l:"PLACEBO (merit shuffled)",v:(H.placebo.meanIC>=0?"+":"")+H.placebo.meanIC,s:placeboOk?"null — as it should be":"⚠ still fires",c:placeboOk?"#00e676":"#ff5252"},
+                        {l:"TOP−BOTTOM SPREAD",v:pctOrDash(H.spread.mean),s:H.spread.verdict,c:vCol(H.spread.verdict)},
+                      ].map(x=>(
+                        <div key={x.l} style={{background:"#060810",padding:12,borderRadius:4}}>
+                          <div style={{fontSize:9,color:DIM,letterSpacing:1,marginBottom:4}}>{x.l}</div>
+                          <div style={{fontSize:16,fontWeight:700,color:x.c}}>{x.v}</div>
+                          <div style={{fontSize:9,color:FADE,marginTop:2}}>{x.s}</div>
+                        </div>
+                      ))}
+                    </div>
+                    <div style={{marginTop:12,padding:12,background:"#060810",borderRadius:4,fontSize:11,color:"#90a4ae",lineHeight:1.9}}>
+                      {proven
+                        ? "The edge is statistically present, points the same way out-of-sample, and survives the label-shuffle placebo. Merit-fusion is permitted to nudge the signal — still only on fundamentals you've verified."
+                        : "The edge is NOT established on this universe (most likely INCONCLUSIVE by design — see the caveats). Merits therefore do not move the trade signal; the autopsy stays a conviction overlay only. This is the honest gate working, not a failure."}
+                    </div>
+                  </div>
+
+                  <div style={card}>
+                    <span style={lbl}>PER-PERIOD RANK-IC · {study.primary}</span>
+                    <div style={{overflowX:"auto"}}>
+                      <table style={{width:"100%",borderCollapse:"collapse",fontSize:10}}>
+                        <thead><tr style={{color:DIM,textAlign:"left"}}>
+                          <th style={{padding:"6px 8px"}}>PERIOD</th><th style={{padding:"6px 8px"}}>NAMES</th>
+                          <th style={{padding:"6px 8px"}}>RANK-IC</th><th style={{padding:"6px 8px"}}>TOP−BOTTOM</th>
+                        </tr></thead>
+                        <tbody>
+                          {H.perPeriod.map(p=>(
+                            <tr key={p.period} style={{borderTop:"1px solid "+BG2}}>
+                              <td style={{padding:"6px 8px",color:"#90a4ae"}}>{p.period}</td>
+                              <td style={{padding:"6px 8px",color:"#90a4ae"}}>{p.n}</td>
+                              <td style={{padding:"6px 8px",color:p.ic>=0?"#00e676":"#ff5252"}}>{p.ic>=0?"+":""}{p.ic}</td>
+                              <td style={{padding:"6px 8px",color:"#90a4ae"}}>{pctOrDash(p.spread)}</td>
+                            </tr>
+                          ))}
+                        </tbody>
+                      </table>
+                    </div>
+                    <div style={{marginTop:10,fontSize:10,color:FADE,lineHeight:1.7}}>
+                      6-month horizon for comparison: <b style={{color:vCol(six.significance)}}>{six.significance}</b>,
+                      mean IC {six.meanIC>=0?"+":""}{six.meanIC} over {six.periods} periods.
+                    </div>
+                  </div>
+
+                  <div style={{...card,border:"1px solid rgba(255,215,64,0.20)"}}>
+                    <span style={{...lbl,color:"#ffd740"}}>⚠ READ THIS BEFORE TRUSTING THE VERDICT</span>
+                    {(study.caveats||[]).map((c,i)=>(
+                      <div key={i} style={{fontSize:10,color:"#90a4ae",lineHeight:1.7,marginBottom:4}}>○ {c}</div>
+                    ))}
+                    <div style={{fontSize:9,color:FADE,marginTop:6}}>
+                      Universe {study.universe?.covered}/{study.universe?.requested} names · fundamentals {study.source?.fundamentals} · prices {study.source?.prices} · generated {study.generatedAt?new Date(study.generatedAt).toLocaleDateString():"—"}.
+                    </div>
+                  </div>
                 </>
               );
             })()}

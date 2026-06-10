@@ -1,7 +1,7 @@
 // Offline unit tests for the SEC math — no network. Run: node --test scripts/
 import { test } from "node:test";
 import assert from "node:assert/strict";
-import { secTTM, secQYoY, secInstant, secFirst } from "./sec-lib.mjs";
+import { secTTM, secQYoY, secInstant, secFirst, meritScore, meritMetrics } from "./sec-lib.mjs";
 import { distill, readTickers } from "./build-fundamentals.mjs";
 
 // Helper: wrap a flat array of XBRL entries as a unit node (USD by default).
@@ -99,6 +99,54 @@ test("distill emits price-independent fields the app expects", () => {
   // P/E and P/B must NOT be precomputed (they need the live price)
   assert.equal(rec.peTTM, undefined);
   assert.equal(rec.pbAnnual, undefined);
+});
+
+test("secInstant/secTTM honor an asOf cutoff (point-in-time, no lookahead)", () => {
+  const dur=(s,e,v)=>({start:s,end:e,val:v}), inst=(e,v)=>({end:e,val:v});
+  const eps = node([ dur("2023-01-01","2023-12-31",6), dur("2024-01-01","2024-09-30",5), dur("2023-01-01","2023-09-30",4) ], "USD/shares");
+  const bal = node([ inst("2023-12-31",300), inst("2024-09-30",500) ]);
+  // Latest read: TTM eps = 6+5−4 = 7; balance = 500.
+  assert.equal(secTTM(eps).val, 7);
+  assert.equal(secInstant(bal), 500);
+  // As of mid-2024 the Q3 period (end 2024-09-30) isn't knowable yet:
+  assert.equal(secTTM(eps,"2024-06-30").val, 6);     // falls back to FY2023
+  assert.equal(secTTM(eps,"2024-06-30").basis, "FY");
+  assert.equal(secInstant(bal,"2024-06-30"), 300);   // prior balance sheet
+});
+
+test("distill(j, asOf) reconstructs a point-in-time record", () => {
+  const dur=(s,e,v)=>({start:s,end:e,val:v}), inst=(e,v)=>({end:e,val:v});
+  const j = { facts:{ "us-gaap":{
+    EarningsPerShareDiluted:{ units:{ "USD/shares":[ dur("2023-01-01","2023-12-31",6), dur("2024-01-01","2024-09-30",5), dur("2023-01-01","2023-09-30",4) ] } },
+    NetIncomeLoss:          { units:{ "USD":[ dur("2023-01-01","2023-12-31",1000) ] } },
+    StockholdersEquity:     { units:{ "USD":[ inst("2024-09-30",4000) ] } },
+  }}};
+  assert.equal(distill(j).rec.epsTTM, 7);               // latest sees Q3 → TTM
+  const past = distill(j, "2024-06-30");
+  assert.equal(past.rec.epsTTM, 6);                     // mid-2024 → FY2023
+  assert.equal(past.rec.bvps, undefined);              // Q3 equity not yet filed
+});
+
+test("meritScore reproduces valueScore().total thresholds exactly", () => {
+  // Strong name: cheap 4 + healthy 7 + growing 4 = 15
+  assert.equal(meritScore({peTTM:12, pbAnnual:1.2, "totalDebt/totalEquityAnnual":0.4,
+    roeTTM:0.2, netProfitMarginTTM:0.25, currentRatioAnnual:2,
+    revenueGrowthTTMYoy:0.2, epsGrowthTTMYoy:0.2}), 15);
+  // Weak name: cheap −2 + healthy −7 + growing −2 = −11
+  assert.equal(meritScore({peTTM:30, pbAnnual:6, "totalDebt/totalEquityAnnual":3,
+    roeTTM:-0.1, netProfitMarginTTM:-0.05, currentRatioAnnual:0.8,
+    revenueGrowthTTMYoy:-0.1, epsGrowthTTMYoy:-0.2}), -11);
+  assert.equal(meritScore({}), null);
+  assert.equal(meritScore(null), null);
+});
+
+test("meritMetrics derives P/E and P/B from price, then scores", () => {
+  const rec={ epsTTM:5, bvps:20, de:0.5, roe:0.1, npm:0.1, cr:1.2, revG:0.1, epsG:0.1 };
+  const m=meritMetrics(rec, 100); // pe=20, pb=5
+  assert.equal(m.peTTM, 20);
+  assert.equal(m.pbAnnual, 5);
+  // cheap 0 (+1 pe, −1 pb) + healthy 2 (de+1, roe+1) + growing 2 = 4
+  assert.equal(meritScore(m), 4);
 });
 
 test("readTickers strips comments and blanks", () => {
