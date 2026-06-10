@@ -501,7 +501,12 @@ function buildOutlook(stock, trend, idx){
   const combined=markets.reduce((a,m)=>a+m.pct,0);
   const price=stock[stock.length-1].close;
   const delta=price*combined/100;
-  const up=price+delta, down=price-delta;
+  // Projection moves in the TREND's direction by the SIZE of the combined market
+  // move — so use |delta|. (delta itself stays signed for the "Dollar delta"
+  // readout.) Building up/down from signed delta double-counts the sign on a down
+  // market, which flipped the downtrend price ABOVE spot. See header copy above.
+  const mag=Math.abs(delta);
+  const up=price+mag, down=price-mag;
   const active=trend==="UPTREND"?"UP":trend==="DOWNTREND"?"DOWN":"NEUTRAL";
   const correctionPrice=active==="UP"?up:active==="DOWN"?down:null;
 
