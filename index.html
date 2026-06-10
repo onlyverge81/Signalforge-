@@ -1283,6 +1283,15 @@ function App() {
     fetch("./fundamentals.json").then(r=>r.ok?r.json():null).then(j=>{ if(alive&&j&&typeof j==="object") setFundaDB(j); }).catch(()=>{});
     return ()=>{ alive=false; };
   },[]);
+  // Merit-evidence study (built in CI by scripts/build-study.mjs). Read-only here.
+  // `meritEdgeProven` is the gate: fundamentals may move the signal ONLY when the
+  // cross-sectional study shows a real, OOS-consistent, placebo-surviving edge.
+  const [study, setStudy] = useState(null);
+  useEffect(()=>{ let alive=true;
+    fetch("./study.json").then(r=>r.ok?r.json():null).then(j=>{ if(alive&&j&&typeof j==="object") setStudy(j); }).catch(()=>{});
+    return ()=>{ alive=false; };
+  },[]);
+  const meritEdgeProven = !!(study && study.meritEdgeProven);
   const [resolution,setResolution]= useState("D");
   const [fetching,  setFetching]  = useState(false);
   const [liveMeta,  setLiveMeta]  = useState(null);
@@ -1545,7 +1554,7 @@ function App() {
 
       {/* Tabs */}
       <div style={{background:BG3,borderBottom:"1px solid "+BORD,padding:"0 20px",display:"flex"}}>
-        {[["live","⚡ LIVE"],["input","▣ DATA"],["signals","◈ SIGNALS"],["outlook","◎ OUTLOOK"],["backtest","⟲ BACKTEST"],["replay","▶ REPLAY"],["value","✚ AUTOPSY"],["position","⊞ SIZE"],["history","◷ HISTORY"]].map(([k,l])=>(
+        {[["live","⚡ LIVE"],["input","▣ DATA"],["signals","◈ SIGNALS"],["outlook","◎ OUTLOOK"],["backtest","⟲ BACKTEST"],["replay","▶ REPLAY"],["value","✚ AUTOPSY"],["evidence","🔬 EVIDENCE"],["position","⊞ SIZE"],["history","◷ HISTORY"]].map(([k,l])=>(
           <button key={k} style={tBtn(tab===k)} onClick={()=>setTab(k)}>{l}</button>
         ))}
       </div>
@@ -2714,6 +2723,109 @@ function App() {
                     </div>
                     );
                   })()}
+                </>
+              );
+            })()}
+          </>
+        )}
+
+        {/* ── EVIDENCE TAB — merit-evidence harness (does merit predict forward returns?) ── */}
+        {tab==="evidence"&&(
+          <>
+            {!study&&(
+              <div style={card}>
+                <span style={lbl}>🔬 MERIT EVIDENCE</span>
+                <div style={{fontSize:11,color:"#90a4ae",lineHeight:1.9}}>
+                  No study loaded. <code>study.json</code> is built nightly in CI (<code>scripts/build-study.mjs</code>):
+                  it reconstructs each name's merit <i>point-in-time</i> from SEC filings and tests whether higher
+                  merit actually predicted higher forward returns across the universe. Check back after the next build.
+                </div>
+              </div>
+            )}
+            {study&&(()=>{
+              const H=study.horizons[study.primary]||study.horizons["12m"];
+              const six=study.horizons["6m"]||H;
+              const vCol=v=>v==="SIGNIFICANT"?"#00e676":v==="SUGGESTIVE"?"#ffd740":"#90a4ae";
+              const placeboOk=H.placebo.verdict==="NOT SIGNIFICANT"||H.placebo.verdict==="TOO FEW PERIODS";
+              const proven=!!study.meritEdgeProven;
+              const pctOrDash=v=>v==null?"—":((v>=0?"+":"")+(v*100).toFixed(1)+"%");
+              return (
+                <>
+                  <div style={{...card,background:"linear-gradient(135deg,#0e1320,#0b1025)"}}>
+                    <span style={lbl}>🔬 MERIT EVIDENCE · does fundamental quality predict forward returns?</span>
+                    <div style={{display:"flex",justifyContent:"space-between",flexWrap:"wrap",gap:10,alignItems:"flex-start"}}>
+                      <div>
+                        <div style={{display:"flex",alignItems:"center",gap:12,flexWrap:"wrap"}}>
+                          <span style={{fontSize:22,fontWeight:700,color:vCol(H.significance)}}>{H.significance}</span>
+                          <span style={{fontSize:11,color:DIM}}>{study.primary} horizon · {H.periods} periods · {H.observations} obs</span>
+                        </div>
+                        <div style={{fontSize:11,color:"#90a4ae",marginTop:6}}>
+                          mean rank-IC <b style={{color:vCol(H.significance)}}>{H.meanIC>=0?"+":""}{H.meanIC}</b> (t {H.icT}) — {H.meanIC>0?"higher merit leaned toward higher forward return":"no positive relationship found"}.
+                        </div>
+                      </div>
+                      <span style={{fontSize:9,fontWeight:700,letterSpacing:1,padding:"5px 11px",borderRadius:3,
+                        color:proven?"#00e676":"#90a4ae",
+                        background:(proven?"rgba(0,230,118,0.10)":"rgba(144,164,174,0.10)"),
+                        border:"1px solid "+(proven?"#00e67644":"#90a4ae44")}}>
+                        {proven?"✓ MERIT EDGE ESTABLISHED":"⚖ MERIT EDGE NOT ESTABLISHED"}
+                      </span>
+                    </div>
+                    <div style={{display:"grid",gridTemplateColumns:"repeat(auto-fit,minmax(150px,1fr))",gap:10,marginTop:14}}>
+                      {[
+                        {l:"OUT-OF-SAMPLE IC",v:(H.oos.outSample.meanIC>=0?"+":"")+H.oos.outSample.meanIC,s:H.oos.outSample.verdict+" · n="+H.oos.outSample.n,c:vCol(H.oos.outSample.verdict)},
+                        {l:"IN-SAMPLE IC",v:(H.oos.inSample.meanIC>=0?"+":"")+H.oos.inSample.meanIC,s:H.oos.inSample.verdict+" · n="+H.oos.inSample.n,c:vCol(H.oos.inSample.verdict)},
+                        {l:"PLACEBO (merit shuffled)",v:(H.placebo.meanIC>=0?"+":"")+H.placebo.meanIC,s:placeboOk?"null — as it should be":"⚠ still fires",c:placeboOk?"#00e676":"#ff5252"},
+                        {l:"TOP−BOTTOM SPREAD",v:pctOrDash(H.spread.mean),s:H.spread.verdict,c:vCol(H.spread.verdict)},
+                      ].map(x=>(
+                        <div key={x.l} style={{background:"#060810",padding:12,borderRadius:4}}>
+                          <div style={{fontSize:9,color:DIM,letterSpacing:1,marginBottom:4}}>{x.l}</div>
+                          <div style={{fontSize:16,fontWeight:700,color:x.c}}>{x.v}</div>
+                          <div style={{fontSize:9,color:FADE,marginTop:2}}>{x.s}</div>
+                        </div>
+                      ))}
+                    </div>
+                    <div style={{marginTop:12,padding:12,background:"#060810",borderRadius:4,fontSize:11,color:"#90a4ae",lineHeight:1.9}}>
+                      {proven
+                        ? "The edge is statistically present, points the same way out-of-sample, and survives the label-shuffle placebo. Merit-fusion is permitted to nudge the signal — still only on fundamentals you've verified."
+                        : "The edge is NOT established on this universe (most likely INCONCLUSIVE by design — see the caveats). Merits therefore do not move the trade signal; the autopsy stays a conviction overlay only. This is the honest gate working, not a failure."}
+                    </div>
+                  </div>
+
+                  <div style={card}>
+                    <span style={lbl}>PER-PERIOD RANK-IC · {study.primary}</span>
+                    <div style={{overflowX:"auto"}}>
+                      <table style={{width:"100%",borderCollapse:"collapse",fontSize:10}}>
+                        <thead><tr style={{color:DIM,textAlign:"left"}}>
+                          <th style={{padding:"6px 8px"}}>PERIOD</th><th style={{padding:"6px 8px"}}>NAMES</th>
+                          <th style={{padding:"6px 8px"}}>RANK-IC</th><th style={{padding:"6px 8px"}}>TOP−BOTTOM</th>
+                        </tr></thead>
+                        <tbody>
+                          {H.perPeriod.map(p=>(
+                            <tr key={p.period} style={{borderTop:"1px solid "+BG2}}>
+                              <td style={{padding:"6px 8px",color:"#90a4ae"}}>{p.period}</td>
+                              <td style={{padding:"6px 8px",color:"#90a4ae"}}>{p.n}</td>
+                              <td style={{padding:"6px 8px",color:p.ic>=0?"#00e676":"#ff5252"}}>{p.ic>=0?"+":""}{p.ic}</td>
+                              <td style={{padding:"6px 8px",color:"#90a4ae"}}>{pctOrDash(p.spread)}</td>
+                            </tr>
+                          ))}
+                        </tbody>
+                      </table>
+                    </div>
+                    <div style={{marginTop:10,fontSize:10,color:FADE,lineHeight:1.7}}>
+                      6-month horizon for comparison: <b style={{color:vCol(six.significance)}}>{six.significance}</b>,
+                      mean IC {six.meanIC>=0?"+":""}{six.meanIC} over {six.periods} periods.
+                    </div>
+                  </div>
+
+                  <div style={{...card,border:"1px solid rgba(255,215,64,0.20)"}}>
+                    <span style={{...lbl,color:"#ffd740"}}>⚠ READ THIS BEFORE TRUSTING THE VERDICT</span>
+                    {(study.caveats||[]).map((c,i)=>(
+                      <div key={i} style={{fontSize:10,color:"#90a4ae",lineHeight:1.7,marginBottom:4}}>○ {c}</div>
+                    ))}
+                    <div style={{fontSize:9,color:FADE,marginTop:6}}>
+                      Universe {study.universe?.covered}/{study.universe?.requested} names · fundamentals {study.source?.fundamentals} · prices {study.source?.prices} · generated {study.generatedAt?new Date(study.generatedAt).toLocaleDateString():"—"}.
+                    </div>
+                  </div>
                 </>
               );
             })()}

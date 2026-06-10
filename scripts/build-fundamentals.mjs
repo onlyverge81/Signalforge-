@@ -22,24 +22,27 @@ export function readTickers(file){
 }
 
 // Distill one companyfacts JSON into the stored record. Pure — unit-tested.
-export function distill(j){
+// Optional `asOf` (ISO date) makes the whole record POINT-IN-TIME — only figures
+// knowable on that date are used — which is what the merit-evidence study needs
+// to reconstruct historical merit without lookahead. Omitting it = latest values.
+export function distill(j, asOf){
   const G=(j.facts&&j.facts["us-gaap"])||{}, D=(j.facts&&j.facts["dei"])||{};
   // Flow items → trailing twelve months from the quarterly filings.
-  const epsT=secTTM(secFirst(G,["EarningsPerShareDiluted","EarningsPerShareBasic"]));
-  const niT =secTTM(secFirst(G,["NetIncomeLoss","ProfitLoss"]));
-  const revT=secTTM(secFirst(G,["RevenueFromContractWithCustomerExcludingAssessedTax","Revenues","SalesRevenueNet","RevenueFromContractWithCustomerIncludingAssessedTax"]));
+  const epsT=secTTM(secFirst(G,["EarningsPerShareDiluted","EarningsPerShareBasic"]), asOf);
+  const niT =secTTM(secFirst(G,["NetIncomeLoss","ProfitLoss"]), asOf);
+  const revT=secTTM(secFirst(G,["RevenueFromContractWithCustomerExcludingAssessedTax","Revenues","SalesRevenueNet","RevenueFromContractWithCustomerIncludingAssessedTax"]), asOf);
   // Balance-sheet items → latest reported quarter (already current).
-  const equity=secInstant(secFirst(G,["StockholdersEquity","StockholdersEquityIncludingPortionAttributableToNoncontrollingInterest"]));
-  const shares=secInstant(secFirst(D,["EntityCommonStockSharesOutstanding"])||secFirst(G,["CommonStockSharesOutstanding"]));
-  const assetsC=secInstant(secFirst(G,["AssetsCurrent"]));
-  const liabC =secInstant(secFirst(G,["LiabilitiesCurrent"]));
-  const ltd=secInstant(secFirst(G,["LongTermDebtNoncurrent","LongTermDebt"]));
-  const std=secInstant(secFirst(G,["LongTermDebtCurrent","DebtCurrent"]));
+  const equity=secInstant(secFirst(G,["StockholdersEquity","StockholdersEquityIncludingPortionAttributableToNoncontrollingInterest"]), asOf);
+  const shares=secInstant(secFirst(D,["EntityCommonStockSharesOutstanding"])||secFirst(G,["CommonStockSharesOutstanding"]), asOf);
+  const assetsC=secInstant(secFirst(G,["AssetsCurrent"]), asOf);
+  const liabC =secInstant(secFirst(G,["LiabilitiesCurrent"]), asOf);
+  const ltd=secInstant(secFirst(G,["LongTermDebtNoncurrent","LongTermDebt"]), asOf);
+  const std=secInstant(secFirst(G,["LongTermDebtCurrent","DebtCurrent"]), asOf);
   const debt=(ltd!=null||std!=null)?((ltd||0)+(std||0)):null;
   const eps=epsT&&epsT.val, ni=niT&&niT.val, rev=revT&&revT.val;
   // Growth → latest quarter year-over-year.
-  const revG=secQYoY(secFirst(G,["RevenueFromContractWithCustomerExcludingAssessedTax","Revenues","SalesRevenueNet","RevenueFromContractWithCustomerIncludingAssessedTax"]));
-  const epsG=secQYoY(secFirst(G,["EarningsPerShareDiluted","EarningsPerShareBasic"]));
+  const revG=secQYoY(secFirst(G,["RevenueFromContractWithCustomerExcludingAssessedTax","Revenues","SalesRevenueNet","RevenueFromContractWithCustomerIncludingAssessedTax"]), asOf);
+  const epsG=secQYoY(secFirst(G,["EarningsPerShareDiluted","EarningsPerShareBasic"]), asOf);
 
   const rec={}, set=(k,v)=>{ if(v!=null&&isFinite(v)) rec[k]=+(+v).toFixed(6); };
   set("epsTTM", eps);                                  // for P/E = price ÷ epsTTM
