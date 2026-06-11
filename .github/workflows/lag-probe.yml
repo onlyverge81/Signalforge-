@@ -1,0 +1,76 @@
+name: Data-lag probe
+
+# Measures how FRESH the live feed actually is — Polygon last-trade timestamp vs
+# wall-clock — for the universe + the three real indices, and appends the result to
+# lag-report.json. Staleness is only meaningful while the US market is OPEN, so this
+# runs a few times DURING the session (unlike forward-log.yml, which runs after close).
+# git history of lag-report.json becomes the feed's lag track record.
+#
+# Requires repo secret POLYGON_API_KEY (the REST key — NOT the Flat-Files S3 secret).
+# Optional TWELVE_DATA_KEY adds a free-vs-Polygon delta. Self-contained like
+# forward-log.yml: commits the report and deploys Pages, sharing the 'pages'
+# concurrency group so the workflows never deploy at once.
+
+on:
+  schedule:
+    # ~post-open, midday, pre-close ET (UTC; shifts ±1h with US DST — acceptable).
+    - cron: "0 14,17,20 * * 1-5"
+  workflow_dispatch:
+
+permissions:
+  contents: write   # to commit the refreshed lag-report.json
+  pages: write
+  id-token: write
+
+concurrency:
+  group: pages
+  cancel-in-progress: false
+
+jobs:
+  probe-and-deploy:
+    runs-on: ubuntu-latest
+    environment:
+      name: github-pages
+      url: ${{ steps.deploy.outputs.page_url }}
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Set up Node
+        uses: actions/setup-node@v4
+        with:
+          node-version: 20
+
+      - name: Run offline unit tests
+        run: node --test scripts/*.test.mjs
+
+      - name: Probe feed freshness → lag-report.json
+        env:
+          POLYGON_API_KEY: ${{ secrets.POLYGON_API_KEY }}
+          TWELVE_DATA_KEY: ${{ secrets.TWELVE_DATA_KEY }}
+        # Non-fatal: if the key isn't set yet or a vendor hiccups, still deploy.
+        run: node scripts/lag-probe.mjs || echo "lag-probe skipped (set the POLYGON_API_KEY secret to enable)"
+
+      - name: Commit the report if it changed
+        run: |
+          git config user.name "github-actions[bot]"
+          git config user.email "github-actions[bot]@users.noreply.github.com"
+          if ! git diff --quiet -- lag-report.json; then
+            git add lag-report.json
+            git commit -m "chore: data-lag probe — record feed freshness sample"
+            git push
+          else
+            echo "lag-report.json unchanged — nothing to commit."
+          fi
+
+      - name: Configure Pages
+        uses: actions/configure-pages@v5
+
+      - name: Upload artifact (repo root, incl. fresh lag-report.json)
+        uses: actions/upload-pages-artifact@v3
+        with:
+          path: '.'
+
+      - name: Deploy to GitHub Pages
+        id: deploy
+        uses: actions/deploy-pages@v4
