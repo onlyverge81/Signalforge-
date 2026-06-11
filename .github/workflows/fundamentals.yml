@@ -63,12 +63,17 @@ jobs:
         run: |
           git config user.name "github-actions[bot]"
           git config user.email "github-actions[bot]@users.noreply.github.com"
-          if ! git diff --quiet -- fundamentals.json study.json; then
-            git add fundamentals.json study.json
+          # Stage first, THEN check the staged diff. `git diff --quiet` alone ignores
+          # untracked files, so a never-before-committed fundamentals.json was always
+          # seen as "no change" and never persisted — only living in the deploy
+          # artifact, so any later pages.yml deploy dropped it (blank AUTOPSY).
+          git add fundamentals.json
+          [ -f study.json ] && git add study.json || true
+          if git diff --cached --quiet; then
+            echo "fundamentals.json / study.json unchanged — nothing to commit."
+          else
             git commit -m "chore: refresh SEC fundamentals.json + study.json"
             git push
-          else
-            echo "fundamentals.json / study.json unchanged — nothing to commit."
           fi
 
       - name: Configure Pages
