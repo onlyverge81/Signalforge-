@@ -11,7 +11,7 @@
 
 import { test } from "node:test";
 import assert from "node:assert/strict";
-import { analyze, runBacktest, scoreAt, checkBarExit, tradeNet, realizedStats } from "./engine.mjs";
+import { analyze, runBacktest, scoreAt, checkBarExit, tradeNet, realizedStats, convergenceBreakout, backtestPattern } from "./engine.mjs";
 
 // ─── Helper: deterministic OHLC series (no RNG, fixed formula) ───────────────
 function gen(n){
@@ -113,4 +113,35 @@ test("runBacktest() snapshot on the deterministic 160-bar series", () => {
   assert.equal(bt.stats.expectancy, 3.26);
   assert.equal(bt.stats.maxDrawdown, 0);
   assert.equal(bt.stats.significance, "TOO FEW TRADES"); // only 8 trades on this series
+});
+
+// ─── 5) "Uptrend Convergence with Breakout" pattern detector ─────────────────
+// Coil (flat ribbon) → breakout (steady uptrend) should fire; a flat ribbon alone
+// must stay silent; too-short input returns null.
+function genCoilBreak(){
+  const rows=[]; const push=c=>{ const close=+c.toFixed(4);
+    rows.push({date:"2025-01-01",open:close,high:close+0.2,low:close-0.2,close,volume:1000000}); };
+  for(let i=0;i<40;i++) push(100 + (i%2?0.02:-0.02));   // coil: ribbon pinched flat
+  for(let i=1;i<=40;i++) push(100 + i*0.8);             // pop: steady uptrend
+  return rows;
+}
+function genFlat(n){ const rows=[]; for(let i=0;i<n;i++){ const c=100+(i%2?0.02:-0.02);
+  rows.push({date:"x",open:c,high:c+0.2,low:c-0.2,close:c,volume:1e6}); } return rows; }
+
+test("convergenceBreakout: null on too-short input", () => {
+  assert.equal(convergenceBreakout(genFlat(12)), null);
+});
+
+test("backtestPattern: fires on coil→breakout with a positive forward edge", () => {
+  const bt=backtestPattern(genCoilBreak(), {horizon:5, minBars:30});
+  assert.ok(bt, "expected a result object");
+  assert.ok(bt.signals>0, "expected ≥1 detection, got "+bt.signals);
+  assert.ok(bt.avgFwdRet>0, "uptrend signals should carry positive forward return");
+  assert.ok(bt.edge!=null, "edge should be computable");
+});
+
+test("pattern stays silent on a flat ribbon (no breakout)", () => {
+  const bt=backtestPattern(genFlat(120), {horizon:5, minBars:30});
+  assert.ok(bt, "expected a result with enough bars");
+  assert.equal(bt.signals, 0);
 });
