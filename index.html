@@ -1525,6 +1525,7 @@ function App() {
   const [provider,  setProvider]  = useState((typeof localStorage!=="undefined"&&localStorage.getItem("sf_provider"))||"polygon");
   const [polyKey,   setPolyKey]   = useState((typeof localStorage!=="undefined"&&localStorage.getItem("sf_polygon_key"))||"");
   const [liveFreshness, setLiveFreshness] = useState(null); // {stalenessSec, band, isOpen, provider}
+  const [keyTest, setKeyTest] = useState(null); // {ok, msg} — result of the Polygon "Test key" check
   // Precomputed SEC fundamentals, fetched same-origin (built nightly in CI).
   const [fundaDB,   setFundaDB]   = useState(null);
   useEffect(()=>{ let alive=true;
@@ -1642,6 +1643,26 @@ function App() {
   // Phase-3 macro regime (live only, from the OUTLOOK overlay). Conditions the
   // displayed conviction only when proven; otherwise informational.
   const macro        = outlook ? macroRegime(outlook) : null;
+
+  // Validate a Polygon REST key in the browser (Polygon is reachable client-side):
+  // /prev confirms the key works; the indices snapshot reveals real-time vs delayed.
+  async function testPolyKey(){
+    const k=polyKey.trim();
+    if(!k){ setKeyTest({ok:false,msg:"Paste a Polygon REST key first."}); return; }
+    setKeyTest({ok:null,msg:"Testing…"});
+    try{
+      const j=await polyGet("https://api.polygon.io/v2/aggs/ticker/AAPL/prev?adjusted=true&apiKey="+encodeURIComponent(k));
+      if(!j.results||!j.results.length){ setKeyTest({ok:true,msg:"✓ Key valid (no AAPL bar returned just now)."}); return; }
+      let extra="";
+      try{
+        const sj=await polyGet("https://api.polygon.io/v3/snapshot/indices?ticker.any_of=I:SPX&apiKey="+encodeURIComponent(k));
+        const r=(sj.results||[])[0];
+        if(r){ const lastTs=polyTsToMs(r.last_updated), isOpen=r.market_status==="open"||r.market_status==="regular_trading", st=lastTs!=null?Math.max(0,(Date.now()-lastTs)/1000):null, band=classifyFreshness(st,isOpen);
+          extra=" · indices OK · "+(band==="REALTIME"?"REAL-TIME feed (Developer+)":band==="CLOSED"?"market closed now":band==="DELAYED"?"~15-min delayed (Free/Starter)":"stale"); }
+      }catch(ie){ extra=" · stocks OK, but indices not entitled (needs the Indices add-on)"; }
+      setKeyTest({ok:true,msg:"✓ Valid REST key"+extra});
+    }catch(e){ setKeyTest({ok:false,msg:e.message||"Key test failed."}); }
+  }
 
   async function fetchLive(){
     const usePoly=provider==="polygon";
@@ -1876,7 +1897,11 @@ function App() {
               {provider==="polygon"?(
                 <>
                   <span style={lbl}>POLYGON REST API KEY</span>
-                  <input style={inp} type="password" value={polyKey} onChange={e=>setPolyKey(e.target.value)} placeholder="Paste your Polygon REST key…"/>
+                  <input style={inp} type="password" value={polyKey} onChange={e=>{setPolyKey(e.target.value);setKeyTest(null);}} placeholder="Paste your Polygon REST key…"/>
+                  <div style={{display:"flex",alignItems:"center",gap:10,marginTop:8,flexWrap:"wrap"}}>
+                    <button onClick={testPolyKey} style={{...pill(false),cursor:"pointer"}}>TEST KEY</button>
+                    {keyTest&&<span style={{fontSize:10,color:keyTest.ok===false?"#ff8a80":keyTest.ok===true?"#69f0ae":"#90a4ae"}}>{keyTest.msg}</span>}
+                  </div>
                   <div style={{fontSize:10,color:DIM,lineHeight:1.9,marginTop:8}}>Key from <a href="https://polygon.io/dashboard/api-keys" target="_blank" rel="noreferrer" style={{color:"#00bcd4"}}>polygon.io</a> → <b>Accessing the API</b> tab (the REST key — not the Flat-Files S3 secret). Free tier is 15-min delayed; Developer+ is real-time. Saved on this device only.</div>
                 </>
               ):(
