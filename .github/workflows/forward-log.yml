@@ -1,0 +1,73 @@
+name: Forward-test logger
+
+# Runs the SignalForge engine HEADLESS once per trading day, AFTER the US close,
+# and appends its live decisions to paper-ledger.json as paper trades — then marks
+# open trades to market on the new settled bars. This is the honest, out-of-sample
+# forward test the in-sample backtest can't be: no human, settled EOD bars only,
+# git history = the timestamped, tamper-evident record.
+#
+# Requires repo secret TWELVE_DATA_KEY (a free twelvedata.com API key). Self-
+# contained like fundamentals.yml: it commits the ledger and deploys Pages itself,
+# sharing the 'pages' concurrency group so the two workflows never deploy at once.
+
+on:
+  schedule:
+    - cron: "0 22 * * 1-5"   # 22:00 UTC, weekdays — after 16:00 ET close + settle buffer
+  workflow_dispatch:
+
+permissions:
+  contents: write   # to commit the refreshed paper-ledger.json
+  pages: write
+  id-token: write
+
+concurrency:
+  group: pages
+  cancel-in-progress: false
+
+jobs:
+  log-and-deploy:
+    runs-on: ubuntu-latest
+    environment:
+      name: github-pages
+      url: ${{ steps.deploy.outputs.page_url }}
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Set up Node
+        uses: actions/setup-node@v4
+        with:
+          node-version: 20
+
+      - name: Run offline unit tests
+        run: node --test scripts/*.test.mjs
+
+      - name: Log live signals to paper-ledger.json
+        env:
+          TWELVE_DATA_KEY: ${{ secrets.TWELVE_DATA_KEY }}
+        # Non-fatal: if the key isn't set yet or a vendor hiccups, still deploy.
+        run: node scripts/forward-log.mjs || echo "forward-log skipped (set the TWELVE_DATA_KEY secret to enable)"
+
+      - name: Commit the ledger if it changed
+        run: |
+          git config user.name "github-actions[bot]"
+          git config user.email "github-actions[bot]@users.noreply.github.com"
+          if ! git diff --quiet -- paper-ledger.json; then
+            git add paper-ledger.json
+            git commit -m "chore: forward-test log — append/close paper trades"
+            git push
+          else
+            echo "paper-ledger.json unchanged — nothing to commit."
+          fi
+
+      - name: Configure Pages
+        uses: actions/configure-pages@v5
+
+      - name: Upload artifact (repo root, incl. fresh paper-ledger.json)
+        uses: actions/upload-pages-artifact@v3
+        with:
+          path: '.'
+
+      - name: Deploy to GitHub Pages
+        id: deploy
+        uses: actions/deploy-pages@v4
