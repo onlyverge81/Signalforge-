@@ -603,6 +603,15 @@ function freshnessColor(band){
 }
 // Polygon timestamps are NANOSECONDS (~1e18); tolerate ms (~1e12) too.
 function polyTsToMs(t){ if(t==null) return null; const n=Number(t); if(!isFinite(n)||n<=0) return null; return n>1e14?Math.round(n/1e6):n; }
+// Is the US equity market in regular hours right now (America/New_York, Mon–Fri
+// 09:30–16:00 ET)? Local clock, no API call; ignores holidays — good enough to label
+// REALTIME vs DELAYED vs CLOSED honestly instead of always claiming "live".
+function isUsMarketOpen(d){
+  const et=new Date((d||new Date()).toLocaleString("en-US",{timeZone:"America/New_York"}));
+  const day=et.getDay(); if(day===0||day===6) return false;
+  const mins=et.getHours()*60+et.getMinutes();
+  return mins>=570 && mins<960; // 9:30 → 16:00 ET
+}
 
 // ─── Polygon.io adapters (primary feed) ──────────────────────────────────────
 // True US indices (Polygon prefixes indices with "I:"), replacing the DIA/SPY/QQQ
@@ -630,7 +639,7 @@ async function polyFetchCandles(sym, resolution, key){
   let quote=null;
   try{
     const sj=await (await fetch("https://api.polygon.io/v2/snapshot/locale/us/markets/stocks/tickers/"+encodeURIComponent(sym)+"?apiKey="+encodeURIComponent(key))).json();
-    const t=sj&&sj.ticker; if(t){ const lastTs=polyTsToMs(t.lastTrade&&t.lastTrade.t!=null?t.lastTrade.t:(t.updated!=null?t.updated:(t.min&&t.min.t))); quote={lastTs}; }
+    const t=sj&&sj.ticker; if(t){ const lastTs=polyTsToMs(t.lastTrade&&t.lastTrade.t!=null?t.lastTrade.t:(t.updated!=null?t.updated:(t.min&&t.min.t))); const price=(t.lastTrade&&t.lastTrade.p!=null)?t.lastTrade.p:(t.day&&t.day.c!=null?t.day.c:(t.min&&t.min.c!=null?t.min.c:null)); quote={lastTs, price, changePct:(t.todaysChangePerc!=null?t.todaysChangePerc:null)}; }
   }catch(_){}
   return {candles, quote};
 }
@@ -653,6 +662,27 @@ async function polyFetchIndexMoves(resolution, key){
     const isOpen=r?(r.market_status==="open"||r.market_status==="regular_trading"):false;
     moves[sym]={pct:r&&r.session?(r.session.change_percent):null, value:r?r.value:null, lastTs, isOpen, stalenessSec:lastTs!=null?Math.max(0,(now-lastTs)/1000):null};
   }
+  return {idx, moves};
+}
+// ETF-proxy moves (SPY/DIA/QQQ) — works on ANY Polygon Stocks plan (true indices need
+// a separate Indices subscription). Stock aggs for history + one grouped snapshot for
+// the live % and last-trade timestamp; if no snapshot on this tier, buildOutlook falls
+// back to each proxy's last-bar pct.
+async function polyFetchEtfMoves(resolution, key){
+  const [mult,span]=POLY_RES[resolution]||[1,"day"];
+  const syms=OUTLOOK_PROXIES.map(p=>p[0]);
+  const idx={}, moves={}, now=Date.now();
+  for(const [sym] of OUTLOOK_PROXIES){ idx[sym]=await polyFetchIndexBars(sym, mult, span, key); await new Promise(r=>setTimeout(r,120)); }
+  try{
+    const sj=await polyGet("https://api.polygon.io/v2/snapshot/locale/us/markets/stocks/tickers?tickers="+encodeURIComponent(syms.join(","))+"&apiKey="+encodeURIComponent(key));
+    const byT={}; (sj.tickers||[]).forEach(t=>byT[t.ticker]=t);
+    for(const [sym] of OUTLOOK_PROXIES){
+      const t=byT[sym]; if(!t) continue;
+      const lastTs=polyTsToMs(t.lastTrade&&t.lastTrade.t!=null?t.lastTrade.t:t.updated);
+      const st=lastTs!=null?Math.max(0,(now-lastTs)/1000):null;
+      moves[sym]={pct:t.todaysChangePerc!=null?t.todaysChangePerc:null, value:t.lastTrade&&t.lastTrade.p!=null?t.lastTrade.p:(t.day?t.day.c:null), lastTs, isOpen:st!=null?st<FRESH_DELAYED_SEC:false, stalenessSec:st};
+    }
+  }catch(_){ /* snapshot not entitled on this tier — last-bar pct fallback in buildOutlook */ }
   return {idx, moves};
 }
 
@@ -1567,6 +1597,7 @@ function App() {
   const [fetching,  setFetching]  = useState(false);
   const [liveMeta,  setLiveMeta]  = useState(null);
   const [outlook,   setOutlook]   = useState(null); // Market Outlook → correction-period price (live only)
+  const [outlookError, setOutlookError] = useState(null); // why the Outlook is empty (vs silent blank)
   const [fundaMeta, setFundaMeta] = useState(null); // provenance of auto-filled fundamentals
   const [fundaAuto, setFundaAuto] = useState({});   // which fields came from auto-fetch (vs hand-entered)
   const [fundaVerified, setFundaVerified] = useState(false); // user confirmed auto-data against a primary source
@@ -1670,7 +1701,7 @@ function App() {
     if(!key){setError(usePoly?"Enter your Polygon REST API key first (polygon.io → Accessing the API).":"Enter your free Twelve Data API key first (twelvedata.com).");setTab("live");return;}
     const sym=ticker.trim().toUpperCase();
     if(!sym){setError("Enter a ticker symbol.");return;}
-    setFetching(true);setError("");setOutlook(null);setLiveFreshness(null);
+    setFetching(true);setError("");setOutlook(null);setOutlookError(null);setLiveFreshness(null);
     try{localStorage.setItem(usePoly?"sf_polygon_key":"sf_td_key",key);localStorage.setItem("sf_provider",provider);}catch(e){}
     try{
       const intervalMap={"1":"1min","5":"5min","15":"15min","30":"30min","60":"1h","D":"1day","W":"1week"};
@@ -1697,11 +1728,12 @@ function App() {
       setCsv(csvText);
       // Freshness (the lag test): Polygon carries a last-trade timestamp; TD does not.
       // Provisional isOpen=true here; the Outlook's index market_status refines it below.
+      const mktOpen=isUsMarketOpen();
       if(usePoly && quote && quote.lastTs!=null){
         const stale=Math.max(0,(Date.now()-quote.lastTs)/1000);
-        setLiveFreshness({stalenessSec:stale, isOpen:true, band:classifyFreshness(stale,true), provider:"Polygon"});
+        setLiveFreshness({stalenessSec:stale, isOpen:mktOpen, band:classifyFreshness(stale,mktOpen), provider:"Polygon", price:(quote.price!=null?quote.price:null), changePct:(quote.changePct!=null?quote.changePct:null), lastTs:quote.lastTs});
       }else{
-        setLiveFreshness({stalenessSec:null, isOpen:null, band:null, provider:usePoly?"Polygon":"Twelve Data"});
+        setLiveFreshness({stalenessSec:null, isOpen:usePoly?mktOpen:null, band:null, provider:usePoly?"Polygon":"Twelve Data"});
       }
       setLiveMeta({sym,when:new Date().toLocaleTimeString(),count:candles.length,resolution,provider:usePoly?"Polygon":"Twelve Data"});
       const isPos=mode==="position";
@@ -1730,15 +1762,24 @@ function App() {
         setFundaVerified(false);
       }
       setFundaMeta(fnd.meta?{...fnd.meta,sym}:null);
-      // ── Market Outlook — real index session moves + freshness gate (best-effort) ──
-      try{
-        if(usePoly){
+      // ── Market Outlook — try TRUE indices, fall back to ETF proxies (best-effort) ──
+      if(usePoly){
+        let o=null, src=null, lastErr=null;
+        try{ // true indices (need the Polygon Indices subscription)
           const {idx, moves}=await polyFetchIndexMoves(resolution, key);
-          const o=buildOutlook(candles, result.trend, idx, {proxies:OUTLOOK_INDICES, liveMoves:moves});
-          setOutlook(o);
-          // Refine the LIVE strip's freshness with the authoritative market_status.
-          if(o&&o.fresh){ setLiveFreshness(f=>{ const st=(f&&f.stalenessSec!=null)?f.stalenessSec:o.fresh.stalenessSec; return {stalenessSec:st, isOpen:o.fresh.isOpen, band:classifyFreshness(st,o.fresh.isOpen), provider:"Polygon"}; }); }
-        }else{
+          o=buildOutlook(candles, result.trend, idx, {proxies:OUTLOOK_INDICES, liveMoves:moves}); src="indices";
+        }catch(e1){ lastErr=e1;
+          try{ // ETF proxies (SPY/DIA/QQQ) — work on any Stocks plan
+            const {idx, moves}=await polyFetchEtfMoves(resolution, key);
+            o=buildOutlook(candles, result.trend, idx, {proxies:OUTLOOK_PROXIES, liveMoves:moves}); src="etf";
+          }catch(e2){ lastErr=e2; }
+        }
+        if(o){
+          o.source=src; setOutlook(o);
+          if(o.fresh){ setLiveFreshness(f=>{ const st=(f&&f.stalenessSec!=null)?f.stalenessSec:o.fresh.stalenessSec; return {stalenessSec:st, isOpen:o.fresh.isOpen, band:classifyFreshness(st,o.fresh.isOpen), provider:"Polygon"}; }); }
+        }else{ setOutlook(null); setOutlookError(lastErr?(lastErr.message||String(lastErr)):"Outlook data unavailable right now."); }
+      }else{
+        try{
           const proxies=OUTLOOK_PROXIES.map(p=>p[0]);
           const idxArrs=await Promise.all(proxies.map(async ps=>{
             const u="https://api.twelvedata.com/time_series?symbol="+encodeURIComponent(ps)+"&interval="+interval+"&outputsize=300&apikey="+encodeURIComponent(key);
@@ -1747,9 +1788,9 @@ function App() {
             return d.values.slice().reverse().map(v=>({date:v.datetime,close:+parseFloat(v.close).toFixed(4)})).filter(x=>x.close>0);
           }));
           const idx={}; proxies.forEach((ps,i)=>idx[ps]=idxArrs[i]);
-          setOutlook(buildOutlook(candles, result.trend, idx));
-        }
-      }catch(_){ setOutlook(null); }
+          const o=buildOutlook(candles, result.trend, idx); if(o) o.source="etf"; setOutlook(o);
+        }catch(_){ setOutlook(null); }
+      }
       setTab("signals");
     }catch(e){setError(e.message||"Live fetch failed.");setTab("live");}
     finally{setFetching(false);}
@@ -1757,7 +1798,7 @@ function App() {
 
   function run(slOverride, tpOverride, costOverride) {
     setError("");
-    setOutlook(null); // Outlook needs live market data; not available on the CSV path
+    setOutlook(null);setOutlookError(null); // Outlook needs live market data; not available on the CSV path
     const data = parseCSV(csv);
     if (data.length < 10) { setError("Need at least 10 rows. Click LOAD SAMPLE to see the expected format."); return; }
     const isPos = mode==="position";
@@ -1936,6 +1977,17 @@ function App() {
             {error&&<div style={{background:"rgba(255,82,82,0.08)",border:"1px solid rgba(255,82,82,0.3)",borderRadius:6,padding:12,color:"#ff8a80",fontSize:11,marginBottom:14,lineHeight:1.7}}>⚠ {error}</div>}
             <button style={{...runBtn,opacity:fetching?0.6:1}} onClick={fetchLive} disabled={fetching}>{fetching?"⏳ FETCHING…":"⬇  FETCH LIVE DATA & ANALYZE"}</button>
             {liveMeta&&<div style={{textAlign:"center",fontSize:10,marginTop:10}}><span style={{color:"#00e676"}}>✓ {liveMeta.sym} · {liveMeta.count} candles · {liveMeta.when} · {liveMeta.provider}</span>{liveFreshness&&liveFreshness.band&&<span style={{color:freshnessColor(liveFreshness.band),marginLeft:6}}>· {freshnessLabel(liveFreshness)}</span>}</div>}
+            {liveMeta&&liveFreshness&&liveFreshness.provider==="Polygon"&&liveFreshness.price!=null&&(
+              <div style={{textAlign:"center",fontSize:12,marginTop:6}}>
+                <span style={{color:"#fff",fontWeight:800}}>${(+liveFreshness.price).toFixed(2)}</span>
+                {liveFreshness.changePct!=null&&<span style={{color:liveFreshness.changePct>=0?"#00e676":"#ff5252",marginLeft:6,fontWeight:700}}>{liveFreshness.changePct>=0?"▲":"▼"} {Math.abs(liveFreshness.changePct).toFixed(2)}% today</span>}
+                {liveFreshness.lastTs&&<span style={{color:DIM,marginLeft:6,fontSize:10}}>· last trade {new Date(liveFreshness.lastTs).toLocaleTimeString("en-US",{timeZone:"America/New_York",hour:"2-digit",minute:"2-digit",second:"2-digit"})} ET</span>}
+                <span style={{color:freshnessColor(liveFreshness.band),marginLeft:6,fontSize:10}}>· {freshnessLabel(liveFreshness)}</span>
+              </div>
+            )}
+            {liveMeta&&liveFreshness&&liveFreshness.provider==="Twelve Data"&&(
+              <div style={{textAlign:"center",fontSize:10,marginTop:6,color:DIM}}>last close only — end-of-day feed, no live tick (switch to Polygon for a real-time quote + timestamp)</div>
+            )}
             <div style={{fontSize:9,color:FADE,textAlign:"center",marginTop:8,lineHeight:1.6}}>Stocks: AAPL · Crypto: BTC/USD · Forex: EUR/USD · US stocks also auto-fill VALUE fundamentals from SEC EDGAR filings</div>
           </>
         )}
@@ -2336,6 +2388,7 @@ function App() {
             {!outlook&&(
               <div style={{textAlign:"center",padding:"60px 0"}}>
                 <div style={{fontSize:13,color:DIM}}>No market outlook yet.</div>
+                {outlookError&&<div style={{fontSize:11,color:"#ff8a80",marginTop:8,maxWidth:440,margin:"8px auto 0",lineHeight:1.6}}>⚠ {outlookError}</div>}
                 <div style={{fontSize:11,color:FADE,marginTop:8,maxWidth:420,margin:"8px auto 0"}}>Run <b style={{color:"#00e676"}}>FETCH LIVE DATA</b> — the Outlook pulls the Dow, S&amp;P 500 &amp; Nasdaq in real time and projects a correction-period price. (Not available on the manual CSV path; index data may also be briefly rate-limited on the free tier.)</div>
               </div>
             )}
@@ -2355,7 +2408,7 @@ function App() {
                   <div style={card}>
                     <span style={lbl}>◎ MARKET CORRECTION PERIOD PRICE</span>
                     <div style={{fontSize:11,color:DIM,lineHeight:1.6,marginBottom:14}}>
-                      Sums the three major US indexes' current-session move — {o.fresh?<b style={{color:"#00e676"}}>true S&amp;P 500 · Dow · Nasdaq values</b>:"ETF proxies"} — applies that combined % to {(liveMeta?.sym||"the stock")}'s price for a dollar delta, then projects the price for the current phase — <b style={{color:"#00e676"}}>+ delta</b> in an uptrend, <b style={{color:"#ff5252"}}>− delta</b> in a downtrend.
+                      Sums the three major US indexes' current-session move — {o.source==="indices"?<b style={{color:"#00e676"}}>true S&amp;P 500 · Dow · Nasdaq values</b>:<b style={{color:"#00bcd4"}}>SPY · DIA · QQQ ETF proxies</b>} — applies that combined % to {(liveMeta?.sym||"the stock")}'s price for a dollar delta, then projects the price for the current phase — <b style={{color:"#00e676"}}>+ delta</b> in an uptrend, <b style={{color:"#ff5252"}}>− delta</b> in a downtrend.
                     </div>
                     {o.fresh&&(
                       <div style={{display:"flex",alignItems:"center",gap:8,flexWrap:"wrap",background:BG3,borderRadius:4,padding:"8px 12px",marginBottom:12,border:"1px solid "+(o.fresh.band==="REALTIME"?"rgba(0,230,118,0.30)":o.fresh.band==="CLOSED"?"rgba(144,164,174,0.30)":"rgba(255,215,64,0.30)")}}>
