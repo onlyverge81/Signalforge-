@@ -631,6 +631,92 @@ function scoreAt(slice) {
   return {score:r.score, signal:r.signal, atr:atr(slice)};
 }
 
+// ─── Shared trade-exit + stats helpers ───────────────────────────────────────
+// Factored out of runBacktest so the forward-test ledger (scripts/forward-log +
+// the FORWARD TEST tab) marks positions to market with the IDENTICAL math. These
+// are mirrored VERBATIM in scripts/engine.mjs; engine.test.mjs pins the parity.
+
+// One bar's exit test. SL is checked FIRST so a bar that straddles both SL and
+// TP counts as a LOSS (pessimistic) — the original convention, kept intact.
+function checkBarExit(t, candle){
+  if(t.dir==="BUY"){
+    if(candle.low<=t.sl)   return {exit:t.sl, result:"LOSS"};
+    if(candle.high>=t.tp)  return {exit:t.tp, result:"WIN"};
+  } else { // SELL
+    if(candle.high>=t.sl)  return {exit:t.sl, result:"LOSS"};
+    if(candle.low<=t.tp)   return {exit:t.tp, result:"WIN"};
+  }
+  return null;
+}
+
+// Net P&L of a closed trade after round-trip costs (slip+comm, entry+exit).
+function tradeNet(dir, entry, exit, costPerTrade){
+  const pnl = dir==="BUY" ? (exit-entry) : (entry-exit);
+  const grossPct = pnl/entry*100;
+  const pnlPct = parseFloat((grossPct - (costPerTrade||0)).toFixed(4));
+  return {pnl, grossPct, pnlPct};
+}
+
+// Aggregate stats + equity curve over an array of CLOSED trades (each with
+// .result and .pnlPct/.grossPct). Single source of the significance verdict.
+function realizedStats(trades){
+  const wins=trades.filter(t=>t.result==="WIN");
+  const losses=trades.filter(t=>t.result==="LOSS");
+  const totalPnlPct=trades.reduce((a,t)=>a+t.pnlPct,0);
+  const totalGrossPct=trades.reduce((a,t)=>a+(t.grossPct||t.pnlPct),0);
+  const grossWin=wins.reduce((a,t)=>a+t.pnlPct,0);
+  const grossLoss=Math.abs(losses.reduce((a,t)=>a+t.pnlPct,0));
+  const winRate=trades.length?wins.length/trades.length*100:0;
+  const avgWin=wins.length?grossWin/wins.length:0;
+  const avgLoss=losses.length?grossLoss/losses.length:0;
+  const profitFactor=grossLoss>0?grossWin/grossLoss:(grossWin>0?Infinity:0);
+  const expectancy=trades.length?totalPnlPct/trades.length:0;
+  const totalCostDrag=totalGrossPct-totalPnlPct;
+  const netWins=trades.filter(t=>t.pnlPct>0).length;
+
+  let equity=0;
+  const curve=trades.map(t=>{equity+=t.pnlPct; return parseFloat(equity.toFixed(2));});
+
+  const rets=trades.map(t=>t.pnlPct);
+  const nT=rets.length;
+  const mean=nT?rets.reduce((a,b)=>a+b,0)/nT:0;
+  const variance=nT?rets.reduce((a,b)=>a+Math.pow(b-mean,2),0)/nT:0;
+  const stdDev=Math.sqrt(variance);
+  const sharpe=stdDev>0?mean/stdDev:0;
+  let peak=0,maxDD=0;
+  curve.forEach(eq=>{if(eq>peak)peak=eq;const dd=peak-eq;if(dd>maxDD)maxDD=dd;});
+  let cl=0,maxConsecLoss=0;
+  rets.forEach(x=>{if(x<=0){cl++;if(cl>maxConsecLoss)maxConsecLoss=cl;}else cl=0;});
+  const se=stdDev>0?stdDev/Math.sqrt(nT):0;
+  const tStat=se>0?mean/se:0;
+  let significance="NOT SIGNIFICANT";
+  if(nT<10) significance="TOO FEW TRADES";
+  else if(nT>=30&&Math.abs(tStat)>2) significance="SIGNIFICANT";
+  else if(nT>=20&&Math.abs(tStat)>1.5) significance="SUGGESTIVE";
+
+  return {
+    stats:{
+      total:trades.length, wins:wins.length, losses:losses.length,
+      winRate:parseFloat(winRate.toFixed(1)),
+      avgWin:parseFloat(avgWin.toFixed(2)),
+      avgLoss:parseFloat(avgLoss.toFixed(2)),
+      totalReturn:parseFloat(totalPnlPct.toFixed(2)),
+      grossReturn:parseFloat(totalGrossPct.toFixed(2)),
+      costDrag:parseFloat(totalCostDrag.toFixed(2)),
+      netWins,
+      profitFactor:profitFactor===Infinity?"∞":parseFloat(profitFactor.toFixed(2)),
+      expectancy:parseFloat(expectancy.toFixed(2)),
+      sharpe:parseFloat(sharpe.toFixed(2)),
+      maxDrawdown:parseFloat(maxDD.toFixed(2)),
+      maxConsecLoss,
+      stdDev:parseFloat(stdDev.toFixed(2)),
+      tStat:parseFloat(tStat.toFixed(2)),
+      significance,
+    },
+    curve,
+  };
+}
+
 // Walks through history, opens a trade on each BUY/SELL signal, then checks the
 // NEXT candles to see whether TP or SL was hit first. ATR-based SL/TP, same as live.
 function runBacktest(data, scorer, slMult, tpMult, costs, range, holdMode) {
@@ -667,13 +753,8 @@ function runBacktest(data, scorer, slMult, tpMult, costs, range, holdMode) {
     if (openTrade) {
       const t=openTrade;
       let closed=false;
-      if (t.dir==="BUY") {
-        if (candle.low<=t.sl)   { t.exit=t.sl;  t.result="LOSS"; closed=true; }
-        else if (candle.high>=t.tp){ t.exit=t.tp; t.result="WIN";  closed=true; }
-      } else { // SELL
-        if (candle.high>=t.sl)  { t.exit=t.sl;  t.result="LOSS"; closed=true; }
-        else if (candle.low<=t.tp){ t.exit=t.tp; t.result="WIN";  closed=true; }
-      }
+      const ex=checkBarExit(t, candle);                 // SL/TP touch, SL-first tie
+      if (ex) { t.exit=ex.exit; t.result=ex.result; closed=true; }
       // POSITION/hold mode: exit a long when the long-term thesis breaks (scorer flips to SELL)
       if (!closed && holdMode && t.dir==="BUY") {
         const sNow=scoreFn(slice);
@@ -685,9 +766,8 @@ function runBacktest(data, scorer, slMult, tpMult, costs, range, holdMode) {
       }
       if (closed) {
         t.exitDate=candle.date;
-        t.pnl = t.dir==="BUY" ? (t.exit-t.entry) : (t.entry-t.exit);
-        t.grossPct = t.pnl/t.entry*100;
-        t.pnlPct = parseFloat((t.grossPct - costPerTrade).toFixed(4)); // net after costs
+        const net=tradeNet(t.dir, t.entry, t.exit, costPerTrade);
+        t.pnl=net.pnl; t.grossPct=net.grossPct; t.pnlPct=net.pnlPct;
         t.barsHeld = i - t.openIndex;
         trades.push(t);
         openTrade=null;

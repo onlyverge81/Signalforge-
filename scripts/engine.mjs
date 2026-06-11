@@ -1,0 +1,660 @@
+// SignalForge core engine — server-side (Node), shared with the browser.
+//
+// Ported VERBATIM from the browser app's inline <script> (index.html) so the
+// signal, ATR stops, backtest and t-stat gate are byte-for-byte identical. The
+// reason it lives here too: a browser can compute these, but nothing OUTSIDE the
+// browser (a CI cron, a CLI preview) could — they were trapped in the Babel
+// <script>. Now the same pure math runs in Node so an automated forward test can
+// log the engine's live decisions to paper-ledger.json on settled bars.
+//
+// PARITY RULE: index.html keeps its own copy (it's a no-build static file and
+// cannot import this module). These two copies must stay identical; scripts/
+// engine.test.mjs pins the behavior so they can't silently drift — the same
+// discipline as sec-lib.mjs ↔ the browser's former SEC code.
+
+// ─── CSV Parser ────────────────────────────────────────────────────────────
+export function parseCSV(raw) {
+  try {
+    const lines = raw.trim().split(/\r?\n/).filter(Boolean);
+    if (lines.length < 2) return [];
+    const hdr = lines[0].toLowerCase().split(",").map(h => h.trim());
+    const fi = kws => hdr.findIndex(h => kws.some(k => h.includes(k)));
+    const ci = fi(["close","price","last"]);
+    if (ci < 0) return [];
+    const di=fi(["date","time"]),oi=fi(["open"]),hi=fi(["high"]),li=fi(["low"]),vi=fi(["vol"]);
+    return lines.slice(1).map(line => {
+      const c = line.split(",");
+      const close = parseFloat(c[ci]);
+      return {
+        date:   di>=0 ? (c[di]||"").trim() : "",
+        open:   parseFloat(c[oi]) || close,
+        high:   parseFloat(c[hi]) || close,
+        low:    parseFloat(c[li]) || close,
+        close,
+        volume: parseInt(c[vi]) || 0,
+      };
+    }).filter(d => !isNaN(d.close) && d.close > 0);
+  } catch { return []; }
+}
+
+// ─── Data-integrity audit ───────────────────────────────────────────────────
+// Pure & defensive: never throws, returns {issues:[{level,code,msg}], suspect}.
+export function auditData(rows){
+  const issues=[];
+  if(!rows||rows.length<5) return {issues,suspect:false};
+  const n=rows.length;
+  const add=(level,code,msg)=>issues.push({level,code,msg});
+
+  // 1) Malformed bars: high<low, or open/close outside the [low,high] range.
+  let bad=0;
+  for(const d of rows){
+    if(d.high<d.low) bad++;
+    else if(d.close>d.high+1e-9||d.close<d.low-1e-9||d.open>d.high+1e-9||d.open<d.low-1e-9) bad++;
+  }
+  if(bad) add("SEVERE","ohlc", bad+" bar"+(bad>1?"s have":" has")+" impossible OHLC values (high<low, or open/close outside the range) — the feed is malformed.");
+
+  // 2) Date order / duplicates / gaps (only when dates parse).
+  const ts=rows.map(d=>Date.parse(d.date));
+  if(ts.every(t=>!isNaN(t))){
+    let dup=0,back=0;
+    for(let i=1;i<n;i++){ if(ts[i]===ts[i-1])dup++; else if(ts[i]<ts[i-1])back++; }
+    if(dup) add("WARN","dupdate", dup+" duplicate timestamp"+(dup>1?"s":"")+" — the same bar appears more than once.");
+    if(back) add("WARN","unordered", back+" out-of-order bar"+(back>1?"s":"")+" — dates aren't monotonic, but every indicator assumes chronological order.");
+    const gaps=[]; for(let i=1;i<n;i++){const dt=ts[i]-ts[i-1]; if(dt>0)gaps.push(dt);}
+    if(gaps.length){
+      const med=gaps.slice().sort((a,b)=>a-b)[Math.floor(gaps.length/2)];
+      let big=0; for(const g of gaps) if(g>med*3.5 && g>med+1.5*864e5) big++; // >3.5× typical spacing AND >~1.5d
+      if(big) add("WARN","gap", big+" gap"+(big>1?"s":"")+" in the series (missing bars vs the typical spacing) — backtest windows may straddle holes.");
+    }
+  } else {
+    add("WARN","nodates","Bars have no parseable dates — gap and ordering checks were skipped.");
+  }
+
+  // 3) Discontinuities, sized against the instrument's OWN volatility.
+  const rets=[]; for(let i=1;i<n;i++){ if(rows[i-1].close>0) rets.push(Math.abs((rows[i].close-rows[i-1].close)/rows[i-1].close)); }
+  const sorted=rets.slice().sort((a,b)=>a-b);
+  const medAbs=sorted.length?sorted[Math.floor(sorted.length/2)]:0;
+  const candLimit=Math.max(0.18, medAbs*6);
+  const splitLimit=Math.max(0.35, medAbs*8);
+  let split=0,outlier=0;
+  for(let i=1;i<n;i++){
+    const c0=rows[i-1].close,c1=rows[i].close; if(!(c0>0))continue;
+    const r=(c1-c0)/c0; if(Math.abs(r)<=candLimit) continue;
+    const r2=(i+1<n&&c1>0)?(rows[i+1].close-c1)/c1:0;
+    const reverts=Math.sign(r2)===-Math.sign(r)&&Math.abs(r2)>=Math.abs(r)*0.6;
+    if(reverts) outlier++;
+    else if(Math.abs(r)>splitLimit) split++;
+  }
+  if(split)   add("SEVERE","jump", split+" price discontinuit"+(split>1?"ies":"y")+" far beyond this instrument's normal range — typically an unadjusted split/dividend; it distorts trend, ATR stops and the backtest.");
+  if(outlier) add("SEVERE","outlier", outlier+" single-bar spike"+(outlier>1?"s that revert":" that reverts")+" — a bad print/tick rather than a real move.");
+
+  // 4) Stale / frozen feed: a run of identical closes.
+  let run=1,maxRun=1;
+  for(let i=1;i<n;i++){ if(rows[i].close===rows[i-1].close){ run++; if(run>maxRun)maxRun=run; } else run=1; }
+  if(maxRun>=5)      add("SEVERE","frozen","A frozen stretch of "+maxRun+" identical closes — a stale feed; the volatility and signals computed across it are meaningless.");
+  else if(maxRun>=3) add("WARN","flat","A flat stretch of "+maxRun+" identical closes — possibly thin or stale data.");
+
+  return {issues, suspect:issues.some(i=>i.level==="SEVERE")};
+}
+
+// ─── Technical Analysis ────────────────────────────────────────────────────
+export const sma = (p,n) => p.length<n ? null : p.slice(-n).reduce((a,b)=>a+b,0)/n;
+export function ema(p,n) {
+  if (p.length<n) return null;
+  const k=2/(n+1); let e=p.slice(0,n).reduce((a,b)=>a+b,0)/n;
+  for (let i=n;i<p.length;i++) e=p[i]*k+e*(1-k); return e;
+}
+export function rsi(p,n=14) {
+  if (p.length<n+1) return null;
+  let g=0,l=0;
+  for (let i=p.length-n;i<p.length;i++) { const d=p[i]-p[i-1]; d>0?g+=d:l-=d; }
+  const rs=(g/n)/((l/n)||.0001);
+  return parseFloat((100-100/(1+rs)).toFixed(1));
+}
+export function macd(p) {
+  const e12=ema(p,12),e26=ema(p,26); if(!e12||!e26) return null;
+  const m=e12-e26; return {macd:parseFloat(m.toFixed(4)),ema12:e12,ema26:e26};
+}
+export function bb(p,n=20) {
+  if (p.length<n) return null;
+  const sl=p.slice(-n),mu=sl.reduce((a,b)=>a+b,0)/n;
+  const sd=Math.sqrt(sl.reduce((a,b)=>a+Math.pow(b-mu,2),0)/n);
+  return {upper:mu+2*sd,middle:mu,lower:mu-2*sd};
+}
+export function stoch(data,n=14) {
+  if (data.length<n) return null;
+  const sl=data.slice(-n),lo=Math.min(...sl.map(d=>d.low)),hi=Math.max(...sl.map(d=>d.high));
+  return parseFloat(((sl[sl.length-1].close-lo)/((hi-lo)||1)*100).toFixed(1));
+}
+export function atr(data,n=14) {
+  if (data.length<2) return 0;
+  const trs=data.slice(-Math.min(n+1,data.length)).map((d,i,a)=>{
+    if(i===0) return d.high-d.low;
+    return Math.max(d.high-d.low,Math.abs(d.high-a[i-1].close),Math.abs(d.low-a[i-1].close));
+  });
+  return trs.reduce((a,b)=>a+b,0)/trs.length;
+}
+export function adxCalc(data,n=14){
+  if(data.length<n*2)return null;
+  const tr=[],plusDM=[],minusDM=[];
+  for(let i=1;i<data.length;i++){
+    const h=data[i].high,l=data[i].low,ph=data[i-1].high,pl=data[i-1].low,pc=data[i-1].close;
+    tr.push(Math.max(h-l,Math.abs(h-pc),Math.abs(l-pc)));
+    const up=h-ph,dn=pl-l;
+    plusDM.push(up>dn&&up>0?up:0);
+    minusDM.push(dn>up&&dn>0?dn:0);
+  }
+  const smooth=arr=>{let s=arr.slice(0,n).reduce((a,b)=>a+b,0);const out=[s];for(let i=n;i<arr.length;i++){s=s-s/n+arr[i];out.push(s);}return out;};
+  const trS=smooth(tr),pS=smooth(plusDM),mS=smooth(minusDM);
+  const dx=[];
+  for(let i=0;i<trS.length;i++){
+    const pdi=100*pS[i]/(trS[i]||1),mdi=100*mS[i]/(trS[i]||1);
+    dx.push(100*Math.abs(pdi-mdi)/((pdi+mdi)||1));
+  }
+  if(dx.length<n)return null;
+  const adx=dx.slice(-n).reduce((a,b)=>a+b,0)/n;
+  const li=trS.length-1;
+  const pdi=100*pS[li]/(trS[li]||1),mdi=100*mS[li]/(trS[li]||1);
+  return{adx:+adx.toFixed(1),plusDI:+pdi.toFixed(1),minusDI:+mdi.toFixed(1)};
+}
+export function obvCalc(data){
+  if(data.length<16)return null;
+  let obv=0;const series=[0];
+  for(let i=1;i<data.length;i++){
+    if(data[i].close>data[i-1].close)obv+=data[i].volume;
+    else if(data[i].close<data[i-1].close)obv-=data[i].volume;
+    series.push(obv);
+  }
+  const recent=series.slice(-5).reduce((a,b)=>a+b,0)/5;
+  const prior=series.slice(-15,-5).reduce((a,b)=>a+b,0)/10;
+  return{obv,rising:recent>prior};
+}
+export function vwapCalc(data){
+  if(!data.length)return null;
+  let pv=0,vol=0;
+  data.slice(-20).forEach(d=>{const tp=(d.high+d.low+d.close)/3;pv+=tp*d.volume;vol+=d.volume;});
+  return vol>0?+(pv/vol).toFixed(4):null;
+}
+export function patterns(data) {
+  const out=[],n=data.length; if(n<3) return out;
+  const [c,b,a]=[data[n-1],data[n-2],data[n-3]];
+  const body=d=>Math.abs(d.close-d.open), range=d=>d.high-d.low;
+  if(b.close<b.open&&c.close>c.open&&c.open<=b.close&&c.close>=b.open)
+    out.push({name:"Bullish Engulfing",type:"BULLISH",desc:"Bullish candle fully engulfs prior bearish — strong reversal signal."});
+  if(b.close>b.open&&c.close<c.open&&c.open>=b.close&&c.close<=b.open)
+    out.push({name:"Bearish Engulfing",type:"BEARISH",desc:"Bearish candle fully engulfs prior bullish — strong reversal signal."});
+  if(range(c)>0&&body(c)/range(c)<0.08)
+    out.push({name:"Doji",type:"NEUTRAL",desc:"Open and close nearly equal — indecision, potential reversal ahead."});
+  const lw=Math.min(c.open,c.close)-c.low, uw=c.high-Math.max(c.open,c.close);
+  if(body(c)>0&&lw>2*body(c)&&uw<body(c))
+    out.push({name:"Hammer",type:"BULLISH",desc:"Long lower wick — buyers rejected lows, bullish reversal."});
+  if(body(c)>0&&uw>2*body(c)&&lw<body(c))
+    out.push({name:"Shooting Star",type:"BEARISH",desc:"Long upper wick — sellers rejected highs, bearish reversal."});
+  if([a,b,c].every(d=>d.close>d.open)&&b.close>a.close&&c.close>b.close)
+    out.push({name:"Three White Soldiers",type:"BULLISH",desc:"Three consecutive bullish candles — strong upward momentum."});
+  if([a,b,c].every(d=>d.close<d.open)&&b.close<a.close&&c.close<b.close)
+    out.push({name:"Three Black Crows",type:"BEARISH",desc:"Three consecutive bearish candles — strong downward pressure."});
+  return out;
+}
+export function divergence(closes,n=10) {
+  if(closes.length<n+15) return null;
+  const rsiAt=i=>rsi(closes.slice(0,i+1));
+  const recentP=closes.slice(-n),recentR=closes.slice(0,-n).map((_,i,a)=>rsiAt(i)).filter(Boolean);
+  if(recentR.length<3) return null;
+  const pUp=recentP[recentP.length-1]>recentP[0];
+  const rUp=recentR[recentR.length-1]>recentR[0];
+  if(pUp&&!rUp) return{type:"BEARISH",desc:"Price making higher highs but RSI declining — momentum weakening, potential reversal."};
+  if(!pUp&&rUp)  return{type:"BULLISH",desc:"Price making lower lows but RSI rising — selling pressure fading, potential bottom."};
+  return null;
+}
+
+// ─── SFA12 tracker (composite of SMA5/10/20 + trend %) ───────────────────────
+export function sfa12Series(rows, startIdx=30, lookback=12){
+  const closes=rows.map(d=>d.close);
+  const comp=[];
+  for(let i=0;i<closes.length;i++){
+    if(i<19){ comp.push(null); continue; }
+    const sl=closes.slice(0,i+1);
+    comp.push((sma(sl,5)+sma(sl,10)+sma(sl,20))/3);
+  }
+  const pctAt=(i,n)=>{
+    if(i-lookback<19) return null;
+    const a=sma(closes.slice(0,i-lookback+1),n), b=sma(closes.slice(0,i+1),n);
+    if(a==null||b==null||a===0) return null;
+    return (b-a)/a*100;
+  };
+  const series=[];
+  for(let i=startIdx;i<closes.length;i++){ if(comp[i]!=null) series.push({i,value:comp[i]}); }
+  const li=closes.length-1, sl=closes.slice(0,li+1);
+  const s5=sma(sl,5), s10=sma(sl,10), s20=sma(sl,20);
+  const p5=pctAt(li,5), p10=pctAt(li,10), p20=pctAt(li,20);
+  const pct=(p5!=null&&p10!=null&&p20!=null)?parseFloat(((p5+p10+p20)/3).toFixed(2)):null;
+  let state="SIDEWAYS";
+  if(s5!=null&&s10!=null&&s20!=null&&pct!=null){
+    if(s5>s10&&s10>s20&&pct>0) state="UPTREND";
+    else if(s5<s10&&s10<s20&&pct<0) state="DOWNTREND";
+  }
+  return { value: comp[li], pct, state, lookback, series };
+}
+
+// ─── Shared signal logic: weighted votes + confluence + conflict penalty ─────
+export function computeSignal(ctx, extraVotes=[]) {
+  const {R,M,s5,s10,s20,s50,trend,S,B,last,pats,div,volSig,ADX,OBV,VWAP} = ctx;
+  const votes=[];
+  if(R!=null)  votes.push({n:"RSI",   dir:R<40?1:R>60?-1:0, w:2});
+  if(M)        votes.push({n:"MACD",  dir:M.macd>0?1:-1,     w:2.5});
+  if(s5&&s10)  votes.push({n:"MA",    dir:s5>s10?1:-1,       w:1.5});
+  if(s20&&s50) votes.push({n:"MAlong",dir:s20>s50?1:-1,      w:2});
+  votes.push({n:"Trend", dir:trend==="UPTREND"?1:trend==="DOWNTREND"?-1:0, w:2});
+  if(S!=null)  votes.push({n:"Stoch", dir:S<25?1:S>75?-1:0,  w:1.5});
+  if(B)        votes.push({n:"BB",    dir:last.close<B.lower?1:last.close>B.upper?-1:0, w:1.5});
+  pats.forEach(p=>votes.push({n:"Pat", dir:p.type==="BULLISH"?1:p.type==="BEARISH"?-1:0, w:1.5}));
+  if(div) votes.push({n:"Div", dir:div.type==="BULLISH"?1:-1, w:2.5});
+  if(volSig==="CONFIRMING"&&trend==="UPTREND")   votes.push({n:"Vol",dir:1,w:1});
+  if(volSig==="CONFIRMING"&&trend==="DOWNTREND") votes.push({n:"Vol",dir:-1,w:1});
+  if(ADX) votes.push({n:"ADX", dir:ADX.plusDI>ADX.minusDI?1:-1, w:ADX.adx>25?3:ADX.adx>20?1.5:0.5});
+  if(OBV) votes.push({n:"OBV", dir:OBV.rising?1:-1, w:2});
+  if(VWAP)votes.push({n:"VWAP",dir:last.close>VWAP?1:-1, w:1.5});
+  if(extraVotes.length) votes.push(...extraVotes);
+
+  const active=votes.filter(v=>v.dir!==0);
+  const bull=active.filter(v=>v.dir>0).length;
+  const bear=active.filter(v=>v.dir<0).length;
+  const weighted=active.reduce((a,v)=>a+v.dir*v.w,0);
+  const conflict=Math.min(bull,bear);
+  const penalty=conflict*0.8;
+  const net=weighted>0?weighted-penalty:weighted+penalty;
+
+  let signal="HOLD";
+  if(net>=5 && bull>=3 && bull>bear) signal="BUY";
+  else if(net<=-5 && bear>=3 && bear>bull) signal="SELL";
+
+  const total=bull+bear;
+  const agreement=total>0?Math.max(bull,bear)/total:0;
+  const confidence=Math.min(95,Math.max(35,Math.round(40+Math.abs(net)*3+agreement*15)));
+
+  return {signal, score:parseFloat(net.toFixed(1)), bull, bear, conflict, confidence};
+}
+
+export function analyze(data, ticker, market, strategy, slMult, tpMult) {
+  const SLM = slMult || 1.5;
+  const TPM = tpMult || 2.0;
+  const closes=data.map(d=>d.close), vols=data.map(d=>d.volume);
+  const last=data[data.length-1];
+  const R=rsi(closes), M=macd(closes), B=bb(closes), S=stoch(data), A=atr(data);
+  const s5=sma(closes,Math.min(5,closes.length));
+  const s10=sma(closes,Math.min(10,closes.length));
+  const s20=sma(closes,Math.min(20,closes.length));
+  const s50=sma(closes,Math.min(50,closes.length));
+  const pats=patterns(data);
+  const div=divergence(closes);
+  const ADX=adxCalc(data);
+  const OBV=obvCalc(data);
+  const VWAP=vwapCalc(data);
+
+  const chg=(last.close-closes[0])/closes[0]*100;
+  const trend=chg>2?"UPTREND":chg<-2?"DOWNTREND":"SIDEWAYS";
+  const strength=Math.abs(chg)>8?"STRONG":Math.abs(chg)>3?"MODERATE":"WEAK";
+
+  const avgV=vols.slice(0,-3).reduce((a,b)=>a+b,0)/Math.max(vols.length-3,1);
+  const recV=vols.slice(-3).reduce((a,b)=>a+b,0)/3;
+  const volSig=recV>avgV*1.15?"CONFIRMING":recV<avgV*0.85?"DIVERGING":"NEUTRAL";
+
+  const ctx={R,M,s5,s10,s20,s50,trend,S,B,last,pats,div,volSig,ADX,OBV,VWAP};
+  const sigResult=computeSignal(ctx);
+  const score=sigResult.score;
+  const signal=sigResult.signal;
+  const confidence=sigResult.confidence;
+
+  const sfa12=sfa12Series(data);
+  const sfa12Vote={n:"SFA12", dir: sfa12.state==="UPTREND"?1 : sfa12.state==="DOWNTREND"?-1 : 0, w:2};
+  const pick=o=>({signal:o.signal,confidence:o.confidence,score:o.score,bull:o.bull,bear:o.bear});
+  let sfa12Compare=null;
+  if(sfa12.pct!=null){
+    const sigNew=computeSignal(ctx, sfa12Vote.dir===0?[]:[sfa12Vote]);
+    sfa12Compare={ old:pick(sigResult), new:pick(sigNew), vote:sfa12Vote, changed: sigResult.signal!==sigNew.signal };
+  }
+
+  const sup=Math.min(...data.slice(-Math.min(20,data.length)).map(d=>d.low));
+  const res=Math.max(...data.slice(-Math.min(20,data.length)).map(d=>d.high));
+  const e=last.close;
+  const sl=signal==="BUY"?e-A*SLM:e+A*SLM;
+  const tp1=signal==="BUY"?e+A*TPM:e-A*TPM;
+  const tp2=signal==="BUY"?e+A*TPM*1.75:e-A*TPM*1.75;
+  const rr=parseFloat((Math.abs(tp1-e)/Math.abs(sl-e)).toFixed(1));
+
+  const rsiLabel=R?R>70?"OVERBOUGHT":R<30?"OVERSOLD":"NEUTRAL":"N/A";
+
+  return {
+    signal,confidence,trend,strength,
+    entry:parseFloat(e.toFixed(4)),sl:parseFloat(sl.toFixed(4)),
+    tp1:parseFloat(tp1.toFixed(4)),tp2:parseFloat(tp2.toFixed(4)),rr,
+    support:parseFloat(sup.toFixed(4)),resistance:parseFloat(res.toFixed(4)),
+    score,
+    sfa12, sfa12Compare,
+    confluence:{bull:sigResult.bull,bear:sigResult.bear,conflict:sigResult.conflict},
+    indicators:{
+      rsi:{v:R,label:rsiLabel},
+      stoch:{v:S,label:S>75?"OVERBOUGHT":S<25?"OVERSOLD":"NEUTRAL"},
+      macd:{sig:M?(M.macd>0?"BULLISH":"BEARISH"):"N/A",desc:M?"MACD "+(M.macd>=0?"+":"")+M.macd.toFixed(3):"Insufficient data"},
+      ma:{sig:s5&&s10?(s5>s10?"BULLISH":"BEARISH"):"N/A",s5,s10,s20,s50},
+      bb:{sig:B?(last.close>B.upper?"BEARISH":last.close<B.lower?"BULLISH":"NEUTRAL"):"N/A",v:B},
+      vol:{sig:volSig,recent:recV,avg:avgV},
+      atr:parseFloat(A.toFixed(4)),
+      adx:ADX?{sig:ADX.adx>25?(ADX.plusDI>ADX.minusDI?"BULLISH":"BEARISH"):"NEUTRAL",adx:ADX.adx,plusDI:ADX.plusDI,minusDI:ADX.minusDI}:null,
+      obv:OBV?{sig:OBV.rising?"BULLISH":"BEARISH",rising:OBV.rising,v:OBV.obv}:null,
+      vwap:VWAP?{sig:last.close>VWAP?"BULLISH":"BEARISH",v:VWAP}:null,
+    },
+    patterns:pats, divergence:div,
+    levels:[
+      {price:parseFloat(sup.toFixed(4)),type:"SUPPORT",strength:"STRONG"},
+      {price:parseFloat(res.toFixed(4)),type:"RESISTANCE",strength:"STRONG"},
+      ...(B?[
+        {price:parseFloat(B.lower.toFixed(4)),type:"SUPPORT",strength:"MODERATE"},
+        {price:parseFloat(B.upper.toFixed(4)),type:"RESISTANCE",strength:"MODERATE"},
+      ]:[]),
+    ],
+    risks:[
+      "Support at "+fmt(sup)+" — breach would invalidate bullish thesis",
+      volSig==="DIVERGING"?"Volume declining — weakening conviction in current move":"Monitor for volume confirmation on breakout",
+      R&&R>70?"RSI overbought at "+R+" — momentum may stall soon":R&&R<30?"RSI oversold at "+R+" — bounce possible":"RSI "+R+" — no extreme readings",
+    ],
+    reasoning:
+      ticker+" ("+market+") shows a "+strength.toLowerCase()+" "+trend.toLowerCase()+" over the "+data.length+"-candle period. "+
+      (M?M.macd>0?"MACD positive ("+M.macd.toFixed(3)+") — bullish momentum active. ":"MACD negative ("+M.macd.toFixed(3)+") — bearish pressure. ":"")+
+      (R?"RSI "+R+" ("+rsiLabel+"). ":"")+
+      (div?div.desc+" ":"")+
+      (pats.length?pats[0].name+" pattern detected. ":"")+
+      "Score "+score+" → "+signal+" at "+confidence+"% confidence using "+strategy+".",
+    bias:
+      signal==="BUY"?"Test of resistance near "+fmt(res)+" expected. Volume confirmation required. Trail stop as price moves in your favour.":
+      signal==="SELL"?"Retest of support near "+fmt(sup)+" expected. Any rallies should be treated as selling opportunities.":
+      "Consolidation between "+fmt(sup)+"–"+fmt(res)+" likely. Wait for a decisive breakout with volume before entering.",
+  };
+}
+
+// ─── Scorers (backtest signal at a slice) ────────────────────────────────────
+export function scorePosition(slice){
+  if(slice.length<30)return null;
+  const cl=slice.map(d=>d.close),last=slice[slice.length-1];
+  const s50=sma(cl,Math.min(50,cl.length));
+  const s200=sma(cl,Math.min(200,cl.length));
+  const R=rsi(cl);
+  if(!s50||!s200) return {score:0,signal:"HOLD",atr:atr(slice)};
+  const longUptrend = last.close>s200 && s50>s200;
+  const longDowntrend = last.close<s200 && s50<s200;
+  let signal="HOLD", score=0;
+  if(longUptrend){
+    score=3;
+    if(R!=null && R<45){ signal="BUY"; score=6; }
+  } else if(longDowntrend){
+    score=-6; signal="SELL";
+  }
+  return {score, signal, atr:atr(slice)};
+}
+
+export function scoreFlat(slice){
+  if(slice.length<26)return null;
+  const cl=slice.map(d=>d.close),last=slice[slice.length-1];
+  const R=rsi(cl),M=macd(cl),B=bb(cl),S=stoch(slice);
+  const s5=sma(cl,5),s10=sma(cl,10),s20=sma(cl,20),s50=sma(cl,Math.min(50,cl.length));
+  const pats=patterns(slice),div=divergence(cl);
+  const ADX=adxCalc(slice),OBV=obvCalc(slice),VWAP=vwapCalc(slice);
+  const chg=(last.close-cl[0])/cl[0]*100,trend=chg>2?"UPTREND":chg<-2?"DOWNTREND":"SIDEWAYS";
+  let s=0;
+  if(R!=null)s+=R<40?3:R>70?-3:R<50?1:-1;
+  if(M)s+=M.macd>0?2:-2;
+  if(s5&&s10)s+=s5>s10?1:-1;
+  if(s10&&s20)s+=s10>s20?1:-1;
+  if(s20&&s50)s+=s20>s50?1:-1;
+  s+=trend==="UPTREND"?2:trend==="DOWNTREND"?-2:0;
+  if(S!=null)s+=S<25?2:S>75?-2:0;
+  if(B)s+=last.close<B.lower?2:last.close>B.upper?-2:0;
+  pats.forEach(p=>{s+=p.type==="BULLISH"?2:p.type==="BEARISH"?-2:0;});
+  if(div?.type==="BULLISH")s+=3; if(div?.type==="BEARISH")s-=3;
+  if(ADX&&ADX.adx>25)s+=ADX.plusDI>ADX.minusDI?2:-2;else if(ADX&&ADX.adx>20)s+=ADX.plusDI>ADX.minusDI?1:-1;
+  if(OBV)s+=OBV.rising?1:-1;
+  if(VWAP)s+=last.close>VWAP?1:-1;
+  return{score:s,signal:s>=4?"BUY":s<=-4?"SELL":"HOLD",atr:atr(slice)};
+}
+
+export function scoreAt(slice) {
+  if (slice.length < 26) return null;
+  const closes = slice.map(d=>d.close), vols = slice.map(d=>d.volume);
+  const last = slice[slice.length-1];
+  const R=rsi(closes), M=macd(closes), B=bb(closes), S=stoch(slice);
+  const s5=sma(closes,5), s10=sma(closes,10), s20=sma(closes,20), s50=sma(closes,Math.min(50,closes.length));
+  const pats=patterns(slice), div=divergence(closes);
+  const ADX=adxCalc(slice), OBV=obvCalc(slice), VWAP=vwapCalc(slice);
+  const chg=(last.close-closes[0])/closes[0]*100;
+  const trend=chg>2?"UPTREND":chg<-2?"DOWNTREND":"SIDEWAYS";
+  const avgV=vols.slice(0,-3).reduce((a,b)=>a+b,0)/Math.max(vols.length-3,1);
+  const recV=vols.slice(-3).reduce((a,b)=>a+b,0)/3;
+  const volSig=recV>avgV*1.15?"CONFIRMING":recV<avgV*0.85?"DIVERGING":"NEUTRAL";
+  const r=computeSignal({R,M,s5,s10,s20,s50,trend,S,B,last,pats,div,volSig,ADX,OBV,VWAP});
+  return {score:r.score, signal:r.signal, atr:atr(slice)};
+}
+
+// ─── Shared trade-exit + stats helpers ───────────────────────────────────────
+// Factored out of runBacktest so the forward-test logger marks positions to
+// market with the IDENTICAL math (SL-first tie, cost model, significance). The
+// browser's runBacktest is refactored to call these too — parity by construction.
+
+// One bar's exit test. SL is checked FIRST so a bar that straddles both SL and
+// TP counts as a LOSS (pessimistic) — the original runBacktest convention.
+export function checkBarExit(t, candle){
+  if(t.dir==="BUY"){
+    if(candle.low<=t.sl)   return {exit:t.sl, result:"LOSS"};
+    if(candle.high>=t.tp)  return {exit:t.tp, result:"WIN"};
+  } else { // SELL
+    if(candle.high>=t.sl)  return {exit:t.sl, result:"LOSS"};
+    if(candle.low<=t.tp)   return {exit:t.tp, result:"WIN"};
+  }
+  return null;
+}
+
+// Net P&L of a closed trade after round-trip costs (slip+comm, entry+exit).
+export function tradeNet(dir, entry, exit, costPerTrade){
+  const pnl = dir==="BUY" ? (exit-entry) : (entry-exit);
+  const grossPct = pnl/entry*100;
+  const pnlPct = parseFloat((grossPct - (costPerTrade||0)).toFixed(4));
+  return {pnl, grossPct, pnlPct};
+}
+
+// Aggregate stats + equity curve over an array of CLOSED trades (each with
+// .result and .pnlPct/.grossPct). Single source of the significance verdict.
+export function realizedStats(trades){
+  const wins=trades.filter(t=>t.result==="WIN");
+  const losses=trades.filter(t=>t.result==="LOSS");
+  const totalPnlPct=trades.reduce((a,t)=>a+t.pnlPct,0);
+  const totalGrossPct=trades.reduce((a,t)=>a+(t.grossPct||t.pnlPct),0);
+  const grossWin=wins.reduce((a,t)=>a+t.pnlPct,0);
+  const grossLoss=Math.abs(losses.reduce((a,t)=>a+t.pnlPct,0));
+  const winRate=trades.length?wins.length/trades.length*100:0;
+  const avgWin=wins.length?grossWin/wins.length:0;
+  const avgLoss=losses.length?grossLoss/losses.length:0;
+  const profitFactor=grossLoss>0?grossWin/grossLoss:(grossWin>0?Infinity:0);
+  const expectancy=trades.length?totalPnlPct/trades.length:0;
+  const totalCostDrag=totalGrossPct-totalPnlPct;
+  const netWins=trades.filter(t=>t.pnlPct>0).length;
+
+  let equity=0;
+  const curve=trades.map(t=>{equity+=t.pnlPct; return parseFloat(equity.toFixed(2));});
+
+  const rets=trades.map(t=>t.pnlPct);
+  const nT=rets.length;
+  const mean=nT?rets.reduce((a,b)=>a+b,0)/nT:0;
+  const variance=nT?rets.reduce((a,b)=>a+Math.pow(b-mean,2),0)/nT:0;
+  const stdDev=Math.sqrt(variance);
+  const sharpe=stdDev>0?mean/stdDev:0;
+  let peak=0,maxDD=0;
+  curve.forEach(eq=>{if(eq>peak)peak=eq;const dd=peak-eq;if(dd>maxDD)maxDD=dd;});
+  let cl=0,maxConsecLoss=0;
+  rets.forEach(x=>{if(x<=0){cl++;if(cl>maxConsecLoss)maxConsecLoss=cl;}else cl=0;});
+  const se=stdDev>0?stdDev/Math.sqrt(nT):0;
+  const tStat=se>0?mean/se:0;
+  let significance="NOT SIGNIFICANT";
+  if(nT<10) significance="TOO FEW TRADES";
+  else if(nT>=30&&Math.abs(tStat)>2) significance="SIGNIFICANT";
+  else if(nT>=20&&Math.abs(tStat)>1.5) significance="SUGGESTIVE";
+
+  return {
+    stats:{
+      total:trades.length, wins:wins.length, losses:losses.length,
+      winRate:parseFloat(winRate.toFixed(1)),
+      avgWin:parseFloat(avgWin.toFixed(2)),
+      avgLoss:parseFloat(avgLoss.toFixed(2)),
+      totalReturn:parseFloat(totalPnlPct.toFixed(2)),
+      grossReturn:parseFloat(totalGrossPct.toFixed(2)),
+      costDrag:parseFloat(totalCostDrag.toFixed(2)),
+      netWins,
+      profitFactor:profitFactor===Infinity?"∞":parseFloat(profitFactor.toFixed(2)),
+      expectancy:parseFloat(expectancy.toFixed(2)),
+      sharpe:parseFloat(sharpe.toFixed(2)),
+      maxDrawdown:parseFloat(maxDD.toFixed(2)),
+      maxConsecLoss,
+      stdDev:parseFloat(stdDev.toFixed(2)),
+      tStat:parseFloat(tStat.toFixed(2)),
+      significance,
+    },
+    curve,
+  };
+}
+
+// ─── Backtest engine ─────────────────────────────────────────────────────────
+export function runBacktest(data, scorer, slMult, tpMult, costs, range, holdMode) {
+  const scoreFn = scorer || scoreAt;
+  const SLM = slMult || 1.5;
+  const TPM = tpMult || 2.0;
+  const slipPct = costs?.slip || 0;   // % per side
+  const commPct = costs?.comm || 0;   // % per side
+  const costPerTrade = (slipPct + commPct) * 2; // entry + exit
+  const startIdx = range?.start!=null ? Math.max(30, range.start) : 30;
+  const endIdx   = range?.end!=null   ? range.end : data.length;
+  const trades=[];
+  let openTrade=null;
+  let pending=null; // signal queued on prior bar, fills at THIS bar's open (no lookahead)
+  for (let i=startIdx; i<endIdx; i++) {
+    const slice=data.slice(0,i+1);
+    const candle=data[i];
+
+    // 1) Fill any pending entry at THIS bar's OPEN (realistic — no lookahead)
+    if (pending && !openTrade) {
+      const entry=candle.open;
+      const A=pending.atr;
+      openTrade={
+        dir:pending.dir, entry, openIndex:i, entryDate:candle.date,
+        sl: pending.dir==="BUY"?entry-A*SLM:entry+A*SLM,
+        tp: pending.dir==="BUY"?entry+A*TPM:entry-A*TPM,
+        score:pending.score,
+      };
+      pending=null;
+    }
+
+    // 2) Manage an open trade
+    if (openTrade) {
+      const t=openTrade;
+      let closed=false;
+      const ex=checkBarExit(t, candle);                 // SL/TP touch, SL-first tie
+      if (ex) { t.exit=ex.exit; t.result=ex.result; closed=true; }
+      // POSITION/hold mode: exit a long when the long-term thesis breaks (scorer flips to SELL)
+      if (!closed && holdMode && t.dir==="BUY") {
+        const sNow=scoreFn(slice);
+        if (sNow && sNow.signal==="SELL") {
+          t.exit=candle.close;
+          t.result = candle.close>=t.entry ? "WIN" : "LOSS";
+          closed=true;
+        }
+      }
+      if (closed) {
+        t.exitDate=candle.date;
+        const net=tradeNet(t.dir, t.entry, t.exit, costPerTrade);
+        t.pnl=net.pnl; t.grossPct=net.grossPct; t.pnlPct=net.pnlPct;
+        t.barsHeld = i - t.openIndex;
+        trades.push(t);
+        openTrade=null;
+      }
+    }
+
+    // 3) Generate a signal on THIS bar's close → queue it for NEXT bar's open
+    if (!openTrade && !pending) {
+      const r=scoreFn(slice);
+      if (r && (r.signal==="BUY"||r.signal==="SELL") && r.atr>0) {
+        pending={dir:r.signal, atr:r.atr, score:r.score};
+      }
+    }
+  }
+
+  const {stats,curve}=realizedStats(trades);
+  return { trades, openTrade, stats, curve };
+}
+
+// ─── Buffett-style fundamental VALUE score (for the fundamentalGrade tag) ─────
+export function valueScore(m){
+  if(!m) return null;
+  const flags=[], reasons=[];
+  let cheap=0, healthy=0, growing=0;
+  const num=v=>(v==null||isNaN(v))?null:Number(v);
+  const pe=num(m.peTTM), pb=num(m.pbAnnual), de=num(m["totalDebt/totalEquityAnnual"]);
+  const roe=num(m.roeTTM), npm=num(m.netProfitMarginTTM), cr=num(m.currentRatioAnnual);
+  const revG=num(m.revenueGrowthTTMYoy), epsG=num(m.epsGrowthTTMYoy);
+
+  if(pe!=null){
+    if(pe>0&&pe<15){cheap+=2; reasons.push("P/E "+pe.toFixed(1)+" — attractively valued");}
+    else if(pe>=15&&pe<25){cheap+=1; reasons.push("P/E "+pe.toFixed(1)+" — fairly valued");}
+    else if(pe>=25){cheap-=1; reasons.push("P/E "+pe.toFixed(1)+" — expensive");}
+    else if(pe<=0){flags.push("Negative earnings — no positive P/E");}
+  }
+  if(pb!=null){
+    if(pb>0&&pb<1.5){cheap+=2; reasons.push("P/B "+pb.toFixed(2)+" — near/below book value");}
+    else if(pb>=1.5&&pb<3){cheap+=1;}
+    else if(pb>=5){cheap-=1; reasons.push("P/B "+pb.toFixed(2)+" — pricey vs assets");}
+  }
+  if(de!=null){
+    if(de<0.5){healthy+=2; reasons.push("Debt/equity "+de.toFixed(2)+" — strong balance sheet");}
+    else if(de<1){healthy+=1;}
+    else if(de>2){healthy-=2; flags.push("High debt/equity "+de.toFixed(2));}
+  }
+  if(roe!=null){
+    if(roe>0.15){healthy+=2; reasons.push("ROE "+(roe*100).toFixed(0)+"% — efficient capital use");}
+    else if(roe>0.08){healthy+=1;}
+    else if(roe<0){healthy-=2; flags.push("Negative ROE");}
+  }
+  if(npm!=null){
+    if(npm>0.20){healthy+=2; reasons.push("Net margin "+(npm*100).toFixed(0)+"% — highly profitable");}
+    else if(npm>0.10){healthy+=1;}
+    else if(npm<0){healthy-=2; flags.push("Unprofitable — negative margin");}
+  }
+  if(cr!=null){
+    if(cr>1.5){healthy+=1; reasons.push("Current ratio "+cr.toFixed(1)+" — liquid");}
+    else if(cr<1){healthy-=1; flags.push("Current ratio <1 — liquidity risk");}
+  }
+  if(revG!=null){
+    if(revG>0.15){growing+=2; reasons.push("Revenue +"+(revG*100).toFixed(0)+"% — expanding strongly");}
+    else if(revG>0.05){growing+=1;}
+    else if(revG<0){growing-=1; flags.push("Revenue shrinking");}
+  }
+  if(epsG!=null){
+    if(epsG>0.15){growing+=2; reasons.push("EPS +"+(epsG*100).toFixed(0)+"% — earnings rising");}
+    else if(epsG>0){growing+=1;}
+    else if(epsG<0){growing-=1;}
+  }
+
+  const total=cheap+healthy+growing;
+  let grade,verdict;
+  if(total>=10){grade="A";verdict="STRONG VALUE — cheap, healthy, and growing. The kind of business a value screen flags for deeper study.";}
+  else if(total>=6){grade="B";verdict="GOOD — solid fundamentals with real appeal. Worth a closer look.";}
+  else if(total>=2){grade="C";verdict="FAIR — mixed picture. Some strengths, some concerns.";}
+  else if(total>=-2){grade="D";verdict="WEAK — limited fundamental appeal at current price.";}
+  else{grade="F";verdict="POOR — expensive and/or financially strained. A value investor would likely pass.";}
+
+  const hasData = [pe,pb,de,roe,npm,cr,revG,epsG].some(v=>v!=null);
+  return hasData ? {cheap,healthy,growing,total,grade,verdict,reasons,flags} : null;
+}
+
+// ─── Formatting ────────────────────────────────────────────────────────────
+export function fmt(v,dec) {
+  if(v==null||isNaN(v)) return "—";
+  const d=dec!=null?dec:Math.abs(v)>=100?2:4;
+  return "$"+Number(v).toFixed(d);
+}
