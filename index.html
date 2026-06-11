@@ -2,7 +2,7 @@
 <html lang="en">
 <head>
 <meta charset="UTF-8"/>
-<meta http-equiv="Content-Security-Policy" content="default-src 'self'; script-src 'self' 'unsafe-inline' 'unsafe-eval' https://unpkg.com; style-src 'self' 'unsafe-inline' https://fonts.googleapis.com; font-src 'self' https://fonts.gstatic.com; img-src 'self' data:; connect-src 'self' https://api.twelvedata.com; object-src 'none'; base-uri 'self'; form-action 'self'"/>
+<meta http-equiv="Content-Security-Policy" content="default-src 'self'; script-src 'self' 'unsafe-inline' 'unsafe-eval' https://unpkg.com; style-src 'self' 'unsafe-inline' https://fonts.googleapis.com; font-src 'self' https://fonts.gstatic.com; img-src 'self' data:; connect-src 'self' https://api.twelvedata.com https://api.polygon.io; object-src 'none'; base-uri 'self'; form-action 'self'"/>
 <meta name="viewport" content="width=device-width,initial-scale=1,maximum-scale=1"/>
 <meta name="theme-color" content="#080b14"/>
 <title>SignalForge — Live Trading Analyzer</title>
@@ -486,16 +486,22 @@ function idxPctSeries(candles){
 //   stock : analysed candle array (needs .date/.close)
 //   trend : analysis.trend ("UPTREND" | "DOWNTREND" | "SIDEWAYS") for the live call
 //   idx   : { DIA:[candles], SPY:[candles], QQQ:[candles] }
-function buildOutlook(stock, trend, idx){
+function buildOutlook(stock, trend, idx, opts){
   if(!stock||stock.length<2||!idx) return null;
-  const syms=OUTLOOK_PROXIES.map(p=>p[0]);
+  const proxies=(opts&&opts.proxies)||OUTLOOK_PROXIES;
+  const liveMoves=(opts&&opts.liveMoves)||null;
+  const syms=proxies.map(p=>p[0]);
   if(syms.some(s=>!idx[s]||idx[s].length<2)) return null;
   const series={}; syms.forEach(s=>series[s]=idxPctSeries(idx[s]));
 
   // ── Live: SUM each proxy's latest close-to-prev-close % ──
-  const markets=OUTLOOK_PROXIES.map(([sym,label])=>{
+  const markets=proxies.map(([sym,label])=>{
     const sr=series[sym], last=sr[sr.length-1];
-    return {sym,label,pct:last.pct,price:last.close};
+    const lm=liveMoves&&liveMoves[sym];
+    // Prefer the live snapshot's real session % (with a known timestamp); fall back
+    // to the last bar's close-to-prevclose when no live move is available.
+    const pct=(lm&&lm.pct!=null)?lm.pct:last.pct;
+    return {sym,label,pct,price:(lm&&lm.value!=null)?lm.value:last.close};
   });
   if(markets.some(m=>m.pct==null)) return null;
   const combined=markets.reduce((a,m)=>a+m.pct,0);
@@ -539,7 +545,19 @@ function buildOutlook(stock, trend, idx){
   const acc=n?hits/n*100:null, baseline=n?baseHits/n*100:null;
   const backtest=n?{n,acc,baseline,edge:acc-baseline,avgErr:errSum/n,avgPctErr:pctErrSum/n}:null;
 
-  return {markets,combined,price,delta,up,down,active,trend,correctionPrice,backtest};
+  // Freshness provenance from the live snapshot (drives the Outlook's freshness gate).
+  let fresh=null;
+  if(liveMoves){
+    const ms=syms.map(s=>liveMoves[s]).filter(Boolean);
+    if(ms.length){
+      const st=ms.map(m=>m.stalenessSec).filter(x=>x!=null);
+      const isOpen=ms.some(m=>m.isOpen);
+      const worst=st.length?Math.max(...st):null;
+      fresh={stalenessSec:worst, isOpen, band:classifyFreshness(worst,isOpen),
+             perIndex:proxies.map(([s,label])=>({sym:s,label,...(liveMoves[s]||{})}))};
+    }
+  }
+  return {markets,combined,price,delta,up,down,active,trend,correctionPrice,backtest,fresh};
 }
 
 // ─── Phase-3 macro regime — condition conviction on the market, when earned ───
@@ -558,6 +576,84 @@ function macroRegime(outlook){
     : (bt ? "Market overlay does NOT clear its trend-only baseline ("+(bt.edge>=0?"+":"")+bt.edge.toFixed(1)+"pp, n="+bt.n+") — regime shown for context only."
           : "Not enough overlapping market history to validate the overlay — context only.");
   return {regime, proven, combined:c, note};
+}
+
+// ─── Data-freshness (the "lag test", browser side) ───────────────────────────
+// Mirrors the bands in scripts/lag-probe.mjs so the app and the CI probe agree.
+// stalenessSec = now − last-trade timestamp; only meaningful while the market is
+// open. This is what lets the app say "feed 8s fresh" vs "15-min delayed".
+const FRESH_REALTIME_SEC=60, FRESH_DELAYED_SEC=20*60;
+function classifyFreshness(stalenessSec, isOpen){
+  if(!isOpen) return "CLOSED";
+  if(stalenessSec==null||!isFinite(stalenessSec)) return "UNKNOWN";
+  if(stalenessSec<FRESH_REALTIME_SEC) return "REALTIME";
+  if(stalenessSec<FRESH_DELAYED_SEC) return "DELAYED";
+  return "STALE";
+}
+function freshnessLabel(f){
+  if(!f) return "";
+  if(f.band==="CLOSED") return "market closed — last session";
+  if(f.band==="REALTIME") return "feed "+Math.round(f.stalenessSec)+"s fresh";
+  if(f.band==="DELAYED") return "delayed ~"+Math.max(1,Math.round(f.stalenessSec/60))+"m";
+  if(f.band==="STALE") return "stale "+(f.stalenessSec/60).toFixed(0)+"m";
+  return "freshness unknown";
+}
+function freshnessColor(band){
+  return band==="REALTIME"?"#00e676":band==="DELAYED"?"#ffd740":band==="CLOSED"?"#90a4ae":band==="STALE"?"#ff5252":"#90a4ae";
+}
+// Polygon timestamps are NANOSECONDS (~1e18); tolerate ms (~1e12) too.
+function polyTsToMs(t){ if(t==null) return null; const n=Number(t); if(!isFinite(n)||n<=0) return null; return n>1e14?Math.round(n/1e6):n; }
+
+// ─── Polygon.io adapters (primary feed) ──────────────────────────────────────
+// True US indices (Polygon prefixes indices with "I:"), replacing the DIA/SPY/QQQ
+// ETF proxies the Outlook used to sum. Real session % + a last-trade timestamp.
+const OUTLOOK_INDICES=[["I:DJI","Dow"],["I:SPX","S&P 500"],["I:NDX","Nasdaq"]];
+const POLY_RES={ "1":[1,"minute"],"5":[5,"minute"],"15":[15,"minute"],"30":[30,"minute"],"60":[1,"hour"],"D":[1,"day"],"W":[1,"week"] };
+function polyWindowMs(span){ const D=864e5; return span==="minute"?10*D:span==="hour"?90*D:span==="week"?2500*D:600*D; }
+function polyBarDate(tMs,span){ const iso=new Date(tMs).toISOString(); return (span==="day"||span==="week")?iso.slice(0,10):iso.slice(0,16).replace("T"," "); }
+function polyErr(j){
+  const m=j&&(j.error||j.message)||"Polygon request failed.";
+  if(/not entitled|NOT_AUTHORIZED|isn't included|not included/i.test(m)) return "Your Polygon plan doesn't include this data — real-time/index needs the Developer tier. ("+m+")";
+  if(/unknown api key|invalid api key|unauthorized|401/i.test(m)) return "Invalid Polygon REST key — copy it from polygon.io/dashboard/api-keys (the REST key, NOT the Flat-Files S3 secret).";
+  if(/exceeded|maximum requests|rate limit|429/i.test(m)) return "Polygon rate limit reached (5/min on Free). Wait a minute, or upgrade for unlimited.";
+  return m;
+}
+async function polyGet(url){ const r=await fetch(url); const j=await r.json(); if(j&&(j.status==="ERROR"||j.error)) throw new Error(polyErr(j)); return j; }
+function polyBars(results,span){ return (results||[]).map(b=>({date:polyBarDate(b.t,span),open:+(+b.o).toFixed(4),high:+(+b.h).toFixed(4),low:+(+b.l).toFixed(4),close:+(+b.c).toFixed(4),volume:+b.v||0})).filter(d=>d.close>0); }
+// Stock OHLC bars + a best-effort freshness quote → {candles, quote:{lastTs,isOpen}}
+async function polyFetchCandles(sym, resolution, key){
+  const [mult,span]=POLY_RES[resolution]||[1,"day"];
+  const to=new Date(), from=new Date(to.getTime()-polyWindowMs(span)), fmt=d=>d.toISOString().slice(0,10);
+  const j=await polyGet("https://api.polygon.io/v2/aggs/ticker/"+encodeURIComponent(sym)+"/range/"+mult+"/"+span+"/"+fmt(from)+"/"+fmt(to)+"?adjusted=true&sort=asc&limit=5000&apiKey="+encodeURIComponent(key));
+  if(!j.results||!j.results.length) throw new Error('No Polygon data for "'+sym+'". US stocks/ETFs only (e.g. AAPL, SPY).');
+  const candles=polyBars(j.results,span).slice(-300);
+  let quote=null;
+  try{
+    const sj=await (await fetch("https://api.polygon.io/v2/snapshot/locale/us/markets/stocks/tickers/"+encodeURIComponent(sym)+"?apiKey="+encodeURIComponent(key))).json();
+    const t=sj&&sj.ticker; if(t){ const lastTs=polyTsToMs(t.lastTrade&&t.lastTrade.t!=null?t.lastTrade.t:(t.updated!=null?t.updated:(t.min&&t.min.t))); quote={lastTs}; }
+  }catch(_){}
+  return {candles, quote};
+}
+// One index's historical daily bars (for the directional backtest alignment).
+async function polyFetchIndexBars(sym, mult, span, key){
+  const to=new Date(), from=new Date(to.getTime()-polyWindowMs(span)), fmt=d=>d.toISOString().slice(0,10);
+  const j=await polyGet("https://api.polygon.io/v2/aggs/ticker/"+encodeURIComponent(sym)+"/range/"+mult+"/"+span+"/"+fmt(from)+"/"+fmt(to)+"?sort=asc&limit=5000&apiKey="+encodeURIComponent(key));
+  return polyBars(j.results,span).slice(-300);
+}
+// Real-time index session moves + provenance + historical bars for the Outlook.
+async function polyFetchIndexMoves(resolution, key){
+  const syms=OUTLOOK_INDICES.map(i=>i[0]);
+  const sj=await polyGet("https://api.polygon.io/v3/snapshot/indices?ticker.any_of="+encodeURIComponent(syms.join(","))+"&apiKey="+encodeURIComponent(key));
+  const byT={}; (sj.results||[]).forEach(r=>byT[r.ticker]=r);
+  const [mult,span]=POLY_RES[resolution]||[1,"day"];
+  const idx={}, moves={}, now=Date.now();
+  for(const [sym] of OUTLOOK_INDICES){
+    idx[sym]=await polyFetchIndexBars(sym, mult, span, key);
+    const r=byT[sym], lastTs=r?polyTsToMs(r.last_updated):null;
+    const isOpen=r?(r.market_status==="open"||r.market_status==="regular_trading"):false;
+    moves[sym]={pct:r&&r.session?(r.session.change_percent):null, value:r?r.value:null, lastTs, isOpen, stalenessSec:lastTs!=null?Math.max(0,(now-lastTs)/1000):null};
+  }
+  return {idx, moves};
 }
 
 // ─── Backtest engine ─────────────────────────────────────────────────────────
@@ -1424,6 +1520,12 @@ function App() {
   const fundaAutopsy = fundaMetrics ? companyAutopsy(fundaMetrics) : null;
   const valAnchor    = fundaMetrics ? valuationAnchor(fundaMetrics) : null; // Graham margin of safety
   const [apiKey,    setApiKey]    = useState((typeof localStorage!=="undefined"&&localStorage.getItem("sf_td_key"))||"");
+  // Data provider: Polygon.io (real-time + TRUE indices) is primary; Twelve Data is
+  // the fallback. Per-provider keys; the live feed labels its own freshness (lag test).
+  const [provider,  setProvider]  = useState((typeof localStorage!=="undefined"&&localStorage.getItem("sf_provider"))||"polygon");
+  const [polyKey,   setPolyKey]   = useState((typeof localStorage!=="undefined"&&localStorage.getItem("sf_polygon_key"))||"");
+  const [liveFreshness, setLiveFreshness] = useState(null); // {stalenessSec, band, isOpen, provider}
+  const [keyTest, setKeyTest] = useState(null); // {ok, msg} — result of the Polygon "Test key" check
   // Precomputed SEC fundamentals, fetched same-origin (built nightly in CI).
   const [fundaDB,   setFundaDB]   = useState(null);
   useEffect(()=>{ let alive=true;
@@ -1449,6 +1551,15 @@ function App() {
       if(!alive) return;
       const arr=Array.isArray(j)?j:(j&&Array.isArray(j.trades)?j.trades:[]);
       setLedger(arr);
+    }).catch(()=>{});
+    return ()=>{ alive=false; };
+  },[]);
+  // Feed-lag report — the git-versioned freshness record built in CI by
+  // scripts/lag-probe.mjs (during market hours). Read-only viewer, same-origin.
+  const [lagReport, setLagReport] = useState(null);
+  useEffect(()=>{ let alive=true;
+    fetch("./lag-report.json").then(r=>r.ok?r.json():null).then(j=>{
+      if(alive&&j&&typeof j==="object"&&j.latest) setLagReport(j);
     }).catch(()=>{});
     return ()=>{ alive=false; };
   },[]);
@@ -1533,32 +1644,66 @@ function App() {
   // displayed conviction only when proven; otherwise informational.
   const macro        = outlook ? macroRegime(outlook) : null;
 
+  // Validate a Polygon REST key in the browser (Polygon is reachable client-side):
+  // /prev confirms the key works; the indices snapshot reveals real-time vs delayed.
+  async function testPolyKey(){
+    const k=polyKey.trim();
+    if(!k){ setKeyTest({ok:false,msg:"Paste a Polygon REST key first."}); return; }
+    setKeyTest({ok:null,msg:"Testing…"});
+    try{
+      const j=await polyGet("https://api.polygon.io/v2/aggs/ticker/AAPL/prev?adjusted=true&apiKey="+encodeURIComponent(k));
+      if(!j.results||!j.results.length){ setKeyTest({ok:true,msg:"✓ Key valid (no AAPL bar returned just now)."}); return; }
+      let extra="";
+      try{
+        const sj=await polyGet("https://api.polygon.io/v3/snapshot/indices?ticker.any_of=I:SPX&apiKey="+encodeURIComponent(k));
+        const r=(sj.results||[])[0];
+        if(r){ const lastTs=polyTsToMs(r.last_updated), isOpen=r.market_status==="open"||r.market_status==="regular_trading", st=lastTs!=null?Math.max(0,(Date.now()-lastTs)/1000):null, band=classifyFreshness(st,isOpen);
+          extra=" · indices OK · "+(band==="REALTIME"?"REAL-TIME feed (Developer+)":band==="CLOSED"?"market closed now":band==="DELAYED"?"~15-min delayed (Free/Starter)":"stale"); }
+      }catch(ie){ extra=" · stocks OK, but indices not entitled (needs the Indices add-on)"; }
+      setKeyTest({ok:true,msg:"✓ Valid REST key"+extra});
+    }catch(e){ setKeyTest({ok:false,msg:e.message||"Key test failed."}); }
+  }
+
   async function fetchLive(){
-    const key=apiKey.trim();
-    if(!key){setError("Enter your free Twelve Data API key first (twelvedata.com).");setTab("live");return;}
+    const usePoly=provider==="polygon";
+    const key=(usePoly?polyKey:apiKey).trim();
+    if(!key){setError(usePoly?"Enter your Polygon REST API key first (polygon.io → Accessing the API).":"Enter your free Twelve Data API key first (twelvedata.com).");setTab("live");return;}
     const sym=ticker.trim().toUpperCase();
     if(!sym){setError("Enter a ticker symbol.");return;}
-    setFetching(true);setError("");setOutlook(null);
-    try{localStorage.setItem("sf_td_key",key);}catch(e){}
+    setFetching(true);setError("");setOutlook(null);setLiveFreshness(null);
+    try{localStorage.setItem(usePoly?"sf_polygon_key":"sf_td_key",key);localStorage.setItem("sf_provider",provider);}catch(e){}
     try{
       const intervalMap={"1":"1min","5":"5min","15":"15min","30":"30min","60":"1h","D":"1day","W":"1week"};
       const interval=intervalMap[resolution]||"1day";
-      const url="https://api.twelvedata.com/time_series?symbol="+encodeURIComponent(sym)+"&interval="+interval+"&outputsize=300&apikey="+encodeURIComponent(key);
-      const res=await fetch(url);
-      const j=await res.json();
-      if(j.status==="error"||j.code){
-        const msg=j.message||"Request failed.";
-        if(/api key/i.test(msg))throw new Error("Invalid API key. Check it at twelvedata.com dashboard.");
-        if(/limit/i.test(msg))throw new Error("Daily limit reached (800/day free). Try again later.");
-        throw new Error(msg);
+      let candles, quote=null;
+      if(usePoly){
+        const r=await polyFetchCandles(sym, resolution, key);
+        candles=r.candles; quote=r.quote;
+      }else{
+        const url="https://api.twelvedata.com/time_series?symbol="+encodeURIComponent(sym)+"&interval="+interval+"&outputsize=300&apikey="+encodeURIComponent(key);
+        const res=await fetch(url);
+        const j=await res.json();
+        if(j.status==="error"||j.code){
+          const msg=j.message||"Request failed.";
+          if(/api key/i.test(msg))throw new Error("Invalid API key. Check it at twelvedata.com dashboard.");
+          if(/limit/i.test(msg))throw new Error("Daily limit reached (800/day free). Try again later.");
+          throw new Error(msg);
+        }
+        if(!j.values||!j.values.length)throw new Error('No data for "'+sym+'". Stocks: AAPL. Forex: EUR/USD. Crypto: BTC/USD.');
+        candles=j.values.slice().reverse().map(v=>({date:v.datetime,open:+parseFloat(v.open||v.close).toFixed(4),high:+parseFloat(v.high||v.close).toFixed(4),low:+parseFloat(v.low||v.close).toFixed(4),close:+parseFloat(v.close).toFixed(4),volume:parseFloat(v.volume)||0})).filter(d=>d.close>0);
       }
-      if(!j.values||!j.values.length)throw new Error('No data for "'+sym+'". Stocks: AAPL. Forex: EUR/USD. Crypto: BTC/USD.');
-      const vals=j.values.slice().reverse();
-      const candles=vals.map(v=>({date:v.datetime,open:+parseFloat(v.open||v.close).toFixed(4),high:+parseFloat(v.high||v.close).toFixed(4),low:+parseFloat(v.low||v.close).toFixed(4),close:+parseFloat(v.close).toFixed(4),volume:parseFloat(v.volume)||0})).filter(d=>d.close>0);
       if(candles.length<10)throw new Error("Only "+candles.length+" candles — try Daily/Weekly resolution.");
       const csvText="Date,Open,High,Low,Close,Volume\n"+candles.map(d=>d.date+","+d.open+","+d.high+","+d.low+","+d.close+","+d.volume).join("\n");
       setCsv(csvText);
-      setLiveMeta({sym,when:new Date().toLocaleTimeString(),count:candles.length,resolution});
+      // Freshness (the lag test): Polygon carries a last-trade timestamp; TD does not.
+      // Provisional isOpen=true here; the Outlook's index market_status refines it below.
+      if(usePoly && quote && quote.lastTs!=null){
+        const stale=Math.max(0,(Date.now()-quote.lastTs)/1000);
+        setLiveFreshness({stalenessSec:stale, isOpen:true, band:classifyFreshness(stale,true), provider:"Polygon"});
+      }else{
+        setLiveFreshness({stalenessSec:null, isOpen:null, band:null, provider:usePoly?"Polygon":"Twelve Data"});
+      }
+      setLiveMeta({sym,when:new Date().toLocaleTimeString(),count:candles.length,resolution,provider:usePoly?"Polygon":"Twelve Data"});
       const isPos=mode==="position";
       const scorer=isPos?scorePosition:scoreAt;
       const hold=isPos;
@@ -1585,17 +1730,25 @@ function App() {
         setFundaVerified(false);
       }
       setFundaMeta(fnd.meta?{...fnd.meta,sym}:null);
-      // ── Market Outlook (best-effort; 3 extra proxy fetches, never blocks the signal) ──
+      // ── Market Outlook — real index session moves + freshness gate (best-effort) ──
       try{
-        const proxies=OUTLOOK_PROXIES.map(p=>p[0]);
-        const idxArrs=await Promise.all(proxies.map(async ps=>{
-          const u="https://api.twelvedata.com/time_series?symbol="+encodeURIComponent(ps)+"&interval="+interval+"&outputsize=300&apikey="+encodeURIComponent(key);
-          const r=await fetch(u); const d=await r.json();
-          if(!d.values||!d.values.length) throw new Error("no outlook data for "+ps);
-          return d.values.slice().reverse().map(v=>({date:v.datetime,close:+parseFloat(v.close).toFixed(4)})).filter(x=>x.close>0);
-        }));
-        const idx={}; proxies.forEach((ps,i)=>idx[ps]=idxArrs[i]);
-        setOutlook(buildOutlook(candles, result.trend, idx));
+        if(usePoly){
+          const {idx, moves}=await polyFetchIndexMoves(resolution, key);
+          const o=buildOutlook(candles, result.trend, idx, {proxies:OUTLOOK_INDICES, liveMoves:moves});
+          setOutlook(o);
+          // Refine the LIVE strip's freshness with the authoritative market_status.
+          if(o&&o.fresh){ setLiveFreshness(f=>{ const st=(f&&f.stalenessSec!=null)?f.stalenessSec:o.fresh.stalenessSec; return {stalenessSec:st, isOpen:o.fresh.isOpen, band:classifyFreshness(st,o.fresh.isOpen), provider:"Polygon"}; }); }
+        }else{
+          const proxies=OUTLOOK_PROXIES.map(p=>p[0]);
+          const idxArrs=await Promise.all(proxies.map(async ps=>{
+            const u="https://api.twelvedata.com/time_series?symbol="+encodeURIComponent(ps)+"&interval="+interval+"&outputsize=300&apikey="+encodeURIComponent(key);
+            const r=await fetch(u); const d=await r.json();
+            if(!d.values||!d.values.length) throw new Error("no outlook data for "+ps);
+            return d.values.slice().reverse().map(v=>({date:v.datetime,close:+parseFloat(v.close).toFixed(4)})).filter(x=>x.close>0);
+          }));
+          const idx={}; proxies.forEach((ps,i)=>idx[ps]=idxArrs[i]);
+          setOutlook(buildOutlook(candles, result.trend, idx));
+        }
       }catch(_){ setOutlook(null); }
       setTab("signals");
     }catch(e){setError(e.message||"Live fetch failed.");setTab("live");}
@@ -1734,11 +1887,30 @@ function App() {
         {tab==="live"&&(
           <>
             <div style={{...card,border:"1px solid rgba(0,230,118,0.25)"}}>
-              <span style={lbl}>⚡ LIVE MARKET DATA — via Twelve Data</span>
-              <div style={{fontSize:11,color:"#90a4ae",lineHeight:1.8,marginBottom:14}}>Pulls real market data and runs the full engine — backtest, validation, sweep, signals — instantly. Free Twelve Data key required (800 calls/day, no card).</div>
-              <span style={lbl}>TWELVE DATA API KEY</span>
-              <input style={inp} type="password" value={apiKey} onChange={e=>setApiKey(e.target.value)} placeholder="Paste your free Twelve Data key…"/>
-              <div style={{fontSize:10,color:DIM,lineHeight:1.9,marginTop:8}}>No key? <a href="https://twelvedata.com" target="_blank" rel="noreferrer" style={{color:"#00bcd4"}}>twelvedata.com</a> → sign up free → copy key. Saved on this device only.</div>
+              <span style={lbl}>⚡ LIVE MARKET DATA — {provider==="polygon"?"via Polygon.io":"via Twelve Data"}</span>
+              <div style={{fontSize:11,color:"#90a4ae",lineHeight:1.8,marginBottom:14}}>Pulls real market data and runs the full engine — backtest, validation, sweep, signals — instantly. {provider==="polygon"?"Polygon serves real-time prices, TRUE index values (S&P 500 · Dow · Nasdaq) and a last-trade timestamp, so the app shows exactly how fresh the feed is.":"Free Twelve Data key (800 calls/day, no card) — fallback feed; no tick timestamp."}</div>
+              <span style={lbl}>DATA PROVIDER</span>
+              <div style={{display:"flex",gap:10,marginBottom:12}}>
+                <button onClick={()=>setProvider("polygon")} style={{flex:1,padding:"9px 8px",borderRadius:6,cursor:"pointer",background:provider==="polygon"?"rgba(0,230,118,0.08)":"#060810",border:"1px solid "+(provider==="polygon"?"#00e676":"#1a2035"),color:provider==="polygon"?"#00e676":"#90a4ae",fontWeight:700,fontSize:11}}>◆ POLYGON · realtime + indices</button>
+                <button onClick={()=>setProvider("twelvedata")} style={{flex:1,padding:"9px 8px",borderRadius:6,cursor:"pointer",background:provider==="twelvedata"?"rgba(0,188,212,0.08)":"#060810",border:"1px solid "+(provider==="twelvedata"?"#00bcd4":"#1a2035"),color:provider==="twelvedata"?"#00bcd4":"#90a4ae",fontWeight:700,fontSize:11}}>○ TWELVE DATA · fallback</button>
+              </div>
+              {provider==="polygon"?(
+                <>
+                  <span style={lbl}>POLYGON REST API KEY</span>
+                  <input style={inp} type="password" value={polyKey} onChange={e=>{setPolyKey(e.target.value);setKeyTest(null);}} placeholder="Paste your Polygon REST key…"/>
+                  <div style={{display:"flex",alignItems:"center",gap:10,marginTop:8,flexWrap:"wrap"}}>
+                    <button onClick={testPolyKey} style={{...pill(false),cursor:"pointer"}}>TEST KEY</button>
+                    {keyTest&&<span style={{fontSize:10,color:keyTest.ok===false?"#ff8a80":keyTest.ok===true?"#69f0ae":"#90a4ae"}}>{keyTest.msg}</span>}
+                  </div>
+                  <div style={{fontSize:10,color:DIM,lineHeight:1.9,marginTop:8}}>Key from <a href="https://polygon.io/dashboard/api-keys" target="_blank" rel="noreferrer" style={{color:"#00bcd4"}}>polygon.io</a> → <b>Accessing the API</b> tab (the REST key — not the Flat-Files S3 secret). Free tier is 15-min delayed; Developer+ is real-time. Saved on this device only.</div>
+                </>
+              ):(
+                <>
+                  <span style={lbl}>TWELVE DATA API KEY</span>
+                  <input style={inp} type="password" value={apiKey} onChange={e=>setApiKey(e.target.value)} placeholder="Paste your free Twelve Data key…"/>
+                  <div style={{fontSize:10,color:DIM,lineHeight:1.9,marginTop:8}}>No key? <a href="https://twelvedata.com" target="_blank" rel="noreferrer" style={{color:"#00bcd4"}}>twelvedata.com</a> → sign up free → copy key. Saved on this device only.</div>
+                </>
+              )}
               <div style={{marginTop:14,paddingTop:14,borderTop:"1px solid "+BORD,fontSize:10,color:DIM,lineHeight:1.8}}>
                 Company fundamentals for the <strong style={{color:"#90a4ae"}}>AUTOPSY</strong> come from <strong style={{color:"#90a4ae"}}>SEC EDGAR</strong> (primary 10-K/10-Q filings), distilled nightly by a GitHub Action into a same-origin <code style={{color:"#00bcd4"}}>fundamentals.json</code> — zero setup, no key, no proxy. Fetch any US-listed stock in the set and its Autopsy fills itself; tickers outside it stay manual. {fundaDB?<span style={{color:"#69f0ae"}}>✓ {Object.keys(fundaDB).length} companies loaded.</span>:<span style={{color:"#ffb74d"}}>Database not loaded yet (it's published by the nightly job).</span>}
               </div>
@@ -1763,7 +1935,7 @@ function App() {
             </div>
             {error&&<div style={{background:"rgba(255,82,82,0.08)",border:"1px solid rgba(255,82,82,0.3)",borderRadius:6,padding:12,color:"#ff8a80",fontSize:11,marginBottom:14,lineHeight:1.7}}>⚠ {error}</div>}
             <button style={{...runBtn,opacity:fetching?0.6:1}} onClick={fetchLive} disabled={fetching}>{fetching?"⏳ FETCHING…":"⬇  FETCH LIVE DATA & ANALYZE"}</button>
-            {liveMeta&&<div style={{textAlign:"center",fontSize:10,color:"#00e676",marginTop:10}}>✓ {liveMeta.sym} · {liveMeta.count} candles · {liveMeta.when}</div>}
+            {liveMeta&&<div style={{textAlign:"center",fontSize:10,marginTop:10}}><span style={{color:"#00e676"}}>✓ {liveMeta.sym} · {liveMeta.count} candles · {liveMeta.when} · {liveMeta.provider}</span>{liveFreshness&&liveFreshness.band&&<span style={{color:freshnessColor(liveFreshness.band),marginLeft:6}}>· {freshnessLabel(liveFreshness)}</span>}</div>}
             <div style={{fontSize:9,color:FADE,textAlign:"center",marginTop:8,lineHeight:1.6}}>Stocks: AAPL · Crypto: BTC/USD · Forex: EUR/USD · US stocks also auto-fill VALUE fundamentals from SEC EDGAR filings</div>
           </>
         )}
@@ -2175,13 +2347,24 @@ function App() {
               // Transparency rule: treat the edge as real only with a reasonable
               // sample that also beats the trend-only baseline. Otherwise muted.
               const proven=bt&&bt.n>=20&&bt.edge>0&&bt.acc>50, muted=!proven;
+              // Freshness gate: when the index inputs are closed/stale, the projection
+              // is built on last-session data — gray it out so it's never read as live.
+              const stale=!!(o.fresh&&(o.fresh.band==="CLOSED"||o.fresh.band==="STALE")), STMUT="#90a4ae";
               return(
                 <>
                   <div style={card}>
                     <span style={lbl}>◎ MARKET CORRECTION PERIOD PRICE</span>
                     <div style={{fontSize:11,color:DIM,lineHeight:1.6,marginBottom:14}}>
-                      Sums the three major US markets' realtime daily move, applies that combined % to {(liveMeta?.sym||"the stock")}'s price for a dollar delta, then projects the price for the current phase — <b style={{color:"#00e676"}}>+ delta</b> in an uptrend, <b style={{color:"#ff5252"}}>− delta</b> in a downtrend.
+                      Sums the three major US indexes' current-session move — {o.fresh?<b style={{color:"#00e676"}}>true S&amp;P 500 · Dow · Nasdaq values</b>:"ETF proxies"} — applies that combined % to {(liveMeta?.sym||"the stock")}'s price for a dollar delta, then projects the price for the current phase — <b style={{color:"#00e676"}}>+ delta</b> in an uptrend, <b style={{color:"#ff5252"}}>− delta</b> in a downtrend.
                     </div>
+                    {o.fresh&&(
+                      <div style={{display:"flex",alignItems:"center",gap:8,flexWrap:"wrap",background:BG3,borderRadius:4,padding:"8px 12px",marginBottom:12,border:"1px solid "+(o.fresh.band==="REALTIME"?"rgba(0,230,118,0.30)":o.fresh.band==="CLOSED"?"rgba(144,164,174,0.30)":"rgba(255,215,64,0.30)")}}>
+                        <span style={{fontSize:10,color:DIM,letterSpacing:1}}>◷ DATA FRESHNESS</span>
+                        <span style={{fontSize:11,fontWeight:700,color:freshnessColor(o.fresh.band)}}>{o.fresh.band==="REALTIME"?"LIVE":o.fresh.band==="CLOSED"?"MARKET CLOSED":o.fresh.band==="DELAYED"?"DELAYED":"STALE"}</span>
+                        <span style={{fontSize:10,color:FADE}}>{(o.fresh.perIndex||[]).map(p=>p.label+" "+(p.stalenessSec!=null?(p.stalenessSec<90?Math.round(p.stalenessSec)+"s":(p.stalenessSec/60).toFixed(0)+"m"):"n/a")).join(" · ")}</span>
+                        {o.fresh.band!=="REALTIME"&&<span style={{fontSize:10,color:FADE}}>— projection reflects {o.fresh.isOpen?"lagged":"last-session"} inputs, not a live tick.</span>}
+                      </div>
+                    )}
                     <div style={{display:"grid",gridTemplateColumns:"repeat(3,1fr)",gap:8,marginBottom:12}}>
                       {o.markets.map(m=>(
                         <div key={m.sym} style={{background:BG3,borderRadius:4,padding:"10px 12px",textAlign:"center"}}>
@@ -2211,17 +2394,18 @@ function App() {
                     </div>
                     <div style={{textAlign:"center",padding:"16px 0 2px",borderTop:"1px solid "+BORD,marginTop:12}}>
                       <div style={{fontSize:10,color:DIM,letterSpacing:2}}>MARKET CORRECTION PERIOD PRICE</div>
+                      {stale&&<div style={{fontSize:10,color:STMUT,marginTop:4}}>as-of last close — not a live tick</div>}
                       {o.active==="NEUTRAL"?(
                         <>
                           <div style={{fontSize:12,color:"#ffd740",marginTop:6}}>SIDEWAYS — both scenarios shown</div>
                           <div style={{display:"flex",justifyContent:"center",gap:32,marginTop:8}}>
-                            <div><div style={{fontSize:10,color:DIM}}>uptrend +</div><div style={{fontSize:22,fontWeight:800,color:"#00e676"}}>{fmt(o.up)}</div></div>
-                            <div><div style={{fontSize:10,color:DIM}}>downtrend −</div><div style={{fontSize:22,fontWeight:800,color:"#ff5252"}}>{fmt(o.down)}</div></div>
+                            <div><div style={{fontSize:10,color:DIM}}>uptrend +</div><div style={{fontSize:22,fontWeight:800,color:stale?STMUT:"#00e676"}}>{fmt(o.up)}</div></div>
+                            <div><div style={{fontSize:10,color:DIM}}>downtrend −</div><div style={{fontSize:22,fontWeight:800,color:stale?STMUT:"#ff5252"}}>{fmt(o.down)}</div></div>
                           </div>
                         </>
                       ):(
                         <>
-                          <div style={{fontSize:34,fontWeight:800,color:o.active==="UP"?"#00e676":"#ff5252",marginTop:4}}>{fmt(o.correctionPrice)}</div>
+                          <div style={{fontSize:34,fontWeight:800,color:stale?STMUT:(o.active==="UP"?"#00e676":"#ff5252"),marginTop:4}}>{fmt(o.correctionPrice)}</div>
                           <div style={{fontSize:11,color:DIM,marginTop:4}}>{fmt(o.price)+" "+(o.active==="UP"?"+":"−")+" $"+Math.abs(o.delta).toFixed(2)+" delta"}</div>
                         </>
                       )}
@@ -2251,6 +2435,22 @@ function App() {
                     )}
                   </div>
                 </>
+              );
+            })()}
+            {lagReport&&lagReport.latest&&(()=>{
+              const a=lagReport.latest.runAgg||{};
+              const fsec=s=>s==null?"n/a":s<90?Math.round(s)+"s":(s/60).toFixed(1)+"m";
+              return(
+                <div style={card}>
+                  <span style={lbl}>◷ FEED LAG — universe freshness (CI probe)</span>
+                  <div style={{fontSize:10,color:DIM,lineHeight:1.6,marginBottom:10}}>How fresh the live feed has been across the tracked universe, sampled during market hours by <code style={{color:"#00bcd4"}}>scripts/lag-probe.mjs</code> and committed to <code style={{color:"#00bcd4"}}>lag-report.json</code> — git history is the lag record.</div>
+                  <div style={{display:"grid",gridTemplateColumns:"repeat(3,1fr)",gap:10}}>
+                    <div style={{background:BG3,borderRadius:4,padding:"10px 12px"}}><div style={{fontSize:9,color:DIM,letterSpacing:1}}>MEDIAN LAG</div><div style={{fontSize:20,fontWeight:800,color:"#cfd8dc"}}>{fsec(a.medianStalenessSec)}</div></div>
+                    <div style={{background:BG3,borderRadius:4,padding:"10px 12px"}}><div style={{fontSize:9,color:DIM,letterSpacing:1}}>P90 LAG</div><div style={{fontSize:20,fontWeight:800,color:"#cfd8dc"}}>{fsec(a.p90StalenessSec)}</div></div>
+                    <div style={{background:BG3,borderRadius:4,padding:"10px 12px"}}><div style={{fontSize:9,color:DIM,letterSpacing:1}}>REALTIME</div><div style={{fontSize:20,fontWeight:800,color:a.pctRealtime>=50?"#00e676":"#ffd740"}}>{a.pctRealtime!=null?a.pctRealtime+"%":"n/a"}</div></div>
+                  </div>
+                  <div style={{fontSize:10,color:FADE,marginTop:10,lineHeight:1.6}}>{a.marketOpen?"Market open at probe time.":"Market closed at probe time."} Plan: {a.planInferred||"—"} · {a.nSymbols||0} symbols · as of {a.probedAt?new Date(a.probedAt).toLocaleString():"—"}.</div>
+                </div>
               );
             })()}
           </>
