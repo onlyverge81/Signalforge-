@@ -1439,6 +1439,19 @@ function App() {
     return ()=>{ alive=false; };
   },[]);
   const meritEdgeProven = !!(study && study.meritEdgeProven);
+  // Forward-test paper ledger — the committed, git-versioned track record built by
+  // scripts/forward-log.mjs in CI (nightly, on settled EOD bars). Read-only here:
+  // the page is a VIEWER of the automated record, never a writer (a static page has
+  // no secrets and no git). git history is the tamper-evident, timestamped log.
+  const [ledger, setLedger] = useState([]);
+  useEffect(()=>{ let alive=true;
+    fetch("./paper-ledger.json").then(r=>r.ok?r.json():null).then(j=>{
+      if(!alive) return;
+      const arr=Array.isArray(j)?j:(j&&Array.isArray(j.trades)?j.trades:[]);
+      setLedger(arr);
+    }).catch(()=>{});
+    return ()=>{ alive=false; };
+  },[]);
   const [resolution,setResolution]= useState("D");
   const [fetching,  setFetching]  = useState(false);
   const [liveMeta,  setLiveMeta]  = useState(null);
@@ -1710,7 +1723,7 @@ function App() {
 
       {/* Tabs */}
       <div style={{background:BG3,borderBottom:"1px solid "+BORD,padding:"0 20px",display:"flex"}}>
-        {[["live","⚡ LIVE"],["input","▣ DATA"],["signals","◈ SIGNALS"],["outlook","◎ OUTLOOK"],["backtest","⟲ BACKTEST"],["replay","▶ REPLAY"],["value","✚ AUTOPSY"],["evidence","🔬 EVIDENCE"],["position","⊞ SIZE"],["history","◷ HISTORY"]].map(([k,l])=>(
+        {[["live","⚡ LIVE"],["input","▣ DATA"],["signals","◈ SIGNALS"],["outlook","◎ OUTLOOK"],["backtest","⟲ BACKTEST"],["replay","▶ REPLAY"],["value","✚ AUTOPSY"],["evidence","🔬 EVIDENCE"],["position","⊞ SIZE"],["history","◷ HISTORY"],["paper","📒 FORWARD TEST"]].map(([k,l])=>(
           <button key={k} style={tBtn(tab===k)} onClick={()=>setTab(k)}>{l}</button>
         ))}
       </div>
@@ -3151,7 +3164,174 @@ function App() {
             <button style={runBtn} onClick={()=>setHistory([])}>CLEAR HISTORY</button>
           </>
         )}
+
+        {tab==="paper"&&(()=>{
+          const MUT="#90a4ae";
+          const closed=ledger.filter(e=>e.status==="WIN"||e.status==="LOSS");
+          const opens=ledger.filter(e=>e.status==="OPEN");
+          const obs=ledger.filter(e=>e.status==="OBSERVATION");
+          const seg=arr=>realizedStats(arr.map(e=>({result:e.status,pnlPct:e.pnlPct,grossPct:e.grossPct}))).stats;
+          const segments=[
+            ["ALL CLOSED", closed, "every logged BUY/SELL that has resolved"],
+            ["NON-MUTED", closed.filter(e=>!(e.tags&&e.tags.signalMuted)), "only signals the gates did NOT mute"],
+            ["DATA-CLEAN", closed.filter(e=>!(e.tags&&e.tags.dataSuspect)), "only signals on inputs that passed the integrity audit"],
+          ];
+          const freshClose=sym=>(rows&&rows.length&&ticker.trim().toUpperCase()===sym)?rows[rows.length-1].close:null;
+          const sCol=(s,muted)=>muted?MUT:(s==="BUY"?"#00e676":s==="SELL"?"#ff5252":"#ffd740");
+          const edgeTxt={"SIGNIFICANT":"✓ PROVEN","SUGGESTIVE":"~ SUGGESTIVE","NOT SIGNIFICANT":"✗ NOT SIG.","TOO FEW TRADES":"· TOO FEW"};
+          const pnlCol=v=>v==null?FADE:(v>0?"#00e676":v<0?"#ff5252":"#ffd740");
+          return(
+          <>
+            <div style={card}>
+              <span style={lbl}>📒 FORWARD TEST — paper-ledger.json</span>
+              <div style={{fontSize:11,color:"#90a4ae",lineHeight:1.7}}>
+                The honest, out-of-sample track record: a CI job (<code>scripts/forward-log.mjs</code>) runs this exact engine
+                after the US close each trading day, logs every live signal as a paper trade on the <b>settled</b> daily bar,
+                and marks open trades to market with the same SL/TP math as the backtest. Nobody clicks; git history timestamps it.
+                This tab only <b>reads</b> the committed ledger.
+              </div>
+              <div style={{marginTop:10,fontSize:9,color:FADE,lineHeight:1.7}}>
+                ⚖ Free-tier data is end-of-day, so this is a <b>daily-bar</b> forward test — intraday SL/TP path is approximated by each
+                day's high/low (exactly as the backtest already does). Entries fill at the settled decision close. Exits are only
+                ever checked on bars dated <b>after</b> entry (no lookahead).
+              </div>
+            </div>
+
+            {ledger.length===0?(
+              <div style={card}>
+                <div style={{color:FADE,fontSize:12,padding:20,textAlign:"center",lineHeight:1.8}}>
+                  No paper trades yet. <code>paper-ledger.json</code> is built nightly in CI once the
+                  <code> TWELVE_DATA_KEY</code> secret is set and the <code>Forward-test logger</code> workflow has run.
+                  <br/>Preview locally any time: <code>node scripts/forward-log.mjs --preview --ticker AAPL</code>.
+                </div>
+              </div>
+            ):(
+            <>
+              {/* Realized performance, SEGMENTED by gate tag — does muting add value? */}
+              <div style={card}>
+                <span style={lbl}>REALIZED PERFORMANCE — SEGMENTED BY GATE</span>
+                <div style={{display:"grid",gridTemplateColumns:"1fr 1fr 1fr",gap:8}}>
+                  {segments.map(([name,arr,note])=>{
+                    const s=seg(arr);
+                    const muted=!(s.significance==="SIGNIFICANT"||s.significance==="SUGGESTIVE");
+                    const hCol=muted?MUT:"#dce6f0";
+                    return(
+                    <div key={name} style={{background:"#060810",padding:12,borderRadius:4}}>
+                      <div style={{fontSize:10,fontWeight:700,color:hCol,letterSpacing:1,marginBottom:6}}>{name}</div>
+                      <div style={{fontSize:9,color:FADE,lineHeight:1.4,marginBottom:8,minHeight:26}}>{note}</div>
+                      <Row k="Trades" v={s.total}/>
+                      <Row k="Win rate" v={s.total?s.winRate+"%":"—"}/>
+                      <Row k="Expectancy" v={s.total?s.expectancy+"%":"—"} c={pnlCol(s.expectancy)}/>
+                      <Row k="Total ret" v={s.total?s.totalReturn+"%":"—"} c={pnlCol(s.totalReturn)}/>
+                      <Row k="Profit factor" v={s.total?s.profitFactor:"—"}/>
+                      <Row k="Edge" v={edgeTxt[s.significance]||"—"} c={muted?MUT:"#00e676"}/>
+                    </div>
+                    );
+                  })}
+                </div>
+                <div style={{marginTop:10,fontSize:9,color:FADE,lineHeight:1.7}}>
+                  If muting earns its keep, <b>NON-MUTED</b> should out-perform <b>ALL CLOSED</b>. Stats stay gray until the
+                  sample is large enough for a significant t-stat — the same honesty rule as the BACKTEST tab.
+                </div>
+              </div>
+
+              {/* Open positions */}
+              <div style={card}>
+                <span style={lbl}>OPEN POSITIONS ({opens.length})</span>
+                {opens.length===0?(
+                  <div style={{color:FADE,fontSize:11,padding:12,textAlign:"center"}}>No open paper trades.</div>
+                ):(
+                  <table style={{width:"100%",borderCollapse:"collapse",fontSize:11}}>
+                    <thead><tr style={{color:DIM,fontSize:9,letterSpacing:1}}>
+                      {["AS OF","TICKER","SIGNAL","ENTRY","SL","TP1","RR","UNREAL.","EDGE"].map(h=>(
+                        <td key={h} style={{padding:"4px 8px",borderBottom:"1px solid "+BORD}}>{h}</td>))}
+                    </tr></thead>
+                    <tbody>
+                      {opens.map((e,i)=>{
+                        const muted=!!(e.tags&&e.tags.signalMuted);
+                        const fc=freshClose(e.ticker);
+                        const unreal=fc!=null?((e.signal==="BUY"?(fc-e.entry):(e.entry-fc))/e.entry*100):null;
+                        return(
+                        <tr key={i} style={{borderBottom:"1px solid "+BG2}}>
+                          <td style={{padding:"8px 8px",color:FADE}}>{e.dataAsOf?e.dataAsOf.date:"—"}</td>
+                          <td style={{padding:"8px 8px",color:"#dce6f0",fontWeight:700}}>{e.ticker}</td>
+                          <td style={{padding:"8px 8px",color:sCol(e.signal,muted),fontWeight:700}}>{e.signal==="BUY"?"▲ ":"▼ "}{e.signal}{muted?" ·":""}</td>
+                          <td style={{padding:"8px 8px",color:"#90a4ae"}}>{fmt(e.entry)}</td>
+                          <td style={{padding:"8px 8px",color:"#ff8a80"}}>{fmt(e.sl)}</td>
+                          <td style={{padding:"8px 8px",color:"#69f0ae"}}>{fmt(e.tp1)}</td>
+                          <td style={{padding:"8px 8px",color:DIM}}>{e.rr}</td>
+                          <td style={{padding:"8px 8px",color:pnlCol(unreal),fontWeight:700}}>{unreal==null?"—":(unreal>0?"+":"")+unreal.toFixed(2)+"%"}</td>
+                          <td style={{padding:"8px 8px",fontSize:9,fontWeight:700,color:muted?MUT:"#00e676"}}>{edgeTxt[e.tags&&e.tags.edgeVerdict]||"—"}</td>
+                        </tr>
+                        );
+                      })}
+                    </tbody>
+                  </table>
+                )}
+                <div style={{marginTop:8,fontSize:9,color:FADE}}>Unrealized P&L shows only for a ticker you currently have loaded above; the CI job marks every open trade to market on each run.</div>
+              </div>
+
+              {/* Closed trades */}
+              <div style={card}>
+                <span style={lbl}>CLOSED TRADES ({closed.length})</span>
+                {closed.length===0?(
+                  <div style={{color:FADE,fontSize:11,padding:12,textAlign:"center"}}>No closed paper trades yet.</div>
+                ):(
+                  <table style={{width:"100%",borderCollapse:"collapse",fontSize:11}}>
+                    <thead><tr style={{color:DIM,fontSize:9,letterSpacing:1}}>
+                      {["AS OF","TICKER","SIGNAL","ENTRY","EXIT","P&L%","BARS","EXITED","TAG"].map(h=>(
+                        <td key={h} style={{padding:"4px 8px",borderBottom:"1px solid "+BORD}}>{h}</td>))}
+                    </tr></thead>
+                    <tbody>
+                      {closed.slice().reverse().map((e,i)=>{
+                        const muted=!!(e.tags&&e.tags.signalMuted);
+                        const win=e.status==="WIN";
+                        return(
+                        <tr key={i} style={{borderBottom:"1px solid "+BG2}}>
+                          <td style={{padding:"8px 8px",color:FADE}}>{e.dataAsOf?e.dataAsOf.date:"—"}</td>
+                          <td style={{padding:"8px 8px",color:"#dce6f0",fontWeight:700}}>{e.ticker}</td>
+                          <td style={{padding:"8px 8px",color:sCol(e.signal,muted),fontWeight:700}}>{e.signal}{muted?" ·":""}</td>
+                          <td style={{padding:"8px 8px",color:"#90a4ae"}}>{fmt(e.entry)}</td>
+                          <td style={{padding:"8px 8px",color:"#90a4ae"}}>{fmt(e.exit)}</td>
+                          <td style={{padding:"8px 8px",color:pnlCol(e.pnlPct),fontWeight:700}}>{e.pnlPct>0?"+":""}{e.pnlPct}%</td>
+                          <td style={{padding:"8px 8px",color:DIM}}>{e.barsHeld}</td>
+                          <td style={{padding:"8px 8px",color:FADE}}>{e.exitDate||"—"}</td>
+                          <td style={{padding:"8px 8px",fontSize:9,fontWeight:700,color:win?"#00e676":"#ff5252"}}>{e.status}{e.tags&&e.tags.dataSuspect?" ⚠":""}</td>
+                        </tr>
+                        );
+                      })}
+                    </tbody>
+                  </table>
+                )}
+              </div>
+
+              {/* HOLD observations (no position) */}
+              {obs.length>0&&(
+                <div style={card}>
+                  <span style={lbl}>OBSERVATIONS — HOLD signals ({obs.length})</span>
+                  <div style={{fontSize:10,color:FADE,lineHeight:1.8}}>
+                    {obs.slice().reverse().slice(0,30).map((e,i)=>(
+                      <span key={i} style={{display:"inline-block",marginRight:12}}>{e.dataAsOf?e.dataAsOf.date:""} <b style={{color:"#90a4ae"}}>{e.ticker}</b> HOLD</span>
+                    ))}
+                  </div>
+                </div>
+              )}
+            </>
+            )}
+          </>
+          );
+        })()}
       </div>
+    </div>
+  );
+}
+
+// Small stat row used by the FORWARD TEST segmented cards.
+function Row({k,v,c}){
+  return(
+    <div style={{display:"flex",justifyContent:"space-between",fontSize:10,padding:"2px 0"}}>
+      <span style={{color:"#546e7a"}}>{k}</span>
+      <span style={{color:c||"#b0bec5",fontWeight:600}}>{v}</span>
     </div>
   );
 }
