@@ -1553,6 +1553,15 @@ function App() {
     }).catch(()=>{});
     return ()=>{ alive=false; };
   },[]);
+  // Feed-lag report — the git-versioned freshness record built in CI by
+  // scripts/lag-probe.mjs (during market hours). Read-only viewer, same-origin.
+  const [lagReport, setLagReport] = useState(null);
+  useEffect(()=>{ let alive=true;
+    fetch("./lag-report.json").then(r=>r.ok?r.json():null).then(j=>{
+      if(alive&&j&&typeof j==="object"&&j.latest) setLagReport(j);
+    }).catch(()=>{});
+    return ()=>{ alive=false; };
+  },[]);
   const [resolution,setResolution]= useState("D");
   const [fetching,  setFetching]  = useState(false);
   const [liveMeta,  setLiveMeta]  = useState(null);
@@ -2401,6 +2410,22 @@ function App() {
                     )}
                   </div>
                 </>
+              );
+            })()}
+            {lagReport&&lagReport.latest&&(()=>{
+              const a=lagReport.latest.runAgg||{};
+              const fsec=s=>s==null?"n/a":s<90?Math.round(s)+"s":(s/60).toFixed(1)+"m";
+              return(
+                <div style={card}>
+                  <span style={lbl}>◷ FEED LAG — universe freshness (CI probe)</span>
+                  <div style={{fontSize:10,color:DIM,lineHeight:1.6,marginBottom:10}}>How fresh the live feed has been across the tracked universe, sampled during market hours by <code style={{color:"#00bcd4"}}>scripts/lag-probe.mjs</code> and committed to <code style={{color:"#00bcd4"}}>lag-report.json</code> — git history is the lag record.</div>
+                  <div style={{display:"grid",gridTemplateColumns:"repeat(3,1fr)",gap:10}}>
+                    <div style={{background:BG3,borderRadius:4,padding:"10px 12px"}}><div style={{fontSize:9,color:DIM,letterSpacing:1}}>MEDIAN LAG</div><div style={{fontSize:20,fontWeight:800,color:"#cfd8dc"}}>{fsec(a.medianStalenessSec)}</div></div>
+                    <div style={{background:BG3,borderRadius:4,padding:"10px 12px"}}><div style={{fontSize:9,color:DIM,letterSpacing:1}}>P90 LAG</div><div style={{fontSize:20,fontWeight:800,color:"#cfd8dc"}}>{fsec(a.p90StalenessSec)}</div></div>
+                    <div style={{background:BG3,borderRadius:4,padding:"10px 12px"}}><div style={{fontSize:9,color:DIM,letterSpacing:1}}>REALTIME</div><div style={{fontSize:20,fontWeight:800,color:a.pctRealtime>=50?"#00e676":"#ffd740"}}>{a.pctRealtime!=null?a.pctRealtime+"%":"n/a"}</div></div>
+                  </div>
+                  <div style={{fontSize:10,color:FADE,marginTop:10,lineHeight:1.6}}>{a.marketOpen?"Market open at probe time.":"Market closed at probe time."} Plan: {a.planInferred||"—"} · {a.nSymbols||0} symbols · as of {a.probedAt?new Date(a.probedAt).toLocaleString():"—"}.</div>
+                </div>
               );
             })()}
           </>
