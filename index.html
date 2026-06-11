@@ -1765,19 +1765,26 @@ function App() {
       // ── Market Outlook — try TRUE indices, fall back to ETF proxies (best-effort) ──
       if(usePoly){
         let o=null, src=null, lastErr=null;
-        try{ // true indices (need the Polygon Indices subscription)
-          const {idx, moves}=await polyFetchIndexMoves(resolution, key);
-          o=buildOutlook(candles, result.trend, idx, {proxies:OUTLOOK_INDICES, liveMoves:moves}); src="indices";
+        // ETF proxies (SPY/DIA/QQQ) are the reliable default: they work on ANY Polygon
+        // Stocks plan and cost fewer calls. True indices (I:SPX/I:DJI/I:NDX) need the
+        // separate Indices subscription and return EMPTY (no error) on a Stocks plan —
+        // which silently produced a null Outlook before. So lead with proxies, and only
+        // try true indices as an upgrade if the proxy path fails. A null build is treated
+        // as a failure so it actually falls through instead of blanking.
+        try{
+          const {idx, moves}=await polyFetchEtfMoves(resolution, key);
+          o=buildOutlook(candles, result.trend, idx, {proxies:OUTLOOK_PROXIES, liveMoves:moves}); src="etf";
+          if(!o) throw new Error("proxy index bars came back empty");
         }catch(e1){ lastErr=e1;
-          try{ // ETF proxies (SPY/DIA/QQQ) — work on any Stocks plan
-            const {idx, moves}=await polyFetchEtfMoves(resolution, key);
-            o=buildOutlook(candles, result.trend, idx, {proxies:OUTLOOK_PROXIES, liveMoves:moves}); src="etf";
+          try{
+            const {idx, moves}=await polyFetchIndexMoves(resolution, key);
+            o=buildOutlook(candles, result.trend, idx, {proxies:OUTLOOK_INDICES, liveMoves:moves}); src="indices";
           }catch(e2){ lastErr=e2; }
         }
         if(o){
           o.source=src; setOutlook(o);
           if(o.fresh){ setLiveFreshness(f=>{ const st=(f&&f.stalenessSec!=null)?f.stalenessSec:o.fresh.stalenessSec; return {stalenessSec:st, isOpen:o.fresh.isOpen, band:classifyFreshness(st,o.fresh.isOpen), provider:"Polygon"}; }); }
-        }else{ setOutlook(null); setOutlookError(lastErr?(lastErr.message||String(lastErr)):"Outlook data unavailable right now."); }
+        }else{ setOutlook(null); setOutlookError(lastErr?(lastErr.message||String(lastErr)):"Outlook unavailable — the Dow/S&P/Nasdaq feeds returned no rows on this Polygon plan. Try Daily resolution, or wait a minute if you hit the free-tier rate limit (5 calls/min)."); }
       }else{
         try{
           const proxies=OUTLOOK_PROXIES.map(p=>p[0]);
