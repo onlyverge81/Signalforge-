@@ -12,13 +12,17 @@
 //   node scripts/forward-log.mjs --fixture fx.json --preview   # offline (no network), from a saved feed
 //
 // The forward-test configuration is fixed and documented so the record is
-// comparable over time — it mirrors the app's DEFAULTS: tactical scorer,
-// daily bars, ATR×1.5 stop / ATR×2.0 target, typical-retail costs.
+// comparable over time. It logs the LIVE TRADING POLICY: long-only (shorts are a
+// measured, significant money-loser in this universe) on daily bars with a wide
+// ATR×3 stop / ATR×4 target (the only backtested config with profit factor > 1 —
+// the tight ATR×1.5 stop whipsawed), typical-retail costs. A position is opened
+// only for a tradeable long (see forwardGates); shorts, thin or proven-losing
+// setups are recorded as no-position observations.
 
 import fs from "node:fs";
 import path from "node:path";
 import { fileURLToPath } from "node:url";
-import { analyze, runBacktest, scoreAt, auditData, checkBarExit, tradeNet, valueScore } from "./engine.mjs";
+import { analyze, runBacktest, scoreAt, auditData, checkBarExit, tradeNet, valueScore, edgeStatus } from "./engine.mjs";
 import { readTickers } from "./build-fundamentals.mjs";
 import { fetchPolygonDaily } from "./pattern-study.mjs";
 
@@ -30,9 +34,10 @@ const LEDGER_PATH = path.join(ROOT, "paper-ledger.json");
 export const CFG = {
   interval: "1day",
   market: "Stocks",
-  strategy: "Trend Following",
-  slMult: 1.5,
-  tpMult: 2.0,
+  strategy: "Trend Following (long-only, wide-stop)",
+  slMult: 3.0,                              // ATR×3 — give the trade room (tight stops whipsawed)
+  tpMult: 4.0,                              // ATR×4 — keeps the original ~1.33:1 reward:risk geometry
+  longOnly: true,                           // shorts are a significant measured loser — don't take them
   costs: { slip: 0.05, comm: 0.01 },        // "Typical retail"
   provider: "Polygon",
   source: "Polygon EOD (CI, adjusted)",
@@ -79,24 +84,55 @@ export function gradeFor(sym, price, fundaDB) {
   return vs ? vs.grade : null;
 }
 
+// ─── Pure trading-policy gates for the forward record (testable, no network) ──
+// Decide whether a signal opens a paper position and why it is/ isn't muted:
+//   longOnlyMuted — a SELL under the long-only policy (shorts lose; never taken)
+//   costMuted     — the target can't clear 2× round-trip cost (edge too thin to pay for)
+//   edgeMuted     — the instrument's backtested edge is unproven OR a proven loser
+//                   (edgeStatus encodes the t-stat's SIGN — a SIGNIFICANT *negative*
+//                   edge is a money-loser, not a green light)
+//   dataSuspect   — the inputs failed the audit
+// A position OPENs only for a tradeable long: a permitted BUY with clean inputs,
+// a target that clears costs, and a backtest that is not a PROVEN loser. An
+// unproven-but-not-negative edge still opens (logged, flagged) so the honest
+// out-of-sample record keeps building; everything else is a no-position observation.
+export function forwardGates({ signal, entry, tp1, stats, suspect, costPerTrade, longOnly }) {
+  const es = edgeStatus(stats);
+  const expMovePct    = (entry > 0 && tp1 != null) ? Math.abs(tp1 - entry) / entry * 100 : 0;
+  const costMuted     = expMovePct < 2 * (costPerTrade || 0);
+  const longOnlyMuted = !!longOnly && signal === "SELL";
+  const edgeMuted     = es.muted;
+  const dataSuspect   = !!suspect;
+  const signalMuted   = edgeMuted || dataSuspect || costMuted || longOnlyMuted;
+  const actionable    = signal === "BUY" && !longOnlyMuted && !dataSuspect && !costMuted && !es.negativeEdge;
+  return {
+    actionable,
+    tags: {
+      signalMuted, edgeMuted, dataSuspect, costMuted, longOnlyMuted,
+      edgeVerdict: es.verdict, negativeEdge: es.negativeEdge,
+    },
+  };
+}
+
 // ─── Build the ledger entry for the latest settled bar ───────────────────────
-// All BUY/SELL → OPEN position; HOLD → OBSERVATION (no position, no P&L). Every
-// row carries its gate tags so realized stats can later be segmented by them.
+// A tradeable long → OPEN position; HOLD, a long-only-blocked short, or a thin /
+// proven-losing setup → OBSERVATION (no position, no P&L). Every row carries its
+// gate tags so realized stats can later be segmented by them.
 export function buildEntry({ sym, settled, fundaDB, loggedAt = new Date().toISOString() }) {
   if (settled.length < 30) return null; // not enough history for a trustworthy signal
   const a = analyze(settled, sym, CFG.market, CFG.strategy, CFG.slMult, CFG.tpMult);
   const bt = settled.length >= 40
     ? runBacktest(settled, scoreAt, CFG.slMult, CFG.tpMult, CFG.costs, null, false)
     : null;
-  const edgeVerdict = bt?.stats?.significance ?? null;
-  const edgeMuted = !(edgeVerdict === "SIGNIFICANT" || edgeVerdict === "SUGGESTIVE");
   const audit = auditData(settled);
-  const dataSuspect = !!audit.suspect;
-  const signalMuted = edgeMuted || dataSuspect;
+  const gate = forwardGates({
+    signal: a.signal, entry: a.entry, tp1: a.tp1,
+    stats: bt?.stats, suspect: audit.suspect, costPerTrade, longOnly: CFG.longOnly,
+  });
   const decision = settled[settled.length - 1];
   const grade = gradeFor(sym, decision.close, fundaDB);
 
-  const isObs = a.signal === "HOLD";
+  const isObs = !gate.actionable;
   const id = `${sym}-${CFG.interval}-${decision.date}-${a.signal}`;
   return {
     id,
@@ -114,7 +150,7 @@ export function buildEntry({ sym, settled, fundaDB, loggedAt = new Date().toISOS
     support: a.support, resistance: a.resistance,
     dataAsOf: { date: decision.date, close: decision.close, provider: CFG.provider },
     barState: "closed",
-    tags: { signalMuted, edgeMuted, dataSuspect, edgeVerdict, fundamentalGrade: grade, meritsActivated: false },
+    tags: { ...gate.tags, fundamentalGrade: grade, meritsActivated: false },
     status: isObs ? "OBSERVATION" : "OPEN",
     exit: null, exitAt: null, exitDate: null, barsHeld: null,
     pnl: null, grossPct: null, pnlPct: null,

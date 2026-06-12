@@ -11,7 +11,7 @@
 
 import { test } from "node:test";
 import assert from "node:assert/strict";
-import { analyze, runBacktest, scoreAt, checkBarExit, tradeNet, realizedStats, convergenceBreakout, backtestPattern } from "./engine.mjs";
+import { analyze, runBacktest, scoreAt, checkBarExit, tradeNet, realizedStats, convergenceBreakout, backtestPattern, edgeStatus } from "./engine.mjs";
 
 // ─── Helper: deterministic OHLC series (no RNG, fixed formula) ───────────────
 function gen(n){
@@ -113,6 +113,31 @@ test("runBacktest() snapshot on the deterministic 160-bar series", () => {
   assert.equal(bt.stats.expectancy, 3.26);
   assert.equal(bt.stats.maxDrawdown, 0);
   assert.equal(bt.stats.significance, "TOO FEW TRADES"); // only 8 trades on this series
+});
+
+// ─── edgeStatus — the SIGN-aware gate (the inverted-significance bug fix) ─────
+// A SIGNIFICANT *negative* edge is a proven money-loser; it must mute, not show.
+test("edgeStatus: a SIGNIFICANT negative edge is muted, not proven (the bug fix)", () => {
+  const e = edgeStatus({ significance:"SIGNIFICANT", expectancy:-0.47 });
+  assert.equal(e.proven, false);          // a loser is never 'proven'
+  assert.equal(e.shown, false);           // never shown loud
+  assert.equal(e.muted, true);            // muted because the edge is against us
+  assert.equal(e.negativeEdge, true);     // explicitly a proven loser
+});
+test("edgeStatus: a SIGNIFICANT positive edge is proven and shown", () => {
+  const e = edgeStatus({ significance:"SIGNIFICANT", expectancy:0.42 });
+  assert.equal(e.proven, true);
+  assert.equal(e.shown, true);
+  assert.equal(e.muted, false);
+  assert.equal(e.negativeEdge, false);
+});
+test("edgeStatus: SUGGESTIVE positive shows but isn't 'proven'; unproven and missing mute", () => {
+  const sug = edgeStatus({ significance:"SUGGESTIVE", expectancy:0.3 });
+  assert.equal(sug.shown, true); assert.equal(sug.proven, false); assert.equal(sug.muted, false);
+  const weak = edgeStatus({ significance:"NOT SIGNIFICANT", expectancy:0.3 });
+  assert.equal(weak.muted, true); assert.equal(weak.negativeEdge, false); // unproven ≠ a loser
+  const none = edgeStatus(null);
+  assert.equal(none.muted, true); assert.equal(none.verdict, null);
 });
 
 // ─── 5) "Uptrend Convergence with Breakout" pattern detector ─────────────────

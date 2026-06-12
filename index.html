@@ -914,6 +914,24 @@ function realizedStats(trades){
   };
 }
 
+// A backtested edge earns a loud, *actionable* surface only when it is BOTH
+// statistically resolved AND positive. Keying on the t-stat's magnitude alone let
+// a SIGNIFICANT *negative* edge (a proven money-loser) read as "proven" and show
+// loud — this mutes it instead. Mirrored VERBATIM from scripts/engine.mjs.
+function edgeStatus(stats){
+  const verdict  = stats?.significance ?? null;
+  const exp      = stats?.expectancy ?? 0;
+  const resolved = verdict==="SIGNIFICANT" || verdict==="SUGGESTIVE";
+  const positive = exp > 0;
+  return {
+    verdict,
+    proven:       verdict==="SIGNIFICANT" && positive,
+    shown:        resolved && positive,
+    muted:        !(resolved && positive),
+    negativeEdge: resolved && !positive,
+  };
+}
+
 // Walks through history, opens a trade on each BUY/SELL signal, then checks the
 // NEXT candles to see whether TP or SL was hit first. ATR-based SL/TP, same as live.
 function runBacktest(data, scorer, slMult, tpMult, costs, range, holdMode) {
@@ -1730,15 +1748,36 @@ function App() {
   // ─── App-wide transparency rule ────────────────────────────────────────────
   // A persuasive surface (signal badge, chart marker, headline return) earns its
   // loud color ONLY when the backtested edge on THIS instrument is at least
-  // suggestive. Below that we mute to gray — the UI gets quieter exactly when it
-  // knows less. `significance` comes straight from the backtest's t-stat, so the
-  // same evidence gates every surface. No backtest (too little data) ⇒ muted.
-  const edgeVerdict = backtest?.stats?.significance;
-  const edgeProven  = edgeVerdict==="SIGNIFICANT";                 // strong: full color earned
-  const edgeShown   = edgeProven || edgeVerdict==="SUGGESTIVE";    // at least suggestive
-  const edgeMuted   = !edgeShown;                                  // muted because the EDGE is unproven
-  const dataSuspect = !!(dataAudit && dataAudit.suspect);          // muted because the INPUTS are corrupt
-  const signalMuted = edgeMuted || dataSuspect;                    // either reason mutes persuasive surfaces
+  // suggestive AND POSITIVE. A SIGNIFICANT *negative* edge is proof the verdict
+  // LOSES money — it gets muted, not shown loud (edgeStatus encodes the sign).
+  // Below that bar we mute to gray — the UI gets quieter exactly when it knows
+  // less, or knows the edge is against us. No backtest (too little data) ⇒ muted.
+  const edgeInfo    = edgeStatus(backtest?.stats);
+  const edgeVerdict = edgeInfo.verdict;
+  const edgeProven  = edgeInfo.proven;                            // strong AND makes money
+  const edgeShown   = edgeInfo.shown;                            // ≥ suggestive AND makes money
+  const negativeEdge= edgeInfo.negativeEdge;                     // resolved, but a proven loser
+  const edgeMuted   = edgeInfo.muted;                            // unproven OR a proven loser
+  const dataSuspect = !!(dataAudit && dataAudit.suspect);        // muted because the INPUTS are corrupt
+  // Live trading policy: long-only (shorts are a measured, significant money-loser
+  // in this universe) and a cost gate (the target must clear 2× round-trip costs,
+  // or the setup can't pay for itself). Both mute the actionable surface.
+  const roundTripCostPct = (slipPct + commPct) * 2;
+  const expMovePct  = analysis ? Math.abs(analysis.tp1 - analysis.entry) / analysis.entry * 100 : 0;
+  const costMuted   = !!analysis && expMovePct < 2 * roundTripCostPct;
+  const longOnlyMuted = !!analysis && analysis.signal === "SELL";
+  const signalMuted = edgeMuted || dataSuspect || costMuted || longOnlyMuted;
+  // Buy & hold over the loaded window — the benchmark the verdict must beat. Shown
+  // beside the strategy's return so a BUY is never read as "opportunity" when simply
+  // holding did better.
+  const buyHoldRet = rows.length>=2 && rows[0].close>0
+    ? parseFloat((((rows[rows.length-1].close/rows[0].close)-1)*100).toFixed(2)) : null;
+  // One honest reason the actionable surface is muted, most-specific first.
+  const mutedReason = longOnlyMuted ? "SHORT — NOT TAKEN (long-only policy)"
+    : negativeEdge ? "EDGE IS NEGATIVE — backtest loses money"
+    : costMuted ? "TOO THIN — target can't clear 2× costs"
+    : dataSuspect ? "DATA SUSPECT — inputs failed the audit"
+    : "UNCONFIRMED EDGE";
 
   // Phase-2 merit fusion — a DISPLAY overlay only (never touches scoreAt/runBacktest, so the
   // price-only backtest stays honest). Dormant unless fundamentals are verified AND the evidence
@@ -2214,7 +2253,7 @@ function App() {
                   <div style={{display:"flex",alignItems:"center",gap:14,flexWrap:"wrap"}}>
                     <Badge signal={displaySignal} muted={signalMuted}/>
                     {signalMuted&&(
-                      <span title="The backtested edge on this instrument isn't statistically established yet, so the signal is shown muted — a call, not a confirmed green light." style={{fontSize:9,fontWeight:700,letterSpacing:1,padding:"4px 10px",borderRadius:3,color:"#90a4ae",background:"rgba(144,164,174,0.10)",border:"1px solid #90a4ae44"}}>⚖ UNCONFIRMED EDGE</span>
+                      <span title="The actionable surface is muted: this signal is a call, not a confirmed green light. The reason is shown — a long-only-blocked short, a backtest that loses money, a target too thin to beat costs, suspect data, or an edge not yet statistically established." style={{fontSize:9,fontWeight:700,letterSpacing:1,padding:"4px 10px",borderRadius:3,color:negativeEdge?"#ff8a80":"#90a4ae",background:negativeEdge?"rgba(255,138,128,0.10)":"rgba(144,164,174,0.10)",border:"1px solid "+(negativeEdge?"#ff8a8044":"#90a4ae44")}}>⚖ {mutedReason}</span>
                     )}
                     {meritFusion&&meritFusion.changed&&(
                       <span title={meritFusion.reason} style={{fontSize:9,fontWeight:700,letterSpacing:1,padding:"4px 10px",borderRadius:3,color:"#00bcd4",background:"rgba(0,188,212,0.10)",border:"1px solid #00bcd444"}}>✚ MERIT-FUSED</span>
@@ -2755,6 +2794,7 @@ function App() {
                       {l:"WINS",v:backtest.stats.wins,c:"#00e676"},
                       {l:"LOSSES",v:backtest.stats.losses,c:"#ff5252"},
                       {l:"TOTAL RETURN",v:(backtest.stats.totalReturn>=0?"+":"")+backtest.stats.totalReturn+"%",c:backtest.stats.totalReturn>=0?"#00e676":"#ff5252"},
+                      {l:"vs BUY & HOLD",v:buyHoldRet!=null?(buyHoldRet>=0?"+":"")+buyHoldRet+"%":"—",c:buyHoldRet!=null&&backtest.stats.totalReturn<buyHoldRet?"#ff8a80":"#90a4ae"},
                       {l:"PROFIT FACTOR",v:backtest.stats.profitFactor,c:backtest.stats.profitFactor>=1.5?"#00e676":backtest.stats.profitFactor>=1?"#ffd740":"#ff5252"},
                       {l:"EXPECTANCY",v:(backtest.stats.expectancy>=0?"+":"")+backtest.stats.expectancy+"%",c:backtest.stats.expectancy>=0?"#00e676":"#ff5252"},
                       {l:"AVG WIN / LOSS",v:"+"+backtest.stats.avgWin+"% / -"+backtest.stats.avgLoss+"%",c:"#90a4ae"},
@@ -2771,6 +2811,7 @@ function App() {
                       : "Across "+rows.length+" candles, the strategy took "+backtest.stats.total+" trades with a "+backtest.stats.winRate+"% win rate. "+
                         "Profit factor "+backtest.stats.profitFactor+" ("+(backtest.stats.profitFactor==="∞"||backtest.stats.profitFactor>=1.5?"strong":backtest.stats.profitFactor>=1?"marginally profitable":"unprofitable")+"). "+
                         "Each trade averaged "+(backtest.stats.expectancy>=0?"+":"")+backtest.stats.expectancy+"% expectancy. "+
+                        (buyHoldRet!=null?"Simply buying and holding over the same window returned "+(buyHoldRet>=0?"+":"")+buyHoldRet+"% — "+(backtest.stats.totalReturn>=buyHoldRet?"the strategy beat that benchmark.":"the strategy did NOT beat that benchmark, so trading added cost and risk without adding return.")+" ":"")+
                         (backtest.openTrade?"One trade is still open at period end.":"")}
                   </div>
                 </div>
