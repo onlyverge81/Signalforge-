@@ -67,7 +67,12 @@ jobs:
             echo "pattern-study.json unchanged — nothing to commit."
           else
             git commit -m "chore: refresh pattern-study.json"
-            git push
+            # Land on main, rebasing onto any concurrent bot push (the sibling
+            # data workflows can push between our checkout and this step).
+            for i in 1 2 3; do
+              git pull --rebase origin main && git push && break
+              echo "push race (attempt $i) — retrying"; sleep 3
+            done
           fi
 
       - name: Configure Pages

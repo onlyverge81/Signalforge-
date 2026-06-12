@@ -57,7 +57,12 @@ jobs:
           if ! git diff --quiet -- paper-ledger.json; then
             git add paper-ledger.json
             git commit -m "chore: forward-test log — append/close paper trades"
-            git push
+            # Land on main, rebasing onto any concurrent bot push (the sibling
+            # data workflows can push between our checkout and this step).
+            for i in 1 2 3; do
+              git pull --rebase origin main && git push && break
+              echo "push race (attempt $i) — retrying"; sleep 3
+            done
           else
             echo "paper-ledger.json unchanged — nothing to commit."
           fi
