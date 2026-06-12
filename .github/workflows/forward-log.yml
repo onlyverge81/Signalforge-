@@ -6,9 +6,11 @@ name: Forward-test logger
 # forward test the in-sample backtest can't be: no human, settled EOD bars only,
 # git history = the timestamped, tamper-evident record.
 #
-# Requires repo secret TWELVE_DATA_KEY (a free twelvedata.com API key). Self-
-# contained like fundamentals.yml: it commits the ledger and deploys Pages itself,
-# sharing the 'pages' concurrency group so the two workflows never deploy at once.
+# Requires repo secret POLYGON_API_KEY (the REST key) — the SAME feed the app and
+# the backtest studies use, so the forward record is vendor-consistent. Paced for
+# the free tier's 5 req/min (override with POLYGON_PACE_MS). Self-contained like
+# fundamentals.yml: it commits the ledger and deploys Pages itself, sharing the
+# 'pages' concurrency group so the two workflows never deploy at once.
 
 on:
   schedule:
@@ -44,9 +46,9 @@ jobs:
 
       - name: Log live signals to paper-ledger.json
         env:
-          TWELVE_DATA_KEY: ${{ secrets.TWELVE_DATA_KEY }}
+          POLYGON_API_KEY: ${{ secrets.POLYGON_API_KEY }}
         # Non-fatal: if the key isn't set yet or a vendor hiccups, still deploy.
-        run: node scripts/forward-log.mjs || echo "forward-log skipped (set the TWELVE_DATA_KEY secret to enable)"
+        run: node scripts/forward-log.mjs || echo "forward-log skipped (set the POLYGON_API_KEY secret to enable)"
 
       - name: Commit the ledger if it changed
         run: |

@@ -24,13 +24,23 @@ const ROOT = path.resolve(__dirname, "..");
 const COSTS = { slip:0.05, comm:0.05 };   // ~0.2% round-trip, typical retail
 const SLM = 1.5, TPM = 2.0;
 
+// Wrap a scorer so SELL signals become HOLD — the first run showed shorts are the
+// biggest money-loser in this universe, so "long-only" tests whether dropping them
+// fixes the edge.
+const longOnly = base => slice => { const r = base(slice); return (r && r.signal === "SELL") ? { ...r, signal:"HOLD" } : r; };
+
 // Strategy variants — each fetched series is replayed through all of them so we can
-// compare apples-to-apples and recommend the best-performing configuration.
+// compare apples-to-apples and recommend the best-performing configuration. The
+// last three are the optimization hypotheses from run #1: drop shorts, widen the
+// (whipsaw-prone) stop, and both together.
 const VARIANTS = [
-  { name:"baseline",  scorer:scoreAt,       slm:1.5, tpm:2.0, hold:false }, // the shipped swing verdict
-  { name:"tightTP",   scorer:scoreAt,       slm:1.5, tpm:1.5, hold:false }, // 1:1 R:R
-  { name:"wideTP",    scorer:scoreAt,       slm:1.5, tpm:3.0, hold:false }, // 1:2 R:R
-  { name:"trendHold", scorer:scorePosition, slm:1.5, tpm:2.0, hold:true  }, // trend-following, hold to thesis break
+  { name:"baseline",     scorer:scoreAt,            slm:1.5, tpm:2.0, hold:false }, // the shipped swing verdict
+  { name:"tightTP",      scorer:scoreAt,            slm:1.5, tpm:1.5, hold:false }, // 1:1 R:R
+  { name:"wideTP",       scorer:scoreAt,            slm:1.5, tpm:3.0, hold:false }, // 1:2 R:R
+  { name:"trendHold",    scorer:scorePosition,      slm:1.5, tpm:2.0, hold:true  }, // trend-following, hold to thesis break
+  { name:"longOnly",     scorer:longOnly(scoreAt),  slm:1.5, tpm:2.0, hold:false }, // drop the losing shorts
+  { name:"wideStop",     scorer:scoreAt,            slm:3.0, tpm:4.0, hold:false }, // give trades room (tight stop whipsaws)
+  { name:"longWideStop", scorer:longOnly(scoreAt),  slm:3.0, tpm:4.0, hold:false }, // both fixes combined
 ];
 
 // ─── pure helpers (unit-tested) ──────────────────────────────────────────────

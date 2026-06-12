@@ -20,6 +20,7 @@ import path from "node:path";
 import { fileURLToPath } from "node:url";
 import { analyze, runBacktest, scoreAt, auditData, checkBarExit, tradeNet, valueScore } from "./engine.mjs";
 import { readTickers } from "./build-fundamentals.mjs";
+import { fetchPolygonDaily } from "./pattern-study.mjs";
 
 const __dirname = path.dirname(fileURLToPath(import.meta.url));
 const ROOT = path.resolve(__dirname, "..");
@@ -33,11 +34,13 @@ export const CFG = {
   slMult: 1.5,
   tpMult: 2.0,
   costs: { slip: 0.05, comm: 0.01 },        // "Typical retail"
-  provider: "Twelve Data",
-  source: "Twelve Data EOD (CI)",
+  provider: "Polygon",
+  source: "Polygon EOD (CI, adjusted)",
   entryFill: "close@settled",
 };
 const costPerTrade = (CFG.costs.slip + CFG.costs.comm) * 2;
+// Polygon free tier is 5 req/min → pace ~13s between tickers (override per plan).
+const PACE = +(process.env.POLYGON_PACE_MS || 13000);
 
 // ─── Candle provenance: separate SETTLED bars from a trailing FORMING bar ────
 // A daily bar dated "today" is still forming until the US session settles. Treat
@@ -164,13 +167,12 @@ export function mergeLedger(existing, incoming) {
   return [...byId.values()].sort((a, b) => String(a.loggedAt).localeCompare(String(b.loggedAt)));
 }
 
-// ─── Twelve Data daily feed → candle array (same shape/mapping as the app) ────
+// ─── Polygon daily feed → candle array (same vendor + adjustment as the app) ──
+// The live app fetches adjusted Polygon daily bars; mirroring that here keeps the
+// forward-test verdict identical to what a user sees. parseFeed() stays for the
+// --fixture path (offline tests still use a saved Twelve-Data-shaped feed).
 async function fetchDaily(sym, key) {
-  const url = "https://api.twelvedata.com/time_series?symbol=" + encodeURIComponent(sym) +
-    "&interval=" + CFG.interval + "&outputsize=300&apikey=" + encodeURIComponent(key);
-  const r = await fetch(url);
-  const j = await r.json();
-  return parseFeed(j, sym);
+  return fetchPolygonDaily(sym, key);
 }
 export function parseFeed(j, sym) {
   if (j.status === "error" || j.code) throw new Error((j.message || "feed error") + " (" + sym + ")");
@@ -213,8 +215,8 @@ async function main() {
   const writes = !(args.preview || args.dryRun);
   const fundaDB = readJSON(path.join(ROOT, "fundamentals.json"));
   const fixture = args.fixture ? readJSON(path.resolve(args.fixture)) : null;
-  const key = process.env.TWELVE_DATA_KEY || process.env.TD_API_KEY || "";
-  if (!fixture && !key) { console.error("Set TWELVE_DATA_KEY (or pass --fixture for offline)."); process.exit(2); }
+  const key = process.env.POLYGON_API_KEY || process.env.POLYGON_KEY || "";
+  if (!fixture && !key) { console.error("Set POLYGON_API_KEY (or pass --fixture for offline)."); process.exit(2); }
 
   let tickers = args.ticker ? [args.ticker] : readTickers();
   if (fixture && !args.ticker) tickers = Object.keys(fixture);
@@ -244,7 +246,7 @@ async function main() {
         const dup = ledger.some(e => e.id === entry.id) || fresh.some(e => e.id === entry.id);
         if (!dup) { fresh.push(entry); previews.push(entry); logged++; }
       }
-      if (!fixture) await sleep(250); // pace the free tier
+      if (!fixture) await sleep(PACE); // pace Polygon's free-tier rate limit
     } catch (e) {
       skipped++;
       if (args.preview) console.warn("✗ " + sym + " — " + (e.message || e));
