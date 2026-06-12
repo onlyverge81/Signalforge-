@@ -1,20 +1,21 @@
 name: Build pattern study
 
 # Measures the "Uptrend Convergence with Breakout" pattern's edge across the whole
-# ticker universe using KEYLESS Stooq daily bars (no secret needed), writes
-# pattern-study.json, commits it, and deploys Pages so the app can read it
-# same-origin. Self-contained like fundamentals.yml.
+# ticker universe using KEYLESS daily bars (Yahoo primary, Stooq fallback — no
+# secret needed), writes pattern-study.json, commits it, and deploys Pages so the
+# app can read it same-origin. Self-contained like fundamentals.yml.
+#
+# Runs on a weekly cron + manual dispatch only — deliberately NOT on push. All the
+# data-builder workflows share the 'pages' concurrency group, and a single merge
+# that triggers several at once leaves only the latest queued run alive (the others
+# are cancelled while pending). Keeping this off `push` means a merge never bumps
+# it; its weekly slot (Sun 07:23) is clear of fundamentals' daily 06:17 run. After
+# a change to the study, trigger it once via `workflow_dispatch`.
 
 on:
   schedule:
-    - cron: "23 7 * * 0"   # weekly, Sunday 07:23 UTC
+    - cron: "23 7 * * 0"   # weekly, Sunday 07:23 UTC (clear of fundamentals' 06:17)
   workflow_dispatch:
-  push:
-    branches: [main]
-    paths:
-      - "scripts/pattern-study.mjs"
-      - "scripts/engine.mjs"
-      - ".github/workflows/pattern-study.yml"
 
 permissions:
   contents: write   # to commit pattern-study.json

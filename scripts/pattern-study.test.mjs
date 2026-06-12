@@ -3,7 +3,7 @@
 
 import { test } from "node:test";
 import assert from "node:assert/strict";
-import { parseStooq, aggregate } from "./pattern-study.mjs";
+import { parseStooq, parseYahooChart, aggregate } from "./pattern-study.mjs";
 
 test("parseStooq: maps Stooq daily CSV columns to candles", () => {
   const csv = "Date,Open,High,Low,Close,Volume\n"+
@@ -14,6 +14,26 @@ test("parseStooq: maps Stooq daily CSV columns to candles", () => {
   assert.equal(rows[0].close, 100.5);
   assert.equal(rows[1].high, 102);
   assert.equal(rows[1].volume, 1200000);
+});
+
+test("parseYahooChart: maps v8 chart JSON, prefers adjusted close, skips null bars", () => {
+  const j = { chart: { result: [{
+    timestamp: [1704153600, 1704240000, 1704326400],
+    indicators: {
+      quote:    [{ open:[100,101,null], high:[102,103,null], low:[99,100,null], close:[101,102,null], volume:[1000,1200,null] }],
+      adjclose: [{ adjclose:[100.5,101.7,null] }],
+    },
+  }] } };
+  const rows = parseYahooChart(j);
+  assert.equal(rows.length, 2);           // the all-null third bar is dropped
+  assert.equal(rows[0].close, 100.5);     // adjusted close wins over quote close
+  assert.equal(rows[1].high, 103);
+  assert.match(rows[0].date, /^\d{4}-\d{2}-\d{2}$/);
+});
+
+test("parseYahooChart: returns [] on an empty/error payload", () => {
+  assert.deepEqual(parseYahooChart({}), []);
+  assert.deepEqual(parseYahooChart({ chart:{ result:[{}] } }), []);
 });
 
 test("parseStooq: returns [] on a Stooq error/empty payload", () => {
