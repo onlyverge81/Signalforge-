@@ -68,6 +68,39 @@ export function recentWeekday(from = new Date()){
   return d.toISOString().slice(0, 10);
 }
 
+// Normalize a raw ticker list: uppercase, trim, drop blanks, de-dupe (stable order). Pure.
+export function normTickers(list){
+  const seen = new Set(), out = [];
+  for(const t of (list || [])){
+    const s = String(t || "").trim().toUpperCase();
+    if(s && !seen.has(s)){ seen.add(s); out.push(s); }
+  }
+  return out;
+}
+
+// Choose the study universe with a clear precedence (pure, testable):
+//   1) an explicit --tickers list (operator override) always wins
+//   2) else the broad, survivorship-free universe.json (if present & non-empty)
+//   3) else the static tickers.txt fallback (the legacy 36 names)
+// Returns the resolved tickers plus a human-readable `source` for the run log.
+export function pickUniverse({ explicit, universe, fallback }){
+  const e = normTickers(explicit), u = normTickers(universe), f = normTickers(fallback);
+  if(e.length) return { tickers:e, source:"--tickers override" };
+  if(u.length) return { tickers:u, source:"universe.json (broad, survivorship-free)" };
+  return { tickers:f, source:"tickers.txt (legacy default)" };
+}
+
+// Resolve the universe from disk for a study: explicit file → universe.json → tickers.txt.
+// `readTickersFn` is injected (build-fundamentals.readTickers) so this module stays
+// dependency-free and tests can import the pure pickers without touching the network.
+export function loadStudyUniverse({ root, explicitFile, readTickersFn }){
+  const explicit = explicitFile ? readTickersFn(explicitFile) : null;
+  let universe = null;
+  try { universe = (JSON.parse(fs.readFileSync(path.join(root, "universe.json"), "utf8")) || {}).tickers || null; }
+  catch { /* no universe.json yet → fall back */ }
+  return pickUniverse({ explicit, universe, fallback: readTickersFn() });
+}
+
 // One grouped-daily request → parsed rows. Exported so studies can reuse the fetcher.
 export async function fetchGroupedDaily(date, key){
   const u = `${POLY}/v2/aggs/grouped/locale/us/market/stocks/${date}?adjusted=true&apiKey=${encodeURIComponent(key)}`;

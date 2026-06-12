@@ -23,6 +23,7 @@ import path from "node:path";
 import { fileURLToPath } from "node:url";
 import { backtestPattern, auditData } from "./engine.mjs";
 import { readTickers } from "./build-fundamentals.mjs";
+import { loadStudyUniverse } from "./universe-build.mjs";
 
 const __dirname = path.dirname(fileURLToPath(import.meta.url));
 const ROOT = path.resolve(__dirname, "..");
@@ -103,7 +104,8 @@ async function main(){
   const key = process.env.POLYGON_API_KEY || process.env.POLYGON_KEY || "";
   if(!key){ console.error("Set POLYGON_API_KEY (the REST key) — the study has no fallback vendor by design."); process.exit(2); }
 
-  const syms = readTickers(args.tickersFile);
+  const { tickers: syms, source } = loadStudyUniverse({ root: ROOT, explicitFile: args.tickersFile, readTickersFn: readTickers });
+  console.log("universe: " + syms.length + " tickers — " + source);
   const perF = [], perU = [], universe = [], skipped = [];
   const pct = v => v!=null ? (v*100>=0?"+":"")+(v*100).toFixed(2)+"%" : "—";
   for(let i=0;i<syms.length;i++){

@@ -2,7 +2,7 @@
 // Run: node --test scripts/
 import { test } from "node:test";
 import assert from "node:assert/strict";
-import { parseGroupedDaily, selectUniverse, recentWeekday } from "./universe-build.mjs";
+import { parseGroupedDaily, selectUniverse, recentWeekday, normTickers, pickUniverse } from "./universe-build.mjs";
 
 // ─── parseGroupedDaily — Polygon grouped JSON → liquidity-tagged rows ─────────
 test("parseGroupedDaily: maps fields, derives dollar volume, drops malformed rows", () => {
@@ -39,6 +39,31 @@ test("selectUniverse: respects the limit (broadens far past the 36-name list)", 
   }));
   assert.equal(selectUniverse(rows, { limit:500 }).length, 500);
   assert.equal(selectUniverse(rows, { limit:50 })[0], sym(0)); // highest $vol first
+});
+
+// ─── normTickers — uppercase, trim, de-dupe, drop blanks ─────────────────────
+test("normTickers: normalizes and de-dupes, preserving first-seen order", () => {
+  assert.deepEqual(normTickers([" aapl ", "MSFT", "aapl", "", null, "nvda"]), ["AAPL", "MSFT", "NVDA"]);
+  assert.deepEqual(normTickers(null), []);
+});
+
+// ─── pickUniverse — explicit > universe.json > tickers.txt ───────────────────
+test("pickUniverse: an explicit --tickers list wins over everything", () => {
+  const r = pickUniverse({ explicit:["aapl"], universe:["BIG","MID"], fallback:["X","Y","Z"] });
+  assert.deepEqual(r.tickers, ["AAPL"]);
+  assert.match(r.source, /override/);
+});
+
+test("pickUniverse: falls to the broad universe.json when no explicit list", () => {
+  const r = pickUniverse({ explicit:null, universe:["big","mid"], fallback:["X"] });
+  assert.deepEqual(r.tickers, ["BIG", "MID"]);
+  assert.match(r.source, /universe\.json/);
+});
+
+test("pickUniverse: falls all the way back to tickers.txt when nothing else is present", () => {
+  const r = pickUniverse({ explicit:null, universe:[], fallback:["aapl","msft"] });
+  assert.deepEqual(r.tickers, ["AAPL", "MSFT"]);
+  assert.match(r.source, /tickers\.txt/);
 });
 
 // ─── recentWeekday — never returns a weekend ─────────────────────────────────
