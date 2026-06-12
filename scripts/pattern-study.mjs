@@ -3,8 +3,12 @@
 // Pulls Polygon daily aggregates for every ticker in tickers.txt — the SAME vendor
 // and adjusted bars the live app fetches with, so the historical edge is measured
 // on the same feed the in-app detector signals on (vendor parity, no fallback).
-// Runs the shared engine's backtestPattern() over each and writes pattern-study.json
-// (read same-origin by the app's Convergence-Breakout card). The pure helpers
+// Each series is audited first (auditData) and SKIPPED if it has SEVERE issues —
+// split/dividend discontinuities, bad prints, frozen feeds — so one corrupt bar
+// can't poison the pooled edge. Every clean ticker is measured BOTH with the trend
+// filter (the shipped default) and without, so we can see whether requiring an
+// established uptrend actually buys an edge. Writes pattern-study.json (read
+// same-origin by the app's Convergence-Breakout card). The pure helpers
 // (parsePolygonAggs, aggregate) are unit-tested offline; main() only runs when the
 // file is invoked directly, so tests can import safely.
 //
@@ -17,7 +21,7 @@
 import fs from "node:fs";
 import path from "node:path";
 import { fileURLToPath } from "node:url";
-import { backtestPattern } from "./engine.mjs";
+import { backtestPattern, auditData } from "./engine.mjs";
 import { readTickers } from "./build-fundamentals.mjs";
 
 const __dirname = path.dirname(fileURLToPath(import.meta.url));
@@ -99,16 +103,31 @@ async function main(){
   if(!key){ console.error("Set POLYGON_API_KEY (the REST key) — the study has no fallback vendor by design."); process.exit(2); }
 
   const syms = readTickers(args.tickersFile);
-  const perTicker = [], universe = [];
+  const perF = [], perU = [], universe = [], skipped = [];
+  const pct = v => v!=null ? (v*100>=0?"+":"")+(v*100).toFixed(2)+"%" : "—";
   for(let i=0;i<syms.length;i++){
     const sym = syms[i];
     try{
       const candles = await fetchPolygonDaily(sym, key);
-      const bt = backtestPattern(candles, { horizon: args.horizon });
-      if(bt){
-        perTicker.push(bt);
-        universe.push({ sym, bars:candles.length, signals:bt.signals, winRate:bt.winRate, avgFwdRet:bt.avgFwdRet, edge:bt.edge });
-        console.log("✓ "+sym.padEnd(6)+" "+String(candles.length).padStart(5)+" bars · "+String(bt.signals).padStart(3)+" signals · edge "+(bt.edge!=null?(bt.edge*100>=0?"+":"")+(bt.edge*100).toFixed(2)+"%":"—"));
+      // Data hygiene: skip series with SEVERE issues (split/dividend discontinuities,
+      // bad prints, frozen feeds) — one corrupt bar inflates a forward-return window
+      // and poisons the pooled aggregate (this is what made META read edge −23pp).
+      const audit = auditData(candles);
+      if(audit.suspect){
+        const codes = [...new Set(audit.issues.filter(x=>x.level==="SEVERE").map(x=>x.code))];
+        skipped.push({ sym, bars:candles.length, issues:codes });
+        console.log("✗ "+sym.padEnd(6)+" SKIPPED — data audit ("+codes.join(",")+"): corrupt bars would distort the edge");
+        continue;
+      }
+      // Measure WITH the trend filter (the shipped default) and WITHOUT, so we can
+      // see whether requiring an established uptrend actually buys an edge.
+      const btF = backtestPattern(candles, { horizon: args.horizon, trendFilter:true });
+      const btU = backtestPattern(candles, { horizon: args.horizon, trendFilter:false });
+      if(btF && btU){
+        perF.push(btF); perU.push(btU);
+        universe.push({ sym, bars:candles.length, signals:btF.signals, winRate:btF.winRate,
+                        avgFwdRet:btF.avgFwdRet, edge:btF.edge, unfiltered:{ signals:btU.signals, edge:btU.edge } });
+        console.log("✓ "+sym.padEnd(6)+String(candles.length).padStart(6)+" bars · filtered "+String(btF.signals).padStart(3)+" sig edge "+pct(btF.edge)+"  | raw "+String(btU.signals).padStart(3)+" sig edge "+pct(btU.edge));
       } else {
         console.log("· "+sym.padEnd(6)+" insufficient bars for the horizon");
       }
@@ -122,15 +141,23 @@ async function main(){
     generatedAt: new Date().toISOString(),
     horizon: args.horizon,
     priceSrc: "Polygon daily (adjusted)",
-    thresholds: { coilPct:0.006, gapPct:0.004, coilLookback:8, slopeLookback:3 },
-    aggregate: aggregate(perTicker, args.horizon),
+    trendFilter: true,
+    thresholds: { coilPct:0.006, gapPct:0.004, coilLookback:8, slopeLookback:3, trendFilter:true, trendLookback:20, trendMinSlope:0.01 },
+    aggregate: aggregate(perF, args.horizon),                 // the shipped (trend-filtered) detector
+    unfilteredAggregate: aggregate(perU, args.horizon),       // same setup without the trend gate
+    skipped,
     universe,
   };
-  if(args.preview || args.dryRun){ console.log("\n"+JSON.stringify(out.aggregate, null, 2)); return; }
+  if(args.preview || args.dryRun){
+    console.log("\nFILTERED:   "+JSON.stringify(out.aggregate));
+    console.log("UNFILTERED: "+JSON.stringify(out.unfilteredAggregate));
+    if(skipped.length) console.log("SKIPPED:    "+skipped.map(s=>s.sym+"("+s.issues.join("/")+")").join(", "));
+    return;
+  }
   // Never clobber a good study with an empty one (e.g. a bad key or a total outage).
-  if(universe.length === 0){ console.error("No ticker returned data — refusing to overwrite pattern-study.json."); process.exit(1); }
+  if(universe.length === 0){ console.error("No ticker returned usable data — refusing to overwrite pattern-study.json."); process.exit(1); }
   fs.writeFileSync(path.join(ROOT, "pattern-study.json"), JSON.stringify(out)+"\n");
-  console.log("\nWrote pattern-study.json — "+universe.length+" tickers, pooled edge "+(out.aggregate.edge!=null?(out.aggregate.edge*100>=0?"+":"")+(out.aggregate.edge*100).toFixed(2)+"%":"—")+" over "+args.horizon+" bars.");
+  console.log("\nWrote pattern-study.json — "+universe.length+" tickers ("+skipped.length+" skipped). Pooled edge over "+args.horizon+" bars: filtered "+pct(out.aggregate.edge)+" vs raw "+pct(out.unfilteredAggregate.edge)+".");
 }
 
 if(process.argv[1] && path.resolve(process.argv[1]) === fileURLToPath(import.meta.url)){

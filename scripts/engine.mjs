@@ -243,22 +243,24 @@ export function sfa12Series(rows, startIdx=30, lookback=12){
 // composite climb together (the confirm). Detection only — like SFA12 it does NOT
 // feed the live signal; it's surfaced and backtested on its own so its edge can be
 // measured on a big sample. Pure + deterministic; thresholds tunable.
-const CB_DEFAULTS={ coilPct:0.006, gapPct:0.004, coilLookback:8, slopeLookback:3, horizon:20, minBars:60 };
+const CB_DEFAULTS={ coilPct:0.006, gapPct:0.004, coilLookback:8, slopeLookback:3, horizon:20, minBars:60,
+                    trendFilter:true, trendLookback:20, trendMinSlope:0.01 };
 function cbOpts(o){ return Object.assign({}, CB_DEFAULTS, o||{}); }
-// O(N) rolling SMA5/10/20 + the SFA12 composite (mean of the three), index-aligned.
+// O(N) rolling SMA5/10/20/50 + the SFA12 composite (mean of 5/10/20), index-aligned.
 function maRibbon(cl){
-  const s5=[],s10=[],s20=[],comp=[]; let a5=0,a10=0,a20=0;
+  const s5=[],s10=[],s20=[],s50=[],comp=[]; let a5=0,a10=0,a20=0,a50=0;
   for(let i=0;i<cl.length;i++){
     a5+=cl[i]; if(i>=5)a5-=cl[i-5]; s5[i]=i>=4?a5/5:null;
     a10+=cl[i]; if(i>=10)a10-=cl[i-10]; s10[i]=i>=9?a10/10:null;
     a20+=cl[i]; if(i>=20)a20-=cl[i-20]; s20[i]=i>=19?a20/20:null;
+    a50+=cl[i]; if(i>=50)a50-=cl[i-50]; s50[i]=i>=49?a50/50:null;
     comp[i]=(s5[i]!=null&&s10[i]!=null&&s20[i]!=null)?(s5[i]+s10[i]+s20[i])/3:null;
   }
-  return {s5,s10,comp};
+  return {s5,s10,s50,comp};
 }
 // Evaluate the setup AT bar i from precomputed ribbons (no slicing → cheap to loop).
 function cbDetectAt(R, cl, i, P){
-  const s5=R.s5,s10=R.s10,comp=R.comp,k=P.slopeLookback;
+  const s5=R.s5,s10=R.s10,s50=R.s50,comp=R.comp,k=P.slopeLookback;
   if(i<20+k || s5[i]==null||s10[i]==null||comp[i]==null) return {detected:false};
   const price=cl[i];
   const spreadPct=j=>(s5[j]==null||s10[j]==null||comp[j]==null)?null
@@ -274,15 +276,24 @@ function cbDetectAt(R, cl, i, P){
   const gapNow=(s5[i]-s10[i])/price, gapPrev=(s5[i-1]-s10[i-1])/cl[i-1];
   const s5Rising=s5[i]>s5[i-k], s10Rising=s10[i]>s10[i-k], compRising=comp[i]>comp[i-k];
   const gapWidening=gapNow>gapPrev && gapNow>=P.gapPct;
-  const detected=stacked && together && s5Rising && gapWidening && s10Rising && compRising;
+  // Trend filter: only fire inside an ESTABLISHED uptrend (price above a rising
+  // 50-day SMA) — a coil/breakout is a momentum setup, so it pays where momentum
+  // already exists, not on a pop off a flat base. Optional (trendFilter:false).
+  let trendOK=true;
+  if(P.trendFilter){
+    const j=i-P.trendLookback;
+    trendOK = s50[i]!=null && j>=0 && s50[j]!=null && cl[i]>s50[i] && (s50[i]-s50[j])/s50[j] >= P.trendMinSlope;
+  }
+  const detected=stacked && together && s5Rising && gapWidening && s10Rising && compRising && trendOK;
   const strength=detected?Math.max(0,Math.min(1,(gapNow/P.gapPct)*0.5+(1-coilSpread/P.coilPct)*0.5)):0;
   return { detected, barsSinceCoil:i-coilIdx, coilSpreadPct:coilSpread, breakoutGapPct:gapNow,
-           strength:parseFloat(strength.toFixed(2)), stacked, together, s5Rising, gapWidening, s10Rising, compRising };
+           strength:parseFloat(strength.toFixed(2)), stacked, together, s5Rising, gapWidening, s10Rising, compRising, trendOK };
 }
 function cbMedian(a){ if(!a.length) return null; const s=a.slice().sort((x,y)=>x-y),m=s.length>>1; return s.length%2?s[m]:(s[m-1]+s[m])/2; }
 // Live detection at the latest bar.
 export function convergenceBreakout(slice, opts){
-  const P=cbOpts(opts); if(!slice||slice.length<21+P.slopeLookback) return null;
+  const P=cbOpts(opts); const need = P.trendFilter ? 50+P.trendLookback : 21+P.slopeLookback;
+  if(!slice||slice.length<need) return null;
   const cl=slice.map(d=>d.close); return cbDetectAt(maRibbon(cl), cl, cl.length-1, P);
 }
 // Forward-return edge: at every trigger bar, the H-bar forward return vs the
@@ -291,7 +302,8 @@ export function backtestPattern(data, opts){
   const P=cbOpts(opts), H=P.horizon;
   if(!data||data.length<P.minBars+H+1) return null;
   const cl=data.map(d=>d.close), R=maRibbon(cl), sig=[], all=[];
-  for(let i=Math.max(P.minBars,21+P.slopeLookback);i<data.length-H;i++){
+  const start=Math.max(P.minBars, 21+P.slopeLookback, P.trendFilter ? 49+P.trendLookback : 0);
+  for(let i=start;i<data.length-H;i++){
     const fwd=(cl[i+H]-cl[i])/cl[i]; all.push(fwd);
     if(cbDetectAt(R,cl,i,P).detected) sig.push(fwd);
   }
