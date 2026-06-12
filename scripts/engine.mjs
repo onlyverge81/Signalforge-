@@ -600,6 +600,29 @@ export function realizedStats(trades){
   };
 }
 
+// A backtested edge earns a loud, *actionable* surface only when it is BOTH
+// statistically resolved AND positive. The original gate keyed on the t-stat's
+// magnitude alone — so a SIGNIFICANT *negative* edge (t≪0, a proven money-loser)
+// read as "proven" and was shown/traded. It must be muted, not shown. This single
+// predicate gates the live UI and the forward-test logger identically.
+//   proven      — strong (SIGNIFICANT) AND makes money
+//   shown       — at least SUGGESTIVE AND makes money
+//   negativeEdge— resolved (≥SUGGESTIVE) but loses money (the bug this fixes)
+//   muted       — anything not (resolved AND positive): unproven OR a proven loser
+export function edgeStatus(stats){
+  const verdict  = stats?.significance ?? null;
+  const exp      = stats?.expectancy ?? 0;
+  const resolved = verdict==="SIGNIFICANT" || verdict==="SUGGESTIVE";
+  const positive = exp > 0;
+  return {
+    verdict,
+    proven:       verdict==="SIGNIFICANT" && positive,
+    shown:        resolved && positive,
+    muted:        !(resolved && positive),
+    negativeEdge: resolved && !positive,
+  };
+}
+
 // ─── Backtest engine ─────────────────────────────────────────────────────────
 export function runBacktest(data, scorer, slMult, tpMult, costs, range, holdMode) {
   const scoreFn = scorer || scoreAt;

@@ -2,7 +2,7 @@
 // Run: node --test scripts/
 import { test } from "node:test";
 import assert from "node:assert/strict";
-import { splitSettled, markToMarket, mergeLedger, buildEntry, parseFeed, gradeFor } from "./forward-log.mjs";
+import { splitSettled, markToMarket, mergeLedger, buildEntry, parseFeed, gradeFor, forwardGates } from "./forward-log.mjs";
 
 // ─── splitSettled — drop a trailing FORMING bar, keep settled history ────────
 test("splitSettled: a bar dated today before settlement is treated as forming", () => {
@@ -116,6 +116,45 @@ test("buildEntry: HOLD is recorded as an OBSERVATION (no position)", () => {
     assert.equal(e.status, "OBSERVATION");
     assert.equal(e.exit, null);
   }
+});
+
+// ─── forwardGates — long-only + cost + sign-aware edge policy ────────────────
+// A clean, proven-winning long entry: target (110) clears 2× cost easily.
+const okBuy = { signal:"BUY", entry:100, tp1:110, costPerTrade:0.12, longOnly:true,
+                stats:{ significance:"SIGNIFICANT", expectancy:0.4 }, suspect:false };
+
+test("forwardGates: a tradeable long opens a position", () => {
+  const g = forwardGates(okBuy);
+  assert.equal(g.actionable, true);
+  assert.equal(g.tags.signalMuted, false);
+  assert.equal(g.tags.negativeEdge, false);
+});
+
+test("forwardGates: a SELL is never taken under long-only (recorded, not opened)", () => {
+  const g = forwardGates({ ...okBuy, signal:"SELL" });
+  assert.equal(g.actionable, false);
+  assert.equal(g.tags.longOnlyMuted, true);
+  assert.equal(g.tags.signalMuted, true);
+});
+
+test("forwardGates: a PROVEN-losing long is muted and not opened (the bug fix)", () => {
+  const g = forwardGates({ ...okBuy, stats:{ significance:"SIGNIFICANT", expectancy:-0.47 } });
+  assert.equal(g.tags.negativeEdge, true);
+  assert.equal(g.tags.edgeMuted, true);
+  assert.equal(g.actionable, false);    // a measured loser must NOT take the trade
+});
+
+test("forwardGates: a target too thin to clear 2× costs is cost-muted", () => {
+  const g = forwardGates({ ...okBuy, tp1:100.1 }); // 0.1% move < 2×0.12% = 0.24%
+  assert.equal(g.tags.costMuted, true);
+  assert.equal(g.actionable, false);
+});
+
+test("forwardGates: an UNPROVEN-but-not-losing long still opens (honest logging)", () => {
+  const g = forwardGates({ ...okBuy, stats:{ significance:"NOT SIGNIFICANT", expectancy:0.2 } });
+  assert.equal(g.tags.edgeMuted, true);     // display-muted: edge not established
+  assert.equal(g.tags.negativeEdge, false); // but it isn't a proven loser
+  assert.equal(g.actionable, true);         // so we still log the paper position
 });
 
 // ─── parseFeed + gradeFor ────────────────────────────────────────────────────
