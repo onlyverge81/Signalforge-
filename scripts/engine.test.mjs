@@ -116,24 +116,38 @@ test("runBacktest() snapshot on the deterministic 160-bar series", () => {
 });
 
 // ─── 5) "Uptrend Convergence with Breakout" pattern detector ─────────────────
-// Coil (flat ribbon) → breakout (steady uptrend) should fire; a flat ribbon alone
-// must stay silent; too-short input returns null.
+// Mechanics (trendFilter:false): coil (flat ribbon) → breakout (steady uptrend)
+// fires; a flat ribbon alone stays silent; too-short input returns null.
+function push(rows,c){ const close=+c.toFixed(4); rows.push({date:"2025-01-01",open:close,high:close+0.2,low:close-0.2,close,volume:1000000}); }
 function genCoilBreak(){
-  const rows=[]; const push=c=>{ const close=+c.toFixed(4);
-    rows.push({date:"2025-01-01",open:close,high:close+0.2,low:close-0.2,close,volume:1000000}); };
-  for(let i=0;i<40;i++) push(100 + (i%2?0.02:-0.02));   // coil: ribbon pinched flat
-  for(let i=1;i<=40;i++) push(100 + i*0.8);             // pop: steady uptrend
+  const rows=[];
+  for(let i=0;i<40;i++) push(rows, 100 + (i%2?0.02:-0.02));  // coil: ribbon pinched flat
+  for(let i=1;i<=40;i++) push(rows, 100 + i*0.8);            // pop: steady uptrend
   return rows;
 }
-function genFlat(n){ const rows=[]; for(let i=0;i<n;i++){ const c=100+(i%2?0.02:-0.02);
-  rows.push({date:"x",open:c,high:c+0.2,low:c-0.2,close:c,volume:1e6}); } return rows; }
+function genFlat(n){ const rows=[]; for(let i=0;i<n;i++) push(rows, 100+(i%2?0.02:-0.02)); return rows; }
+// Established uptrend → long flat coil → breakout (passes the trend filter).
+function genTrendCoilBreak(){
+  const rows=[];
+  for(let i=0;i<60;i++) push(rows, 100 + i*0.5);            // 60-bar uptrend → rising SMA50
+  for(let i=0;i<24;i++) push(rows, 129.5 + (i%2?0.02:-0.02)); // 24-bar coil (long enough to pinch SMA20)
+  for(let i=1;i<=25;i++) push(rows, 129.5 + i*0.7);          // breakout
+  return rows;
+}
+// Flat base (no prior trend) → long coil → breakout (the filter should suppress).
+function genFlatCoilBreak(){
+  const rows=[];
+  for(let i=0;i<85;i++) push(rows, 100 + (i%2?0.02:-0.02)); // flat base → flat SMA50
+  for(let i=1;i<=25;i++) push(rows, 100 + i*0.7);           // breakout off the flat base
+  return rows;
+}
 
 test("convergenceBreakout: null on too-short input", () => {
   assert.equal(convergenceBreakout(genFlat(12)), null);
 });
 
-test("backtestPattern: fires on coil→breakout with a positive forward edge", () => {
-  const bt=backtestPattern(genCoilBreak(), {horizon:5, minBars:30});
+test("backtestPattern: fires on coil→breakout mechanics (filter off)", () => {
+  const bt=backtestPattern(genCoilBreak(), {horizon:5, minBars:30, trendFilter:false});
   assert.ok(bt, "expected a result object");
   assert.ok(bt.signals>0, "expected ≥1 detection, got "+bt.signals);
   assert.ok(bt.avgFwdRet>0, "uptrend signals should carry positive forward return");
@@ -141,7 +155,21 @@ test("backtestPattern: fires on coil→breakout with a positive forward edge", (
 });
 
 test("pattern stays silent on a flat ribbon (no breakout)", () => {
-  const bt=backtestPattern(genFlat(120), {horizon:5, minBars:30});
+  const bt=backtestPattern(genFlat(120), {horizon:5, minBars:30, trendFilter:false});
   assert.ok(bt, "expected a result with enough bars");
   assert.equal(bt.signals, 0);
+});
+
+test("trend filter: fires inside an established uptrend (default on)", () => {
+  const bt=backtestPattern(genTrendCoilBreak(), {horizon:5, minBars:50});
+  assert.ok(bt, "expected a result object");
+  assert.ok(bt.signals>0, "an in-uptrend breakout should pass the trend filter, got "+bt.signals);
+});
+
+test("trend filter: suppresses a breakout off a flat base", () => {
+  const series=genFlatCoilBreak();
+  const off=backtestPattern(series, {horizon:5, minBars:50, trendFilter:false});
+  const on =backtestPattern(series, {horizon:5, minBars:50, trendFilter:true});
+  assert.ok(off.signals>0, "filter-off should still see the raw breakout, got "+off.signals);
+  assert.ok(on.signals<off.signals, "filter-on must drop flat-base signals: on="+on.signals+" off="+off.signals);
 });
