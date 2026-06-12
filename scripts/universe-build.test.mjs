@@ -2,7 +2,7 @@
 // Run: node --test scripts/
 import { test } from "node:test";
 import assert from "node:assert/strict";
-import { parseGroupedDaily, selectUniverse, recentWeekday, normTickers, pickUniverse } from "./universe-build.mjs";
+import { parseGroupedDaily, selectUniverse, recentWeekday, normTickers, pickUniverse, parseRefTickers, shiftDay } from "./universe-build.mjs";
 
 // ─── parseGroupedDaily — Polygon grouped JSON → liquidity-tagged rows ─────────
 test("parseGroupedDaily: maps fields, derives dollar volume, drops malformed rows", () => {
@@ -39,6 +39,31 @@ test("selectUniverse: respects the limit (broadens far past the 36-name list)", 
   }));
   assert.equal(selectUniverse(rows, { limit:500 }).length, 500);
   assert.equal(selectUniverse(rows, { limit:50 })[0], sym(0)); // highest $vol first
+});
+
+test("selectUniverse: an allow-set keeps ONLY those tickers (drops ETFs even if higher $vol)", () => {
+  const rows = [
+    { ticker:"SPY",  close:500, volume:80_000_000, dollarVolume:40_000_000_000 }, // ETF, huge $vol
+    { ticker:"AAPL", close:200, volume:50_000_000, dollarVolume:10_000_000_000 }, // common stock
+    { ticker:"SOXL", close:30,  volume:90_000_000, dollarVolume:2_700_000_000 },  // leveraged ETF
+    { ticker:"MSFT", close:400, volume:20_000_000, dollarVolume:8_000_000_000 },  // common stock
+  ];
+  const u = selectUniverse(rows, { allow:new Set(["AAPL","MSFT"]) });
+  assert.deepEqual(u, ["AAPL", "MSFT"]); // SPY/SOXL dropped despite ranking higher
+});
+
+// ─── parseRefTickers — Polygon reference/tickers → symbol list ───────────────
+test("parseRefTickers: extracts ticker symbols, drops malformed", () => {
+  const j = { results: [ { ticker:"AAPL", type:"CS" }, { name:"no-ticker" }, { ticker:"MSFT" } ] };
+  assert.deepEqual(parseRefTickers(j), ["AAPL", "MSFT"]);
+  assert.deepEqual(parseRefTickers(null), []);
+});
+
+// ─── shiftDay — UTC date arithmetic across boundaries ────────────────────────
+test("shiftDay: steps days backward/forward across month boundaries", () => {
+  assert.equal(shiftDay("2026-06-12", -1), "2026-06-11");
+  assert.equal(shiftDay("2026-06-01", -1), "2026-05-31");
+  assert.equal(shiftDay("2026-06-12", 0), "2026-06-12");
 });
 
 // ─── normTickers — uppercase, trim, de-dupe, drop blanks ─────────────────────
