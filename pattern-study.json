@@ -1,0 +1,1 @@
+{"generatedAt":"2026-06-12T00:27:31.583Z","horizon":20,"priceSrc":"Stooq daily (keyless)","thresholds":{"coilPct":0.006,"gapPct":0.004,"coilLookback":8,"slopeLookback":3},"aggregate":{"tickers":0,"tickersWithSignals":0,"positiveEdgeTickers":0,"signals":0,"winRate":null,"avgFwdRet":null,"baselineAvgFwdRet":null,"edge":null,"horizon":20},"universe":[]}
