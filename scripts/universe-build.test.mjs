@@ -1,0 +1,49 @@
+// Offline unit tests for the broad-universe builder's pure helpers — no network.
+// Run: node --test scripts/
+import { test } from "node:test";
+import assert from "node:assert/strict";
+import { parseGroupedDaily, selectUniverse, recentWeekday } from "./universe-build.mjs";
+
+// ─── parseGroupedDaily — Polygon grouped JSON → liquidity-tagged rows ─────────
+test("parseGroupedDaily: maps fields, derives dollar volume, drops malformed rows", () => {
+  const j = { results: [
+    { T:"AAA", o:10, h:11, l:9, c:10, v:1_000_000, t:1 }, // $vol = 10,000,000
+    { T:"BBB", o:5,  h:5,  l:5, c:0, v:5_000, t:1 },        // close 0 → dropped
+    { T:"CCC", o:2,  h:3,  l:1, c:2, v:0, t:1 },            // volume 0 → dropped
+  ] };
+  const rows = parseGroupedDaily(j);
+  assert.equal(rows.length, 1);
+  assert.equal(rows[0].ticker, "AAA");
+  assert.equal(rows[0].dollarVolume, 10_000_000);
+  assert.deepEqual(parseGroupedDaily(null), []);          // defensive on bad input
+});
+
+// ─── selectUniverse — screen + liquidity rank, survivorship-free by construction ─
+test("selectUniverse: ranks by dollar volume and screens out illiquid/penny/odd symbols", () => {
+  const rows = [
+    { ticker:"BIG",  close:100, volume:10_000_000, dollarVolume:1_000_000_000 },
+    { ticker:"MID",  close:50,  volume:1_000_000,  dollarVolume:50_000_000 },
+    { ticker:"PENNY",close:1,   volume:99_000_000, dollarVolume:99_000_000 }, // price < $5 → out
+    { ticker:"THIN", close:40,  volume:100,        dollarVolume:4_000 },       // < min $vol → out
+    { ticker:"BRK.B",close:400, volume:5_000_000,  dollarVolume:2_000_000_000 }, // non-common symbol → out
+  ];
+  const u = selectUniverse(rows, { minPrice:5, minDollarVol:5e6, limit:10 });
+  assert.deepEqual(u, ["BIG", "MID"]);    // ranked by $vol; penny/thin/odd excluded
+});
+
+test("selectUniverse: respects the limit (broadens far past the 36-name list)", () => {
+  // letter-only 3-char symbols (base-26) so they pass the common-stock screen
+  const sym = i => "A".repeat(0) + String.fromCharCode(65 + (i / 676 | 0) % 26, 65 + (i / 26 | 0) % 26, 65 + i % 26);
+  const rows = Array.from({ length: 800 }, (_, i) => ({
+    ticker: sym(i), close: 50, volume: 1e6, dollarVolume: 1e9 - i,
+  }));
+  assert.equal(selectUniverse(rows, { limit:500 }).length, 500);
+  assert.equal(selectUniverse(rows, { limit:50 })[0], sym(0)); // highest $vol first
+});
+
+// ─── recentWeekday — never returns a weekend ─────────────────────────────────
+test("recentWeekday: rolls a weekend back to Friday", () => {
+  assert.equal(recentWeekday(new Date("2026-06-13T12:00:00Z")), "2026-06-12"); // Sat → Fri
+  assert.equal(recentWeekday(new Date("2026-06-14T12:00:00Z")), "2026-06-12"); // Sun → Fri
+  assert.equal(recentWeekday(new Date("2026-06-11T12:00:00Z")), "2026-06-11"); // Thu stays
+});
