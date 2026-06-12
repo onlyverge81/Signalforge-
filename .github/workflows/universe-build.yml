@@ -1,0 +1,73 @@
+name: Build universe
+
+# Builds a broad, liquidity-ranked, survivorship-free ticker universe from Polygon's
+# GROUPED-DAILY endpoint (the whole US market in ONE request) and commits universe.json.
+# The signal-study / pattern-study backtests read it in preference to the static 36-name
+# tickers.txt, so the edge is measured on a representative sample — not hand-picked
+# survivors (study.json's #1 caveat). One request, so the free-tier rate limit is moot.
+#
+# Manual dispatch only — run it when you want to (re)build the universe. Requires the
+# repo secret POLYGON_API_KEY. No Pages deploy: universe.json is consumed by the CI
+# studies, not the browser app.
+
+on:
+  workflow_dispatch:
+    inputs:
+      date:
+        description: "Snapshot trading day (YYYY-MM-DD); blank = most recent weekday"
+        required: false
+        default: ""
+      limit:
+        description: "Max tickers to keep, ranked by dollar volume"
+        required: false
+        default: "500"
+      min_dollar_vol:
+        description: "Minimum daily dollar volume to qualify"
+        required: false
+        default: "5000000"
+
+permissions:
+  contents: write   # to commit universe.json
+
+jobs:
+  build:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Set up Node
+        uses: actions/setup-node@v4
+        with:
+          node-version: 20
+
+      - name: Run offline unit tests
+        run: node --test scripts/*.test.mjs
+
+      - name: Build universe.json (Polygon grouped daily)
+        env:
+          POLYGON_API_KEY: ${{ secrets.POLYGON_API_KEY }}
+          DATE: ${{ inputs.date }}
+          LIMIT: ${{ inputs.limit }}
+          MIN_DOLLAR_VOL: ${{ inputs.min_dollar_vol }}
+        run: |
+          ARGS="--limit ${LIMIT:-500} --min-dollar-vol ${MIN_DOLLAR_VOL:-5000000}"
+          [ -n "$DATE" ] && ARGS="$ARGS --date $DATE"
+          echo "Running: node scripts/universe-build.mjs $ARGS"
+          node scripts/universe-build.mjs $ARGS
+
+      - name: Commit universe.json if it changed
+        run: |
+          git config user.name "github-actions[bot]"
+          git config user.email "github-actions[bot]@users.noreply.github.com"
+          git add universe.json
+          if git diff --cached --quiet; then
+            echo "universe.json unchanged — nothing to commit."
+          else
+            git commit -m "chore: build broad universe.json (Polygon grouped daily)"
+            # Land on the triggering ref, rebasing onto any concurrent bot push.
+            for i in 1 2 3; do
+              git pull --rebase origin "${GITHUB_REF_NAME}" && git push && break
+              echo "push race (attempt $i) — retrying"; sleep 3
+            done
+          fi
