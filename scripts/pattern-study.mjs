@@ -71,8 +71,9 @@ export function aggregate(perTicker, horizon){
 }
 
 // As much adjusted daily history as the plan allows (request ~20y; Polygon returns
-// what it has). adjusted=true matches the app's polyFetchCandles exactly.
-async function fetchPolygonDaily(sym, key){
+// what it has). adjusted=true matches the app's polyFetchCandles exactly. Exported
+// so sibling studies (e.g. signal-study) reuse the one Polygon daily fetcher.
+export async function fetchPolygonDaily(sym, key){
   const to = new Date(), from = new Date(to.getTime() - 20*365*864e5), fmt = d => d.toISOString().slice(0,10);
   const u = `${POLY}/v2/aggs/ticker/${encodeURIComponent(sym)}/range/1/day/${fmt(from)}/${fmt(to)}?adjusted=true&sort=asc&limit=50000&apiKey=${encodeURIComponent(key)}`;
   const r = await fetch(u);
