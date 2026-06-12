@@ -1,25 +1,28 @@
 // Offline unit tests for the pattern-study harness — no network.
-// Pins the two pure helpers: Stooq CSV parsing and the universe pooling math.
+// Pins the two pure helpers: Polygon aggregate parsing and the universe pooling math.
 
 import { test } from "node:test";
 import assert from "node:assert/strict";
-import { parseStooq, aggregate } from "./pattern-study.mjs";
+import { parsePolygonAggs, aggregate } from "./pattern-study.mjs";
 
-test("parseStooq: maps Stooq daily CSV columns to candles", () => {
-  const csv = "Date,Open,High,Low,Close,Volume\n"+
-              "2025-01-02,100,101,99,100.5,1000000\n"+
-              "2025-01-03,100.5,102,100,101.7,1200000\n";
-  const rows = parseStooq(csv);
+test("parsePolygonAggs: maps Polygon aggregate bars to candles (app's polyBars shape)", () => {
+  const j = { results: [
+    { t: 1704153600000, o:100,   h:101, l:99,  c:100.5, v:1000000 },
+    { t: 1704240000000, o:100.5, h:102, l:100, c:101.7, v:1200000 },
+  ] };
+  const rows = parsePolygonAggs(j);
   assert.equal(rows.length, 2);
   assert.equal(rows[0].close, 100.5);
   assert.equal(rows[1].high, 102);
   assert.equal(rows[1].volume, 1200000);
+  assert.match(rows[0].date, /^\d{4}-\d{2}-\d{2}$/);
 });
 
-test("parseStooq: returns [] on a Stooq error/empty payload", () => {
-  assert.deepEqual(parseStooq("N/A"), []);
-  assert.deepEqual(parseStooq("<html>blocked</html>"), []);
-  assert.deepEqual(parseStooq(""), []);
+test("parsePolygonAggs: drops non-positive closes and tolerates an empty payload", () => {
+  assert.deepEqual(parsePolygonAggs({}), []);
+  assert.deepEqual(parsePolygonAggs({ results: null }), []);
+  const rows = parsePolygonAggs({ results: [{ t:1704153600000, o:0, h:0, l:0, c:0, v:0 }] });
+  assert.deepEqual(rows, []);
 });
 
 test("aggregate: pools per-ticker results weighted by counts", () => {
