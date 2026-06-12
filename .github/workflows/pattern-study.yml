@@ -1,9 +1,15 @@
 name: Build pattern study
 
 # Measures the "Uptrend Convergence with Breakout" pattern's edge across the whole
-# ticker universe using KEYLESS daily bars (Yahoo primary, Stooq fallback — no
-# secret needed), writes pattern-study.json, commits it, and deploys Pages so the
-# app can read it same-origin. Self-contained like fundamentals.yml.
+# ticker universe using Polygon daily bars — the SAME vendor the live app fetches
+# with, so the historical edge matches what the in-app detector signals on. Writes
+# pattern-study.json, commits it, and deploys Pages so the app can read it
+# same-origin. Self-contained like fundamentals.yml.
+#
+# Requires the repo secret POLYGON_API_KEY (the REST key). No fallback vendor by
+# design: if the key is unset or the fetch fails for every ticker, the build errors
+# rather than overwriting a good study with an empty one. Paced for the free tier's
+# 5 req/min (override with POLYGON_PACE_MS on a higher-rate plan).
 #
 # Runs on a weekly cron + manual dispatch only — deliberately NOT on push. All the
 # data-builder workflows share the 'pages' concurrency group, and a single merge
@@ -45,7 +51,9 @@ jobs:
       - name: Run offline unit tests
         run: node --test scripts/*.test.mjs
 
-      - name: Build pattern-study.json (Stooq daily, keyless)
+      - name: Build pattern-study.json (Polygon daily)
+        env:
+          POLYGON_API_KEY: ${{ secrets.POLYGON_API_KEY }}
         run: node scripts/pattern-study.mjs
 
       - name: Commit pattern-study.json if it changed
