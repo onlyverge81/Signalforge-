@@ -56,10 +56,12 @@ function grid(stepM){
 }
 
 // ─── per-ticker raw data (one SEC + one price fetch each) ─────────────────────
-async function loadTicker(sym, key){
-  const cik=await secCik(sym);
-  if(!cik) throw new Error("not in SEC EDGAR");
-  const r=await secFetch("https://data.sec.gov/api/xbrl/companyfacts/CIK"+cik+".json");
+// A pre-resolved CIK (from the survivorship-free roster) bypasses secCik's symbol map,
+// which only knows CURRENT filers — that's how de-listed names get reached at all.
+async function loadTicker(sym, key, cik=null){
+  const resolved = cik || await secCik(sym);
+  if(!resolved) throw new Error("not in SEC EDGAR");
+  const r=await secFetch("https://data.sec.gov/api/xbrl/companyfacts/CIK"+resolved+".json");
   const j=await r.json();
   const px=await fetchPrices(sym, key);
   if(!px.data.length) throw new Error("no price series");
@@ -106,21 +108,66 @@ function pack(obs){
   };
 }
 
-const CAVEATS = [
-  "Universe is ~36 hand-picked, still-listed large-caps — survivorship bias inflates any positive result; de-listed losers are absent.",
-  "Few non-overlapping periods (one cross-section per rebalance) means low statistical power. INCONCLUSIVE here is the expected, honest outcome — not a bug.",
-  "Merit is reconstructed point-in-time from SEC XBRL with a 75-day filing lag (no fundamental lookahead). Prices are Polygon split/dividend-adjusted monthly closes.",
-  "Still a small, hand-picked survivor universe — not a substitute for a broad, point-in-time, survivorship-free factor study. Next step: a Polygon survivorship-free universe (reference active=false). This gates the app's merit-fusion, it does not endorse the factor in general.",
-];
+// Caveats honestly track which universe was used — survivorship-free roster vs the legacy
+// survivor set — so study.json never overstates what it controlled for.
+function caveatsFor(survivorshipFree){
+  return [
+    survivorshipFree
+      ? "Universe is the Polygon survivorship-free roster (active + DE-LISTED common stock) — de-listed losers are INCLUDED, bounded to MERIT_MAX names for CI runtime."
+      : "Universe is ~36 hand-picked, still-listed large-caps — survivorship bias inflates any positive result; de-listed losers are absent.",
+    "Few non-overlapping periods (one cross-section per rebalance) means low statistical power. INCONCLUSIVE here is the expected, honest outcome — not a bug.",
+    "Merit is reconstructed point-in-time from SEC XBRL with a 75-day filing lag (no fundamental lookahead). Prices are Polygon split/dividend-adjusted monthly closes.",
+    survivorshipFree
+      ? "XBRL exists only from ~2009, so pre-2009 de-listings remain absent. This gates the app's merit-fusion; it does not endorse the factor in general."
+      : "Still a small, hand-picked survivor universe — run universe-build for the survivorship-free roster.json. This gates the app's merit-fusion; it does not endorse the factor in general.",
+  ];
+}
+
+const MERIT_MAX = +(process.env.MERIT_MAX || 500);
+
+// Pure: pick the merit universe from a roster, bounded by `cap`. Keeps ALL de-listed names
+// (the scarce survivorship signal) first, then fills with active names — both ticker-sorted
+// for determinism. If de-listed alone exceeds the cap, takes the first `cap` of them.
+export function selectMeritUniverse(companies, cap){
+  const byT = (a,b) => a.ticker < b.ticker ? -1 : a.ticker > b.ticker ? 1 : 0;
+  const list = (companies || []).filter(c => c && c.ticker && c.cik);
+  const delisted = list.filter(c => !c.active).sort(byT);
+  const active   = list.filter(c =>  c.active).sort(byT);
+  if(delisted.length >= cap) return delisted.slice(0, cap);
+  return [...delisted, ...active.slice(0, Math.max(0, cap - delisted.length))];
+}
+
+// Prefer the survivorship-free roster.json; fall back to the legacy survivor set
+// (readTickers + secCik). Returns { entries:[{sym,cik}], source, survivorshipFree }.
+function resolveMeritUniverse(){
+  try{
+    const r = JSON.parse(fs.readFileSync(path.join(ROOT, "roster.json"), "utf8"));
+    if(Array.isArray(r.companies) && r.companies.length){
+      const picked = selectMeritUniverse(r.companies, MERIT_MAX);
+      const delisted = picked.filter(c => !c.active).length;
+      return {
+        entries: picked.map(c => ({ sym:c.ticker, cik:c.cik })),
+        source: `roster.json (survivorship-free: ${picked.length} names, ${delisted} de-listed; cap ${MERIT_MAX})`,
+        survivorshipFree: true,
+      };
+    }
+  }catch{ /* no roster.json yet → fall back */ }
+  return {
+    entries: readTickers().map(sym => ({ sym, cik:null })),
+    source: "tickers.txt (legacy survivor set — run universe-build for roster.json)",
+    survivorshipFree: false,
+  };
+}
 
 async function main(){
   const key = process.env.POLYGON_API_KEY;
   if(!key){ console.error("Set POLYGON_API_KEY (the REST key) — the merit study prices off Polygon, no fallback vendor by design."); process.exit(2); }
-  const tickers=readTickers();
+  const { entries, source: universeSource, survivorshipFree } = resolveMeritUniverse();
+  console.log("merit universe: " + universeSource);
   const loaded={}; const errors=[]; let priceSrc=null;
-  for(const sym of tickers){
+  for(const { sym, cik } of entries){
     try{
-      const d=await loadTicker(sym, key);
+      const d=await loadTicker(sym, key, cik);
       loaded[sym]=d; priceSrc=priceSrc||d.priceSrc;
       console.log("✓ "+sym.padEnd(6)+" "+d.prices.length+" monthly bars");
     }catch(e){ errors.push(sym+": "+(e.message||e)); console.warn("✗ "+sym.padEnd(6)+" — "+(e.message||e)); }
@@ -133,12 +180,12 @@ async function main(){
 
   const out={
     generatedAt: new Date().toISOString(),
-    universe: { requested: tickers.length, covered: Object.keys(loaded).length, skipped: errors },
+    universe: { requested: entries.length, covered: Object.keys(loaded).length, source: universeSource, survivorshipFree, skipped: errors },
     source: { fundamentals:"SEC EDGAR XBRL (point-in-time, 75-day filing lag)", prices: priceSrc||"unavailable" },
     primary: "12m",
     meritEdgeProven: primary.proven,
     horizons: { "12m": primary, "6m": pack(h6) },
-    caveats: CAVEATS,
+    caveats: caveatsFor(survivorshipFree),
   };
   fs.writeFileSync(path.join(ROOT,"study.json"), JSON.stringify(out)+"\n");
   console.log("\nWrote study.json — primary(12m): "+primary.significance+

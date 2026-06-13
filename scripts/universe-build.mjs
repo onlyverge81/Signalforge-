@@ -180,6 +180,31 @@ export async function fetchCommonStockSet(key, pace = 0){
   return set;
 }
 
+// Survivorship-free company roster: pages BOTH active=true and active=false common stock,
+// carrying each name's CIK (via parseRefTickerRows). The active=false page is what makes the
+// merit study survivorship-free — it restores the de-listed losers SEC's symbol map omits.
+// De-dupes by ticker, preferring the active record if a symbol was later reused. Network;
+// parseRefTickerRows is the unit-tested part.
+export async function fetchTickerRoster(key, pace = 0, { includeDelisted = true } = {}){
+  const byTicker = new Map();
+  for(const active of (includeDelisted ? ["true", "false"] : ["true"])){
+    let url = `${POLY}/v3/reference/tickers?type=CS&market=stocks&active=${active}&limit=1000&apiKey=${encodeURIComponent(key)}`;
+    for(let page = 0; url && page < 60; page++){
+      const r = await fetch(url);
+      if(r.status === 429) throw new Error("rate limited (429) on reference/tickers — raise POLYGON_PACE_MS");
+      if(!r.ok) throw new Error("polygon HTTP " + r.status + " on reference/tickers");
+      const j = await r.json();
+      for(const row of parseRefTickerRows(j)){
+        const prev = byTicker.get(row.ticker);
+        if(!prev || (row.active && !prev.active)) byTicker.set(row.ticker, row);
+      }
+      url = j.next_url ? j.next_url + `&apiKey=${encodeURIComponent(key)}` : null;
+      if(url) await sleep(pace);
+    }
+  }
+  return [...byTicker.values()];
+}
+
 function parseArgs(argv){
   // Default to the most recent weekday BEFORE today — the current session isn't
   // settled until after the close, so "today" has no grouped-daily data yet.
@@ -227,6 +252,24 @@ async function main(){
   if(tickers.length === 0){ console.error("No tickers passed the screen — refusing to overwrite universe.json."); process.exit(1); }
   fs.writeFileSync(path.join(ROOT, "universe.json"), JSON.stringify(out) + "\n");
   console.log(`Wrote universe.json — ${tickers.length} common stocks from ${rows.length} market rows on ${date}.`);
+
+  // 3) Survivorship-free roster (active + de-listed) keyed to SEC CIK. Unlike universe.json
+  //    (active-only, for trading), this restores the de-listed losers so the backward-looking
+  //    merit study isn't survivorship-biased. Keep only CIK-bearing names (no CIK → no SEC
+  //    fundamentals → useless for merit).
+  console.log("building survivorship-free roster (active + de-listed, with CIKs)…");
+  const roster = (await fetchTickerRoster(key, pace)).filter(c => c.cik);
+  const delistedCount = roster.filter(c => !c.active).length;
+  const rosterOut = {
+    generatedAt: new Date().toISOString(),
+    source: "Polygon reference tickers (type=CS, active=true + active=false), CIK-bearing",
+    note: "Survivorship-free company roster (incl. de-listed) keyed to SEC CIK — the merit study resolves names from here so de-listed losers are not omitted.",
+    count: roster.length,
+    delisted: delistedCount,
+    companies: roster,
+  };
+  fs.writeFileSync(path.join(ROOT, "roster.json"), JSON.stringify(rosterOut) + "\n");
+  console.log(`Wrote roster.json — ${roster.length} companies (${delistedCount} de-listed).`);
 }
 
 if(process.argv[1] && path.resolve(process.argv[1]) === fileURLToPath(import.meta.url)){
