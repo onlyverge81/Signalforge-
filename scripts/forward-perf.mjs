@@ -55,16 +55,26 @@ export function buyHoldGrossPct(entry, benchClose, dir = "BUY") {
   return move / entry * 100;
 }
 
+// TOTAL-return buy-&-hold: price move PLUS cash dividends the holder collects over the
+// window (Polygon adjusts splits, not dividends, so price-only understates the hold). A
+// long holder receives dividends; a short pays them. benchDiv defaults to 0, so rows
+// logged before dividend capture fall back to price-only — identical to buyHoldGrossPct.
+export function buyHoldTotalPct(entry, benchClose, benchDiv = 0, dir = "BUY") {
+  const move = dir === "BUY" ? (benchClose - entry) : (entry - benchClose);
+  const div  = dir === "BUY" ? (benchDiv || 0)      : -(benchDiv || 0);
+  return (move + div) / entry * 100;
+}
+
 // ─── Per-trade alpha: strategy return minus its matched buy-&-hold benchmark ──
 // stratGross/stratNet come straight from the ledger (the engine's own exit math).
-// benchGross is buy-&-hold over the identical window; benchNet pays the same one
-// round trip. alphaPct is the difference — gross and net are equal because the
-// cost is identical on both legs, which is the point.
+// benchGross is TOTAL-return buy-&-hold over the identical window (price + dividends);
+// benchNet pays the same one round trip. alphaPct is the difference — gross and net are
+// equal because the cost is identical on both legs, which is the point.
 export function tradeAlpha(t, costPerTrade = COST_PER_TRADE) {
   const dir = t.signal === "SELL" ? "SELL" : "BUY";
   const stratGross = t.grossPct;
   const stratNet = Number.isFinite(t.pnlPct) ? t.pnlPct : stratGross - costPerTrade;
-  const benchGross = buyHoldGrossPct(t.entry, t.benchClose, dir);
+  const benchGross = buyHoldTotalPct(t.entry, t.benchClose, t.benchDiv, dir);
   const benchNet = benchGross - costPerTrade;
   const alphaPct = stratGross - benchGross; // == stratNet - benchNet (cost cancels)
   return {
@@ -156,7 +166,7 @@ export function scoreLedger(ledger, variants = defaultVariants(), costPerTrade =
   }
   const perf = {
     generatedAt: new Date().toISOString(),
-    method: "matched-window buy-&-hold; alpha = strategy net − benchmark net (cost-invariant)",
+    method: "matched-window TOTAL-return buy-&-hold (price + dividends); alpha = strategy net − benchmark net (cost-invariant)",
     costPerTrade,
     ledger: {
       rows: rows.length, closed: closedTotal, benchmarkable,

@@ -24,7 +24,7 @@ import path from "node:path";
 import { fileURLToPath } from "node:url";
 import { analyze, runBacktest, scoreAt, auditData, checkBarExit, tradeNet, valueScore, edgeStatus } from "./engine.mjs";
 import { readTickers } from "./build-fundamentals.mjs";
-import { fetchPolygonDaily } from "./pattern-study.mjs";
+import { fetchPolygonDaily, fetchPolygonDividends, dividendsInWindow } from "./pattern-study.mjs";
 
 const __dirname = path.dirname(fileURLToPath(import.meta.url));
 const ROOT = path.resolve(__dirname, "..");
@@ -154,7 +154,7 @@ export function buildEntry({ sym, settled, fundaDB, loggedAt = new Date().toISOS
     tags: { ...gate.tags, fundamentalGrade: grade, meritsActivated: false },
     status: isObs ? "OBSERVATION" : "OPEN",
     exit: null, exitAt: null, exitDate: null, barsHeld: null,
-    pnl: null, grossPct: null, pnlPct: null, benchClose: null,
+    pnl: null, grossPct: null, pnlPct: null, benchClose: null, benchDiv: null,
   };
 }
 
@@ -162,7 +162,7 @@ export function buildEntry({ sym, settled, fundaDB, loggedAt = new Date().toISOS
 // Walks only bars dated STRICTLY AFTER the entry bar; closes on the first SL/TP
 // touch via the shared checkBarExit (SL-first tie) and tradeNet (round-trip cost).
 // Returns a NEW entry object (does not mutate); unchanged when still open.
-export function markToMarket(entry, settled, exitAt = new Date().toISOString()) {
+export function markToMarket(entry, settled, exitAt = new Date().toISOString(), dividends = []) {
   if (entry.status !== "OPEN") return entry;
   const dir = entry.signal === "BUY" ? "BUY" : "SELL";
   const t = { dir, entry: entry.entry, sl: entry.sl, tp: entry.tp1 };
@@ -187,6 +187,9 @@ export function markToMarket(entry, settled, exitAt = new Date().toISOString()) 
         // strategy's return against this to isolate alpha (skill) from beta (just
         // being long the tape). null on open/observation rows where no window exists.
         benchClose: parseFloat(after[i].close.toFixed(4)),
+        // Cash dividends the benchmark holder collects over the same window — makes the
+        // hold a TOTAL-return benchmark (Polygon adjusts splits, not dividends).
+        benchDiv: dividendsInWindow(dividends, entry.dataAsOf.date, after[i].date),
       };
     }
   }
@@ -277,9 +280,14 @@ async function main() {
       if (settled.length < 30) { skipped++; continue; }
 
       // 1) Mark existing OPEN trades for this ticker to market on the new settled bars.
+      //    Fetch the name's cash dividends once (only when something is open) so the
+      //    benchmark is total-return, not price-only. Best-effort: [] on any failure.
+      const hasOpen = ledger.some(e => e.ticker === sym && e.interval === CFG.interval && e.status === "OPEN");
+      let divs = [];
+      if (hasOpen && !fixture && key) { try { divs = await fetchPolygonDividends(sym, key); } catch { divs = []; } }
       for (const e of ledger) {
         if (e.ticker === sym && e.interval === CFG.interval && e.status === "OPEN") {
-          const upd = markToMarket(e, settled);
+          const upd = markToMarket(e, settled, undefined, divs);
           if (upd.status !== "OPEN") { fresh.push(upd); closed++; }
         }
       }

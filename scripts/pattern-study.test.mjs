@@ -3,7 +3,46 @@
 
 import { test } from "node:test";
 import assert from "node:assert/strict";
-import { parsePolygonAggs, aggregate, RESOLUTIONS } from "./pattern-study.mjs";
+import { parsePolygonAggs, aggregate, RESOLUTIONS, parseDividends, dividendsInWindow, studyFileFor } from "./pattern-study.mjs";
+
+test("studyFileFor: daily keeps the canonical artifact; intraday writes a suffixed sibling", () => {
+  assert.equal(studyFileFor("1day"), "pattern-study.json");
+  assert.equal(studyFileFor(undefined), "pattern-study.json");
+  assert.equal(studyFileFor("15min"), "pattern-study-15min.json");
+  assert.equal(studyFileFor("1hour"), "pattern-study-1hour.json");
+  // every intraday resolution is a real, fetchable timeframe (no typo'd siblings)
+  for (const r of Object.keys(RESOLUTIONS)) {
+    if (r !== "1day") assert.equal(studyFileFor(r), `pattern-study-${r}.json`);
+  }
+});
+
+test("parseDividends: keeps ex-date + positive cash, drops zero/empty payloads", () => {
+  const j = { results: [
+    { ex_dividend_date: "2024-02-09", cash_amount: 0.24 },
+    { ex_dividend_date: "2024-05-10", cash_amount: 0.25 },
+    { ex_dividend_date: "2024-08-12", cash_amount: 0 },     // dropped (no cash)
+    { cash_amount: 0.25 },                                  // dropped (no ex-date)
+  ] };
+  assert.deepEqual(parseDividends(j), [
+    { exDate: "2024-02-09", cash: 0.24 },
+    { exDate: "2024-05-10", cash: 0.25 },
+  ]);
+  assert.deepEqual(parseDividends({}), []);
+  assert.deepEqual(parseDividends({ results: null }), []);
+});
+
+test("dividendsInWindow: sums cash with ex-date in (from, to] — excludes the entry day, includes exit", () => {
+  const divs = [
+    { exDate: "2024-02-09", cash: 0.24 },  // before window → excluded
+    { exDate: "2024-05-10", cash: 0.25 },  // inside → included
+    { exDate: "2024-08-12", cash: 0.26 },  // on exit date → included
+    { exDate: "2024-11-08", cash: 0.27 },  // after window → excluded
+  ];
+  assert.equal(dividendsInWindow(divs, "2024-02-09", "2024-08-12"), 0.51); // .25 + .26, NOT the entry-day .24
+  assert.equal(dividendsInWindow(divs, "2024-09-01", "2024-10-01"), 0);    // none in range
+  assert.equal(dividendsInWindow([], "2024-01-01", "2024-12-31"), 0);
+  assert.equal(dividendsInWindow(null, "a", "b"), 0);
+});
 
 test("parsePolygonAggs: maps Polygon aggregate bars to candles (app's polyBars shape)", () => {
   const j = { results: [

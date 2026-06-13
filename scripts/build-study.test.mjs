@@ -7,19 +7,22 @@ import { selectMeritUniverse } from "./build-study.mjs";
 
 const co = (ticker, active, cik = "0000000001") => ({ ticker, active, cik });
 
-test("selectMeritUniverse: keeps ALL de-listed first, then fills with active, ticker-sorted", () => {
-  const roster = [
-    co("ZZZ", true), co("AAA", true), co("LEHMQ", false), co("WAMUQ", false),
-  ];
-  const got = selectMeritUniverse(roster, 3).map(c => c.ticker);
-  // both de-listed (sorted) are kept; one active fills the remaining slot (sorted → AAA)
-  assert.deepEqual(got, ["LEHMQ", "WAMUQ", "AAA"]);
+test("selectMeritUniverse: returns the whole roster (ticker-sorted) when it fits under the cap", () => {
+  const roster = [ co("ZZZ", true), co("AAA", true), co("LEHMQ", false), co("WAMUQ", false) ];
+  const got = selectMeritUniverse(roster, 10).map(c => c.ticker);
+  assert.deepEqual(got, ["AAA", "LEHMQ", "WAMUQ", "ZZZ"]);
 });
 
-test("selectMeritUniverse: when de-listed alone exceeds the cap, takes the first cap of them", () => {
-  const roster = [ co("DDD", false), co("BBB", false), co("CCC", false), co("AAA", true) ];
-  const got = selectMeritUniverse(roster, 2).map(c => c.ticker);
-  assert.deepEqual(got, ["BBB", "CCC"]); // de-listed sorted, capped at 2; no active room
+test("selectMeritUniverse: over the cap, preserves the active:de-listed mix (not all-dead, not all-survivor)", () => {
+  // 6 de-listed + 6 active, cap 4 → proportional keeps 2 of each (survivorship-free).
+  const roster = [
+    ...["D1","D2","D3","D4","D5","D6"].map(t => co(t, false)),
+    ...["A1","A2","A3","A4","A5","A6"].map(t => co(t, true)),
+  ];
+  const got = selectMeritUniverse(roster, 4);
+  assert.equal(got.length, 4);
+  assert.equal(got.filter(c => !c.active).length, 2); // de-listed half — INCLUDED
+  assert.equal(got.filter(c =>  c.active).length, 2); // active half
 });
 
 test("selectMeritUniverse: drops CIK-less and malformed rows; tolerates empty input", () => {

@@ -125,16 +125,28 @@ function caveatsFor(survivorshipFree){
 
 const MERIT_MAX = +(process.env.MERIT_MAX || 500);
 
-// Pure: pick the merit universe from a roster, bounded by `cap`. Keeps ALL de-listed names
-// (the scarce survivorship signal) first, then fills with active names — both ticker-sorted
-// for determinism. If de-listed alone exceeds the cap, takes the first `cap` of them.
+// Deterministic even-stride sample: n items spread ACROSS the list (not the A–C front),
+// so a cap doesn't bias the universe toward early tickers. Pure.
+function stridedSample(arr, n){
+  if(n >= arr.length) return arr.slice();
+  if(n <= 0) return [];
+  const out = [];
+  for(let i = 0; i < n; i++) out.push(arr[Math.floor(i * arr.length / n)]);
+  return out;
+}
+
+// Pure: pick the merit universe from a roster, bounded by `cap`, PRESERVING the roster's
+// active:de-listed proportion (so it stays survivorship-free, not all-dead or all-survivor)
+// and sampling each class evenly across the alphabet. Ticker-sorted output for determinism.
 export function selectMeritUniverse(companies, cap){
   const byT = (a,b) => a.ticker < b.ticker ? -1 : a.ticker > b.ticker ? 1 : 0;
   const list = (companies || []).filter(c => c && c.ticker && c.cik);
+  if(list.length <= cap) return list.sort(byT);
   const delisted = list.filter(c => !c.active).sort(byT);
   const active   = list.filter(c =>  c.active).sort(byT);
-  if(delisted.length >= cap) return delisted.slice(0, cap);
-  return [...delisted, ...active.slice(0, Math.max(0, cap - delisted.length))];
+  const nDelisted = Math.min(delisted.length, Math.round(cap * delisted.length / list.length));
+  const nActive   = Math.min(active.length, cap - nDelisted);
+  return [...stridedSample(delisted, nDelisted), ...stridedSample(active, nActive)].sort(byT);
 }
 
 // Prefer the survivorship-free roster.json; fall back to the legacy survivor set
