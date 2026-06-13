@@ -30,14 +30,31 @@ const ROOT = path.resolve(__dirname, "..");
 const HORIZON = 20;
 const POLY = "https://api.polygon.io";
 
-// Polygon aggregates JSON → candle array. Byte-for-byte the same mapping the app's
-// polyBars() uses (date/o/h/l/c/v, 4-dp, drop non-positive closes), so the study's
-// bars match the live card's. Pure.
+// Supported resolutions → Polygon (multiplier, timespan), mirroring the app's
+// POLY_RES so script bars match the live card across timeframes. `ms` is the bar
+// period (used to tell a SETTLED bar from a still-forming one intraday). Friendly
+// keys ("1day", "5min") double as the ledger's `interval` tag.
+export const RESOLUTIONS = {
+  "1min":  { mult: 1,  span: "minute", ms: 60_000 },
+  "5min":  { mult: 5,  span: "minute", ms: 5 * 60_000 },
+  "15min": { mult: 15, span: "minute", ms: 15 * 60_000 },
+  "30min": { mult: 30, span: "minute", ms: 30 * 60_000 },
+  "1hour": { mult: 1,  span: "hour",   ms: 60 * 60_000 },
+  "1day":  { mult: 1,  span: "day",    ms: 24 * 60 * 60_000 },
+  "1week": { mult: 1,  span: "week",   ms: 7 * 24 * 60 * 60_000 },
+  "1month":{ mult: 1,  span: "month",  ms: 30 * 24 * 60 * 60_000 },
+};
+
+// Polygon aggregates JSON → candle array. Same mapping the app's polyBars() uses
+// (o/h/l/c/v, 4-dp, drop non-positive closes) PLUS `time` (epoch ms, the bar's
+// start) so intraday bars are orderable and settleable — daily code keeps using
+// `date`. Pure.
 export function parsePolygonAggs(j){
   const res = j && j.results;
   if(!Array.isArray(res)) return [];
   return res.map(b => ({
     date: new Date(b.t).toISOString().slice(0,10),
+    time: +b.t,
     open:  +(+b.o).toFixed(4),
     high:  +(+b.h).toFixed(4),
     low:   +(+b.l).toFixed(4),
@@ -71,23 +88,43 @@ export function aggregate(perTicker, horizon){
   };
 }
 
-// As much adjusted daily history as the plan allows (request ~20y; Polygon returns
-// what it has). adjusted=true matches the app's polyFetchCandles exactly. Exported
-// so sibling studies (e.g. signal-study) reuse the one Polygon daily fetcher.
-export async function fetchPolygonDaily(sym, key){
-  const to = new Date(), from = new Date(to.getTime() - 20*365*864e5), fmt = d => d.toISOString().slice(0,10);
-  const u = `${POLY}/v2/aggs/ticker/${encodeURIComponent(sym)}/range/1/day/${fmt(from)}/${fmt(to)}?adjusted=true&sort=asc&limit=50000&apiKey=${encodeURIComponent(key)}`;
+// Default lookback per resolution (ms). Daily wants deep history; intraday is
+// bounded so the bar count stays sane (Polygon caps at limit=50000). Tunable.
+function defaultLookbackMs(span){
+  if(span === "month" || span === "week") return 25 * 365 * 864e5;  // deep history for coarse bars
+  if(span === "day")    return 20 * 365 * 864e5;  // ~20y of daily
+  if(span === "hour")   return 3  * 365 * 864e5;  // ~3y of hourly
+  return 60 * 864e5;                              // ~60d of minute bars
+}
+
+// Adjusted aggregates at ANY supported resolution. One endpoint shape serves
+// 1/5/15/30-min, hourly and daily (the multiplier/timespan come from RESOLUTIONS),
+// exactly like the app's polyFetchCandles. adjusted=true matches the live card.
+// Exported so the forward logger and studies fetch any timeframe through one path.
+export async function fetchPolygonAggs(sym, resolution, key, opts = {}){
+  const spec = RESOLUTIONS[resolution];
+  if(!spec) throw new Error("unknown resolution: " + resolution);
+  const to = new Date();
+  const from = new Date(to.getTime() - (opts.lookbackMs || defaultLookbackMs(spec.span)));
+  const fmt = d => d.toISOString().slice(0,10);
+  const u = `${POLY}/v2/aggs/ticker/${encodeURIComponent(sym)}/range/${spec.mult}/${spec.span}/${fmt(from)}/${fmt(to)}?adjusted=true&sort=asc&limit=${opts.limit || 50000}&apiKey=${encodeURIComponent(key)}`;
   const r = await fetch(u);
-  if(r.status === 429) throw new Error("rate limited (429) — raise --pace / POLYGON_PACE_MS");
+  if(r.status === 429) throw new Error("rate limited (429) — raise POLYGON_PACE_MS");
   if(!r.ok) throw new Error("polygon HTTP "+r.status);
   const candles = parsePolygonAggs(await r.json());
-  if(candles.length < 100) throw new Error("only "+candles.length+" bars");
+  if(candles.length < (opts.minBars ?? 100)) throw new Error("only "+candles.length+" bars for "+sym+" @ "+resolution);
   return candles;
+}
+
+// Daily history — the common case, kept as a thin wrapper over fetchPolygonAggs so
+// existing callers (signal-study, forward-log) are unchanged.
+export async function fetchPolygonDaily(sym, key){
+  return fetchPolygonAggs(sym, "1day", key);
 }
 
 function parseArgs(argv){
   const a = { preview:false, dryRun:false, horizon:HORIZON, tickersFile:null,
-              pace: +(process.env.POLYGON_PACE_MS || 13000) };  // 5 req/min free tier
+              pace: +(process.env.POLYGON_PACE_MS || 0) };  // Starter: unlimited calls — no throttle needed
   for(let i=2;i<argv.length;i++){ const x=argv[i];
     if(x==="--preview") a.preview=true;
     else if(x==="--dry-run") a.dryRun=true;
