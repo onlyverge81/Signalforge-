@@ -700,6 +700,44 @@ function polyErr(j){
 }
 async function polyGet(url){ const r=await fetch(url); const j=await r.json(); if(j&&(j.status==="ERROR"||j.error)) throw new Error(polyErr(j)); return j; }
 function polyBars(results,span){ return (results||[]).map(b=>({date:polyBarDate(b.t,span),open:+(+b.o).toFixed(4),high:+(+b.h).toFixed(4),low:+(+b.l).toFixed(4),close:+(+b.c).toFixed(4),volume:+b.v||0})).filter(d=>d.close>0); }
+
+// ─── Live streaming (Polygon WebSocket) ──────────────────────────────────────
+// Mirrors scripts/poly-ws.mjs (the unit-tested protocol). On Stocks Starter the cluster is
+// the DELAYED one (~15-min behind); we NEVER fake real-time — wsBand() labels each streamed
+// bar honestly from its end time. Flip mode:"realtime" on a tier upgrade and nothing else
+// changes. Auto-reconnects; close() stops it for good.
+const POLY_WS_CLUSTERS={ delayed:"wss://delayed.socket.polygon.io/stocks", realtime:"wss://socket.polygon.io/stocks" };
+function wsBand(endMs){ const s=Math.max(0,Math.round((Date.now()-endMs)/1000)); return { band: s<=90?"REALTIME":(s<=1200?"DELAYED":"STALE"), stalenessSec:s }; }
+class PolyLiveSocket{
+  constructor({key, tickers, channel="AM", mode="delayed", onBar, onStatus}){
+    this.key=key; this.tickers=Array.isArray(tickers)?tickers:[tickers]; this.channel=channel;
+    this.url=POLY_WS_CLUSTERS[mode]||POLY_WS_CLUSTERS.delayed;
+    this.onBar=onBar||(()=>{}); this.onStatus=onStatus||(()=>{}); this.ws=null; this.closed=false;
+  }
+  connect(){
+    if(typeof WebSocket==="undefined") return;
+    this.closed=false;
+    const ws=new WebSocket(this.url); this.ws=ws;
+    ws.onopen=()=>ws.send(JSON.stringify({action:"auth",params:String(this.key||"")}));
+    ws.onmessage=(e)=>{
+      let arr; try{ arr=JSON.parse(e.data); }catch{ return; }
+      if(!Array.isArray(arr)) arr=[arr];
+      for(const ev of arr){
+        if(!ev||!ev.ev) continue;
+        if(ev.ev==="status"){
+          this.onStatus(ev);
+          const ok = ev.status==="auth_success" || (ev.status==="success" && /authenticated/i.test(ev.message||""));
+          if(ok) ws.send(JSON.stringify({action:"subscribe",params:this.tickers.map(t=>this.channel+"."+t).join(",")}));
+        } else if(ev.ev==="AM"||ev.ev==="A"){
+          this.onBar({sym:ev.sym, open:+ev.o, high:+ev.h, low:+ev.l, close:+ev.c, volume:+ev.v||0, start:+ev.s, end:+ev.e, vwap:ev.vw!=null?+ev.vw:null});
+        }
+      }
+    };
+    ws.onclose=()=>{ if(!this.closed) setTimeout(()=>{ if(!this.closed) this.connect(); }, 3000); };
+    ws.onerror=()=>{ try{ ws.close(); }catch(_){} };
+  }
+  close(){ this.closed=true; if(this.ws){ try{ this.ws.close(); }catch(_){} this.ws=null; } }
+}
 // Stock OHLC bars + a best-effort freshness quote → {candles, quote:{lastTs,isOpen}}
 async function polyFetchCandles(sym, resolution, key){
   const [mult,span]=POLY_RES[resolution]||[1,"day"];
@@ -1688,6 +1726,8 @@ function App() {
   const [resolution,setResolution]= useState("D");
   const [fetching,  setFetching]  = useState(false);
   const [liveMeta,  setLiveMeta]  = useState(null);
+  const [streaming, setStreaming] = useState(false); // Polygon WebSocket on/off
+  const liveSockRef = useRef(null);
   const [outlook,   setOutlook]   = useState(null); // Market Outlook → correction-period price (live only)
   const [outlookError, setOutlookError] = useState(null); // why the Outlook is empty (vs silent blank)
   const [fundaMeta, setFundaMeta] = useState(null); // provenance of auto-filled fundamentals
@@ -1807,6 +1847,21 @@ function App() {
       setKeyTest({ok:true,msg:"✓ Valid REST key"+extra});
     }catch(e){ setKeyTest({ok:false,msg:e.message||"Key test failed."}); }
   }
+
+  // ── Live streaming control (Polygon WebSocket) ──
+  function stopLive(){ if(liveSockRef.current){ liveSockRef.current.close(); liveSockRef.current=null; } setStreaming(false); }
+  function goLive(){
+    const sym=(liveMeta?.sym||ticker||"").trim().toUpperCase();
+    const key=(polyKey||"").trim();
+    if(!sym || provider!=="polygon" || !key){ setError("Streaming needs a Polygon key and a fetched symbol."); return; }
+    stopLive();
+    const sock=new PolyLiveSocket({ key, tickers:[sym], channel:"AM", mode:"delayed",
+      onBar:(b)=>{ const f=wsBand(b.end);
+        setLiveFreshness(prev=>({ ...(prev||{}), provider:"Polygon", band:f.band, stalenessSec:f.stalenessSec, isOpen:f.band!=="STALE", price:b.close, lastTs:b.end })); },
+      onStatus:(s)=>{ if(s && (s.status==="auth_failed"||/max|error/i.test(s.status||""))){ setError("Polygon stream: "+(s.message||s.status)); stopLive(); } } });
+    liveSockRef.current=sock; sock.connect(); setStreaming(true);
+  }
+  useEffect(()=>()=>stopLive(),[]); // close the socket on unmount
 
   async function fetchLive(){
     const usePoly=provider==="polygon";
@@ -2096,6 +2151,12 @@ function App() {
             </div>
             {error&&<div style={{background:"rgba(255,82,82,0.08)",border:"1px solid rgba(255,82,82,0.3)",borderRadius:6,padding:12,color:"#ff8a80",fontSize:11,marginBottom:14,lineHeight:1.7}}>⚠ {error}</div>}
             <button style={{...runBtn,opacity:fetching?0.6:1}} onClick={fetchLive} disabled={fetching}>{fetching?"⏳ FETCHING…":"⬇  FETCH LIVE DATA & ANALYZE"}</button>
+            {provider==="polygon"&&liveMeta&&(
+              <button style={{...runBtn,marginTop:8,background:streaming?"#3a1414":"#0d2818",border:"1px solid "+(streaming?"#ff5252":"#00e676")}} onClick={streaming?stopLive:goLive}>
+                {streaming?"⏹  STOP LIVE STREAM":"▶  GO LIVE (stream "+(liveMeta?.sym||"")+" · 15-min delayed)"}
+              </button>
+            )}
+            {streaming&&<div style={{textAlign:"center",fontSize:10,marginTop:6,color:DIM}}>Streaming Polygon minute bars (delayed cluster) — the badge below shows true freshness; real-time needs a Developer+ tier.</div>}
             {liveMeta&&<div style={{textAlign:"center",fontSize:10,marginTop:10}}><span style={{color:"#00e676"}}>✓ {liveMeta.sym} · {liveMeta.count} candles · {liveMeta.when} · {liveMeta.provider}</span>{liveFreshness&&liveFreshness.band&&<span style={{color:freshnessColor(liveFreshness.band),marginLeft:6}}>· {freshnessLabel(liveFreshness)}</span>}</div>}
             {liveMeta&&liveFreshness&&liveFreshness.provider==="Polygon"&&liveFreshness.price!=null&&(
               <div style={{textAlign:"center",fontSize:12,marginTop:6}}>

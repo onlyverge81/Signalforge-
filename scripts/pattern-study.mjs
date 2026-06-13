@@ -156,6 +156,49 @@ export async function fetchPolygonDividends(sym, key, opts = {}){
   return parseDividends(await r.json());
 }
 
+// ─── News / events (event-context gate) ──────────────────────────────────────
+// Fresh news around a signal is gap/event risk — capture it on every logged signal so we
+// can later test whether signals near news behave differently (database-driven, honest).
+
+// Polygon /v2/reference/news JSON → [{publishedUtc, title, sentiment}]. Pure.
+export function parseNews(j){
+  const res = j && j.results;
+  if(!Array.isArray(res)) return [];
+  return res.map(n => ({
+    publishedUtc: n.published_utc,
+    title: n.title || "",
+    sentiment: (Array.isArray(n.insights) && n.insights[0] && n.insights[0].sentiment) || null,
+  })).filter(n => n.publishedUtc);
+}
+
+// Summarize news in the `days` BEFORE asOf: count, freshest timestamp, and a net sentiment
+// (majority of tagged articles). The window is the recency that matters for event risk. Pure.
+export function newsWindow(news, asOf, days = 3){
+  if(!Array.isArray(news) || !asOf) return { count: 0, freshestUtc: null, sentiment: null };
+  const to = new Date(asOf).getTime();
+  const from = to - days * 864e5;
+  let count = 0, freshest = null, pos = 0, neg = 0;
+  for(const n of news){
+    const t = new Date(n.publishedUtc).getTime();
+    if(t >= from && t <= to){
+      count++;
+      if(!freshest || n.publishedUtc > freshest) freshest = n.publishedUtc;
+      if(n.sentiment === "positive") pos++; else if(n.sentiment === "negative") neg++;
+    }
+  }
+  const sentiment = count === 0 ? null : (pos > neg ? "positive" : neg > pos ? "negative" : "neutral");
+  return { count, freshestUtc: freshest, sentiment };
+}
+
+// Recent news articles for a symbol (newest first; default 50). Network.
+export async function fetchPolygonNews(sym, key, opts = {}){
+  const u = `${POLY}/v2/reference/news?ticker=${encodeURIComponent(sym)}&limit=${opts.limit || 50}&order=desc&sort=published_utc&apiKey=${encodeURIComponent(key)}`;
+  const r = await fetch(u);
+  if(r.status === 429) throw new Error("rate limited (429) — raise POLYGON_PACE_MS");
+  if(!r.ok) throw new Error("polygon HTTP "+r.status+" on news");
+  return parseNews(await r.json());
+}
+
 function parseArgs(argv){
   const a = { preview:false, dryRun:false, horizon:HORIZON, tickersFile:null,
               resolution: process.env.POLY_RESOLUTION || "1day",
