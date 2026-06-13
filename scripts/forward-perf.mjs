@@ -149,6 +149,7 @@ export function scoreLedger(ledger, variants = defaultVariants(), costPerTrade =
   const rows = Array.isArray(ledger) ? ledger : [];
   const closedTotal = rows.filter(t => CLOSED.has(t.status)).length;
   const benchmarkable = rows.filter(isBenchmarkable).length;
+  const suspect = rows.filter(t => t.tags && t.tags.dataSuspect).length;
   const variantsOut = {};
   for (const v of variants) {
     variantsOut[v.label] = variantAlpha(rows.filter(v.where), costPerTrade);
@@ -157,7 +158,10 @@ export function scoreLedger(ledger, variants = defaultVariants(), costPerTrade =
     generatedAt: new Date().toISOString(),
     method: "matched-window buy-&-hold; alpha = strategy net − benchmark net (cost-invariant)",
     costPerTrade,
-    ledger: { rows: rows.length, closed: closedTotal, benchmarkable },
+    ledger: {
+      rows: rows.length, closed: closedTotal, benchmarkable,
+      suspect, suspectRate: rows.length ? round(suspect / rows.length * 100) : 0,
+    },
     variants: variantsOut,
   };
   return attachSignificance(perf);

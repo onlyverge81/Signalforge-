@@ -50,13 +50,20 @@ jobs:
         # Non-fatal: if the key isn't set yet or a vendor hiccups, still deploy.
         run: node scripts/forward-log.mjs || echo "forward-log skipped (set the POLYGON_API_KEY secret to enable)"
 
-      - name: Commit the ledger if it changed
+      - name: Score alpha and run the promotion engine (propose-only)
+        # Re-scores the refreshed ledger as FDR-corrected alpha vs. buy-&-hold,
+        # then auto-demotes proven losers / freezes on suspect data and FLAGS
+        # promotions for human ratification. Never auto-activates a variant.
+        # Idempotent and offline (reads the committed ledger), so always safe.
+        run: node scripts/promote.mjs
+
+      - name: Commit the ledger and registry if they changed
         run: |
           git config user.name "github-actions[bot]"
           git config user.email "github-actions[bot]@users.noreply.github.com"
-          if ! git diff --quiet -- paper-ledger.json; then
-            git add paper-ledger.json
-            git commit -m "chore: forward-test log — append/close paper trades"
+          git add paper-ledger.json strategy-registry.json forward-perf.json
+          if ! git diff --cached --quiet; then
+            git commit -m "chore: forward-test log + alpha/promotion update"
             # Land on main, rebasing onto any concurrent bot push (the sibling
             # data workflows can push between our checkout and this step).
             for i in 1 2 3; do
@@ -64,7 +71,7 @@ jobs:
               echo "push race (attempt $i) — retrying"; sleep 3
             done
           else
-            echo "paper-ledger.json unchanged — nothing to commit."
+            echo "ledger, registry and perf unchanged — nothing to commit."
           fi
 
       - name: Configure Pages
