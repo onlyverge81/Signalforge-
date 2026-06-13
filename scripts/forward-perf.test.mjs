@@ -5,6 +5,7 @@ import assert from "node:assert/strict";
 import {
   buyHoldGrossPct, tradeAlpha, variantAlpha, scoreLedger, isBenchmarkable,
   defaultVariants, COST_PER_TRADE,
+  betai, tUpperP, tTest, attachSignificance, MIN_TRADES_SIG,
 } from "./forward-perf.mjs";
 import { markToMarket } from "./forward-log.mjs";
 
@@ -119,6 +120,107 @@ test("defaultVariants: covers all + grade + merit lenses", () => {
   assert.ok(labels.includes("all"));
   assert.ok(labels.includes("grade-A"));
   assert.ok(labels.includes("merits-on"));
+});
+
+// ─── statistics: incomplete beta, Student-t tail, one-sample t ────────────────
+test("betai: symmetric base cases", () => {
+  assert.ok(Math.abs(betai(0.5, 0.5, 0.5) - 0.5) < 1e-9); // I_0.5(½,½) = 0.5
+  assert.equal(betai(2, 3, 0), 0);
+  assert.equal(betai(2, 3, 1), 1);
+});
+
+test("tUpperP: t=0 is exactly half; large t → tiny p; matches a known value", () => {
+  assert.ok(Math.abs(tUpperP(0, 10) - 0.5) < 1e-9);
+  assert.ok(tUpperP(5, 20) < 0.001);
+  assert.ok(tUpperP(-5, 20) > 0.999);
+  // t=2.228, df=10 → two-sided 0.05 → one-sided upper ≈ 0.025
+  assert.ok(Math.abs(tUpperP(2.228, 10) - 0.025) < 5e-4);
+});
+
+test("tTest: sample std uses n−1, t = mean / (std/√n)", () => {
+  const r = tTest([1, 2, 3, 4, 5]); // mean 3, sample sd √2.5
+  assert.equal(r.n, 5);
+  assert.equal(r.mean, 3);
+  assert.ok(Math.abs(r.std - Math.sqrt(2.5)) < 1e-12);
+  assert.equal(r.df, 4);
+  assert.ok(Math.abs(r.t - 3 / (Math.sqrt(2.5) / Math.sqrt(5))) < 1e-12);
+});
+
+// ─── significance with multiple-testing correction ───────────────────────────
+// Build a synthetic perf object straight from per-variant alpha arrays so the
+// statistics are exercised in isolation from the price→alpha plumbing.
+function perfFrom(variantAlphas) {
+  const variants = {};
+  for (const [label, alphas] of Object.entries(variantAlphas)) {
+    const mean = alphas.length ? alphas.reduce((a, b) => a + b, 0) / alphas.length : null;
+    variants[label] = {
+      n: alphas.length,
+      legs: alphas.map((a, i) => ({ id: label + i, alphaPct: a })),
+      meanAlphaPerTrade: mean == null ? null : parseFloat(mean.toFixed(4)),
+      alphaGrowthPct: mean == null ? 0 : parseFloat(mean.toFixed(4)),
+    };
+  }
+  return { variants };
+}
+
+test("attachSignificance: a strong, low-variance positive variant is promotable", () => {
+  const strong = Array.from({ length: 12 }, (_, i) => 2 + (i % 2 ? 0.1 : -0.1)); // ~+2, tiny noise
+  const perf = attachSignificance(perfFrom({ all: strong }));
+  const s = perf.variants.all.significance;
+  assert.equal(s.n, 12);
+  assert.ok(s.tStat > 5);
+  assert.ok(s.qBH < 0.05);
+  assert.equal(s.verdict, "SIGNIFICANT");
+  assert.equal(s.promotable, true);
+  assert.equal(s.provenLoser, false);
+});
+
+test("attachSignificance: under-powered variant is TOO FEW and stays OUT of the family", () => {
+  const perf = attachSignificance(perfFrom({
+    big: Array.from({ length: 12 }, () => 2),
+    tiny: [5, 5, 5], // only 3 trades — not testable
+  }));
+  assert.equal(perf.variants.tiny.significance.verdict, "TOO FEW TRADES");
+  assert.equal(perf.variants.tiny.significance.inFamily, false);
+  assert.equal(perf.multipleTesting.familySize, 1); // only "big" entered the correction
+  assert.ok(!perf.multipleTesting.family.includes("tiny"));
+});
+
+test("attachSignificance: a significantly NEGATIVE variant is flagged a proven loser", () => {
+  const losers = Array.from({ length: 12 }, (_, i) => -2 + (i % 2 ? 0.1 : -0.1));
+  const perf = attachSignificance(perfFrom({ bad: losers }));
+  const s = perf.variants.bad.significance;
+  assert.equal(s.verdict, "PROVEN LOSER");
+  assert.equal(s.provenLoser, true);
+  assert.equal(s.promotable, false);
+});
+
+test("attachSignificance: FDR penalizes a modest variant tested among many nulls", () => {
+  // "a" alone clears raw p<0.05, but it's screened alongside 5 zero-mean nulls.
+  // With a family of 6, Benjamini-Hochberg multiplies the smallest p by 6 → no
+  // promotion. This is exactly the protection against picking the luckiest lens.
+  const a = [3, -1, 2, 0, 3, -1, 2, 1, 2, 0, 3, -1];   // raw t≈2.3, p≈0.02
+  const nulls = {};
+  for (let k = 0; k < 5; k++) nulls["n" + k] = Array.from({ length: 12 }, (_, i) => (i % 2 ? 1 : -1));
+  const perf = attachSignificance(perfFrom({ a, ...nulls }));
+  const s = perf.variants.a.significance;
+  assert.ok(s.pUpper < 0.05, "raw p would look significant on its own");
+  assert.equal(perf.multipleTesting.familySize, 6);
+  assert.equal(s.promotable, false, "but FDR across 6 lenses withholds promotion");
+  assert.ok(s.qBH >= 0.05);
+  assert.ok(s.qBY >= s.qBH - 1e-9); // BY is at least as strict as BH
+});
+
+test("scoreLedger: thin real ledger yields TOO FEW, never a false promotion", () => {
+  const ledger = [
+    closed({ id: "A", entry: 100, exit: 106, benchClose: 102, grade: "A" }),
+    closed({ id: "B", entry: 100, exit: 104, benchClose: 101, grade: "A" }),
+  ];
+  const perf = scoreLedger(ledger);
+  assert.equal(perf.variants["grade-A"].significance.verdict, "TOO FEW TRADES");
+  assert.equal(perf.variants["grade-A"].significance.promotable, false);
+  assert.equal(perf.multipleTesting.familySize, 0);
+  assert.ok(/not enough evidence/i.test(perf.multipleTesting.note));
 });
 
 // ─── markToMarket now captures the benchmark reference (exit-bar close) ────────

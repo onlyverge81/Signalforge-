@@ -153,13 +153,184 @@ export function scoreLedger(ledger, variants = defaultVariants(), costPerTrade =
   for (const v of variants) {
     variantsOut[v.label] = variantAlpha(rows.filter(v.where), costPerTrade);
   }
-  return {
+  const perf = {
     generatedAt: new Date().toISOString(),
     method: "matched-window buy-&-hold; alpha = strategy net − benchmark net (cost-invariant)",
     costPerTrade,
     ledger: { rows: rows.length, closed: closedTotal, benchmarkable },
     variants: variantsOut,
   };
+  return attachSignificance(perf);
+}
+
+// ─── Significance, multiple-testing-corrected ─────────────────────────────────
+// With 8 variant lenses, the best-looking one will look good by luck. A positive
+// alpha is necessary, not sufficient: we ask whether each variant's per-trade
+// alpha series (a PAIRED difference — strategy minus its own benchmark over the
+// same window) is significantly above zero, then correct for how many lenses we
+// tried. Promotion uses Benjamini-Hochberg FDR (controls the false-discovery
+// proportion among the variants we promote); Benjamini-Yekutieli is reported as a
+// stricter cross-check, valid under ARBITRARY dependence — which matters here,
+// because the variants overlap (grade buckets nest inside "all"; merits-on/off
+// partition it). "Demote fast, promote slow": a variant must clear FDR to be
+// promotable, but a significantly NEGATIVE alpha flags it a proven loser at once.
+
+export const MIN_TRADES_SIG = 10;   // below this, forward data is too thin to test
+export const Q_SIGNIFICANT = 0.05;  // FDR gate to call a variant promotable
+export const Q_SUGGESTIVE = 0.10;   // FDR gate for "worth watching", not yet promotable
+
+// Lanczos log-gamma and the regularized incomplete beta (Numerical Recipes) — the
+// minimal kit for an exact Student-t tail without pulling in a stats dependency.
+function gammaln(x) {
+  const c = [76.18009172947146, -86.50532032941677, 24.01409824083091,
+    -1.231739572450155, 0.1208650973866179e-2, -0.5395239384953e-5];
+  let y = x, tmp = x + 5.5; tmp -= (x + 0.5) * Math.log(tmp);
+  let ser = 1.000000000190015;
+  for (let j = 0; j < 6; j++) { y++; ser += c[j] / y; }
+  return -tmp + Math.log(2.5066282746310005 * ser / x);
+}
+function betacf(a, b, x) {
+  const MAXIT = 200, EPS = 3e-12, FPMIN = 1e-300;
+  const qab = a + b, qap = a + 1, qam = a - 1;
+  let c = 1, d = 1 - qab * x / qap;
+  if (Math.abs(d) < FPMIN) d = FPMIN;
+  d = 1 / d; let h = d;
+  for (let m = 1; m <= MAXIT; m++) {
+    const m2 = 2 * m;
+    let aa = m * (b - m) * x / ((qam + m2) * (a + m2));
+    d = 1 + aa * d; if (Math.abs(d) < FPMIN) d = FPMIN;
+    c = 1 + aa / c; if (Math.abs(c) < FPMIN) c = FPMIN;
+    d = 1 / d; h *= d * c;
+    aa = -(a + m) * (qab + m) * x / ((a + m2) * (qap + m2));
+    d = 1 + aa * d; if (Math.abs(d) < FPMIN) d = FPMIN;
+    c = 1 + aa / c; if (Math.abs(c) < FPMIN) c = FPMIN;
+    d = 1 / d; const del = d * c; h *= del;
+    if (Math.abs(del - 1) < EPS) break;
+  }
+  return h;
+}
+export function betai(a, b, x) {
+  if (x <= 0) return 0;
+  if (x >= 1) return 1;
+  const bt = Math.exp(gammaln(a + b) - gammaln(a) - gammaln(b) + a * Math.log(x) + b * Math.log(1 - x));
+  return x < (a + 1) / (a + b + 2) ? bt * betacf(a, b, x) / a : 1 - bt * betacf(b, a, 1 - x) / b;
+}
+
+// One-sided upper-tail p-value P(T ≥ t) for Student-t with df degrees of freedom.
+// pUpper answers "is mean alpha > 0?" (promotion); pLower answers "< 0?" (demote).
+export function tUpperP(t, df) {
+  if (!(df > 0)) return null;
+  const p2 = betai(df / 2, 0.5, df / (df + t * t)); // two-sided P(|T| > |t|)
+  return t >= 0 ? p2 / 2 : 1 - p2 / 2;
+}
+
+// Sample mean, sample std (n−1: honest small-sample inference), and one-sample t.
+export function tTest(xs) {
+  const n = xs.length;
+  if (n < 2) return { n, mean: n ? xs[0] : null, std: null, t: null, df: null };
+  const mean = xs.reduce((a, b) => a + b, 0) / n;
+  const ss = xs.reduce((a, b) => a + (b - mean) ** 2, 0);
+  const std = Math.sqrt(ss / (n - 1));
+  const se = std / Math.sqrt(n);
+  const t = se > 0 ? mean / se : (mean === 0 ? 0 : Infinity * Math.sign(mean));
+  return { n, mean, std, t, df: n - 1 };
+}
+
+// Benjamini-Hochberg step-up adjusted p-values (q-values). c = harmonic factor
+// for Benjamini-Yekutieli (arbitrary-dependence valid); pass c = sum_{i=1..m}(1/i)
+// to get BY, or c = 1 for BH. Returns q in the ORIGINAL input order.
+function fdrAdjust(pvals, c = 1) {
+  const m = pvals.length;
+  if (!m) return [];
+  const order = pvals.map((p, i) => ({ p, i })).sort((a, b) => a.p - b.p);
+  const q = new Array(m);
+  let prev = 1;
+  for (let k = m - 1; k >= 0; k--) {
+    const raw = order[k].p * m * c / (k + 1);
+    prev = Math.min(prev, raw);
+    q[order[k].i] = Math.min(prev, 1);
+  }
+  return q;
+}
+
+// Attach significance to a scored-perf object. Builds the multiple-testing family
+// from variants with enough trades (MIN_TRADES_SIG); under-powered ones are honestly
+// marked TOO FEW and kept OUT of the correction (testing thin buckets and counting
+// them would distort the FDR). Returns the same object with per-variant sig fields
+// and a top-level multipleTesting summary.
+export function attachSignificance(perf, opts = {}) {
+  const minN = opts.minTrades ?? MIN_TRADES_SIG;
+  const entries = Object.entries(perf.variants);
+
+  // 1) per-variant t-test on the paired alpha series
+  const stat = {};
+  for (const [label, v] of entries) {
+    const alphas = (v.legs || []).map(l => l.alphaPct);
+    const tt = tTest(alphas);
+    const pUpper = tt.df ? tUpperP(tt.t, tt.df) : null;
+    const pLower = tt.df ? tUpperP(-tt.t, tt.df) : null;
+    stat[label] = { tt, pUpper, pLower };
+  }
+
+  // 2) multiple-testing family = variants with n ≥ minN and a defined p
+  const family = entries
+    .map(([label]) => label)
+    .filter(label => stat[label].tt.n >= minN && stat[label].pUpper != null);
+  const m = family.length;
+  const harmonic = Array.from({ length: m }, (_, i) => 1 / (i + 1)).reduce((a, b) => a + b, 0);
+
+  const qUpBH = fdrAdjust(family.map(l => stat[l].pUpper), 1);
+  const qUpBY = fdrAdjust(family.map(l => stat[l].pUpper), harmonic);
+  const qDnBH = fdrAdjust(family.map(l => stat[l].pLower), 1);
+  const qOf = (arr, label) => { const k = family.indexOf(label); return k < 0 ? null : round(arr[k]); };
+
+  // 3) verdict per variant
+  for (const [label, v] of entries) {
+    const { tt, pUpper, pLower } = stat[label];
+    const inFamily = family.includes(label);
+    const qBH = qOf(qUpBH, label), qBY = qOf(qUpBY, label), qNegBH = qOf(qDnBH, label);
+    const meanAlpha = v.meanAlphaPerTrade;
+
+    let verdict, promotable = false, provenLoser = false;
+    if (tt.n < minN) {
+      verdict = "TOO FEW TRADES";
+    } else if (meanAlpha > 0 && qBH != null && qBH < Q_SIGNIFICANT) {
+      verdict = "SIGNIFICANT"; promotable = true;
+    } else if (meanAlpha > 0 && qBH != null && qBH < Q_SUGGESTIVE) {
+      verdict = "SUGGESTIVE";
+    } else if (meanAlpha < 0 && qNegBH != null && qNegBH < Q_SIGNIFICANT) {
+      verdict = "PROVEN LOSER"; provenLoser = true;
+    } else {
+      verdict = "NOT SIGNIFICANT";
+    }
+
+    v.significance = {
+      n: tt.n,
+      meanAlpha: round(meanAlpha),
+      tStat: round(tt.t),
+      df: tt.df,
+      pUpper: round(pUpper),
+      pLower: round(pLower),
+      qBH, qBY, qNegBH,
+      inFamily,
+      verdict,
+      promotable,          // cleared FDR on the positive side → eligible to promote
+      provenLoser,         // significantly negative alpha → demote candidate
+    };
+  }
+
+  perf.multipleTesting = {
+    method: "Benjamini-Hochberg FDR (promotion); Benjamini-Yekutieli reported as arbitrary-dependence cross-check",
+    minTrades: minN,
+    familySize: m,
+    family,
+    qSignificant: Q_SIGNIFICANT,
+    qSuggestive: Q_SUGGESTIVE,
+    note: m === 0
+      ? "No variant has enough forward trades yet to test — the honest verdict is 'not enough evidence', not zero."
+      : `${m} variant(s) had enough trades to enter the correction.`,
+  };
+  return perf;
 }
 
 function round(x) { return Number.isFinite(x) ? parseFloat(x.toFixed(4)) : x; }
@@ -176,15 +347,20 @@ function printTable(perf) {
   }
   const pad = (s, n) => String(s).padEnd(n);
   const padN = (s, n) => String(s).padStart(n);
-  console.log(`  ${pad("variant", 12)} ${padN("n", 4)} ${padN("strat%", 9)} ${padN("bench%", 9)} ${padN("alpha%", 9)} ${padN("beat%", 7)}`);
-  console.log(`  ${"-".repeat(12)} ${"-".repeat(4)} ${"-".repeat(9)} ${"-".repeat(9)} ${"-".repeat(9)} ${"-".repeat(7)}`);
+  console.log(`  ${pad("variant", 12)} ${padN("n", 4)} ${padN("alpha%", 9)} ${padN("t", 7)} ${padN("qBH", 8)} ${padN("qBY", 8)}  verdict`);
+  console.log(`  ${"-".repeat(12)} ${"-".repeat(4)} ${"-".repeat(9)} ${"-".repeat(7)} ${"-".repeat(8)} ${"-".repeat(8)}  ${"-".repeat(15)}`);
   for (const [label, v] of Object.entries(perf.variants)) {
-    if (!v.n) { console.log(`  ${pad(label, 12)} ${padN(0, 4)} ${padN("—", 9)} ${padN("—", 9)} ${padN("—", 9)} ${padN("—", 7)}`); continue; }
+    const s = v.significance || {};
+    if (!v.n) { console.log(`  ${pad(label, 12)} ${padN(0, 4)} ${padN("—", 9)} ${padN("—", 7)} ${padN("—", 8)} ${padN("—", 8)}  ${s.verdict || "TOO FEW TRADES"}`); continue; }
     const sign = v.alphaGrowthPct > 0 ? "+" : "";
-    console.log(`  ${pad(label, 12)} ${padN(v.n, 4)} ${padN(v.stratGrowthPct, 9)} ${padN(v.benchGrowthPct, 9)} ${padN(sign + v.alphaGrowthPct, 9)} ${padN(v.beatBenchRate, 7)}`);
+    const fmt = x => (x == null ? "—" : x);
+    const flag = s.promotable ? " ✓PROMOTABLE" : s.provenLoser ? " ✗LOSER" : "";
+    console.log(`  ${pad(label, 12)} ${padN(v.n, 4)} ${padN(sign + v.alphaGrowthPct, 9)} ${padN(fmt(s.tStat), 7)} ${padN(fmt(s.qBH), 8)} ${padN(fmt(s.qBY), 8)}  ${s.verdict}${flag}`);
   }
-  console.log(`\n  strat%/bench% = compounded net growth of $1; alpha% = strat − bench (cost-invariant).`);
-  console.log(`  Positive alpha is necessary, not sufficient — significance comes next.`);
+  const mt = perf.multipleTesting || {};
+  console.log(`\n  alpha% = compounded net (strat − buy&hold, cost-invariant); t on the paired per-trade alpha series.`);
+  console.log(`  qBH = Benjamini-Hochberg FDR across ${mt.familySize || 0} testable variant(s); qBY = arbitrary-dependence cross-check.`);
+  console.log(`  Promotable ⇔ alpha>0 AND qBH<${Q_SIGNIFICANT}. ${mt.note || ""}`);
 }
 
 function main() {
