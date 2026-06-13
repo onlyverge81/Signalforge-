@@ -52,11 +52,12 @@ jobs:
         run: node scripts/build-fundamentals.mjs
 
       # Merit-evidence harness: reconstruct point-in-time merit from the SEC XBRL
-      # history + adjusted monthly prices, and write study.json (the gate Phase 2
-      # reads). Best-effort — never fail the deploy if a price vendor hiccups.
+      # history + Polygon adjusted monthly prices, and write study.json (the gate
+      # Phase 2 reads). Best-effort — skips cleanly if POLYGON_API_KEY is unset.
       - name: Build study.json (merit evidence)
         env:
           SEC_USER_AGENT: "SignalForge study builder (${{ github.repository }})"
+          POLYGON_API_KEY: ${{ secrets.POLYGON_API_KEY }}
         run: node scripts/build-study.mjs || echo "study build skipped (non-fatal)"
 
       - name: Commit refreshed data if it changed

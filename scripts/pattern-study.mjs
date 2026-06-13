@@ -41,6 +41,8 @@ export const RESOLUTIONS = {
   "30min": { mult: 30, span: "minute", ms: 30 * 60_000 },
   "1hour": { mult: 1,  span: "hour",   ms: 60 * 60_000 },
   "1day":  { mult: 1,  span: "day",    ms: 24 * 60 * 60_000 },
+  "1week": { mult: 1,  span: "week",   ms: 7 * 24 * 60 * 60_000 },
+  "1month":{ mult: 1,  span: "month",  ms: 30 * 24 * 60 * 60_000 },
 };
 
 // Polygon aggregates JSON → candle array. Same mapping the app's polyBars() uses
@@ -89,6 +91,7 @@ export function aggregate(perTicker, horizon){
 // Default lookback per resolution (ms). Daily wants deep history; intraday is
 // bounded so the bar count stays sane (Polygon caps at limit=50000). Tunable.
 function defaultLookbackMs(span){
+  if(span === "month" || span === "week") return 25 * 365 * 864e5;  // deep history for coarse bars
   if(span === "day")    return 20 * 365 * 864e5;  // ~20y of daily
   if(span === "hour")   return 3  * 365 * 864e5;  // ~3y of hourly
   return 60 * 864e5;                              // ~60d of minute bars

@@ -21,6 +21,7 @@ import { fileURLToPath } from "node:url";
 import { readTickers, distill } from "./build-fundamentals.mjs";
 import { secCik, secFetch, meritMetrics, meritScore } from "./sec-lib.mjs";
 import { runStudy, placebo, meritEdgeProven } from "./study-lib.mjs";
+import { fetchPolygonAggs } from "./pattern-study.mjs";
 
 const __dirname = path.dirname(fileURLToPath(import.meta.url));
 const ROOT = path.resolve(__dirname, "..");
@@ -28,33 +29,14 @@ const DAY = 864e5;
 const round = x => (x==null?null:Math.round(x*1e4)/1e4);
 const sleep = ms => new Promise(r=>setTimeout(r,ms));
 
-// ─── prices: adjusted monthly closes, keyless (Yahoo primary, Stooq fallback) ──
-async function fetchYahoo(sym){
-  const u="https://query1.finance.yahoo.com/v8/finance/chart/"+encodeURIComponent(sym)+"?range=max&interval=1mo";
-  const r=await fetch(u,{headers:{"User-Agent":"SignalForge study builder (https://github.com/onlyverge81/signalforge-)"}});
-  if(!r.ok) throw new Error("yahoo HTTP "+r.status);
-  const j=await r.json();
-  const res=j?.chart?.result?.[0];
-  if(!res||!res.timestamp) throw new Error("yahoo: no series");
-  const adj=res.indicators?.adjclose?.[0]?.adjclose;
-  const cl=adj||res.indicators?.quote?.[0]?.close||[];
-  const out=[];
-  for(let i=0;i<res.timestamp.length;i++){ const c=cl[i]; if(c!=null&&isFinite(c)&&c>0) out.push({t:res.timestamp[i]*1000, close:c}); }
-  return out.sort((a,b)=>a.t-b.t);
-}
-async function fetchStooq(sym){
-  const u="https://stooq.com/q/d/l/?s="+encodeURIComponent(sym.toLowerCase())+".us&i=m";
-  const r=await fetch(u);
-  if(!r.ok) throw new Error("stooq HTTP "+r.status);
-  const lines=(await r.text()).trim().split(/\r?\n/);
-  if(lines.length<2||!/date/i.test(lines[0])) throw new Error("stooq: no series");
-  const out=[];
-  for(const line of lines.slice(1)){ const c=line.split(","); const t=Date.parse(c[0]); const close=parseFloat(c[4]); if(isFinite(t)&&isFinite(close)&&close>0) out.push({t,close}); }
-  return out.sort((a,b)=>a.t-b.t);
-}
-async function fetchPrices(sym){
-  try{ return { src:"Yahoo (adjusted close)", data:await fetchYahoo(sym) }; }
-  catch(_){ return { src:"Stooq (close)", data:await fetchStooq(sym) }; }
+// ─── prices: adjusted MONTHLY closes from Polygon — the only vendor, no fallback ──
+// Same split/dividend-adjusted feed the rest of the stack uses (vendor parity), via
+// the shared fetchPolygonAggs. minBars:2 so short-history names still contribute the
+// windows they do have (buildObservations skips any incomplete forward window itself).
+async function fetchPrices(sym, key){
+  const candles = await fetchPolygonAggs(sym, "1month", key, { minBars: 2 });
+  const data = candles.map(c => ({ t: c.time, close: c.close })).sort((a,b)=>a.t-b.t);
+  return { src: "Polygon (adjusted monthly close)", data };
 }
 
 // ─── date / lookup helpers ───────────────────────────────────────────────────
@@ -74,12 +56,12 @@ function grid(stepM){
 }
 
 // ─── per-ticker raw data (one SEC + one price fetch each) ─────────────────────
-async function loadTicker(sym){
+async function loadTicker(sym, key){
   const cik=await secCik(sym);
   if(!cik) throw new Error("not in SEC EDGAR");
   const r=await secFetch("https://data.sec.gov/api/xbrl/companyfacts/CIK"+cik+".json");
   const j=await r.json();
-  const px=await fetchPrices(sym);
+  const px=await fetchPrices(sym, key);
   if(!px.data.length) throw new Error("no price series");
   return { j, prices:px.data, priceSrc:px.src };
 }
@@ -127,20 +109,22 @@ function pack(obs){
 const CAVEATS = [
   "Universe is ~36 hand-picked, still-listed large-caps — survivorship bias inflates any positive result; de-listed losers are absent.",
   "Few non-overlapping periods (one cross-section per rebalance) means low statistical power. INCONCLUSIVE here is the expected, honest outcome — not a bug.",
-  "Merit is reconstructed point-in-time from SEC XBRL with a 75-day filing lag (no fundamental lookahead). Prices are adjusted monthly closes.",
-  "A single universe and vendor; not a substitute for a broad, point-in-time, survivorship-free factor study. This gates the app's merit-fusion, it does not endorse the factor in general.",
+  "Merit is reconstructed point-in-time from SEC XBRL with a 75-day filing lag (no fundamental lookahead). Prices are Polygon split/dividend-adjusted monthly closes.",
+  "Still a small, hand-picked survivor universe — not a substitute for a broad, point-in-time, survivorship-free factor study. Next step: a Polygon survivorship-free universe (reference active=false). This gates the app's merit-fusion, it does not endorse the factor in general.",
 ];
 
 async function main(){
+  const key = process.env.POLYGON_API_KEY;
+  if(!key){ console.error("Set POLYGON_API_KEY (the REST key) — the merit study prices off Polygon, no fallback vendor by design."); process.exit(2); }
   const tickers=readTickers();
   const loaded={}; const errors=[]; let priceSrc=null;
   for(const sym of tickers){
     try{
-      const d=await loadTicker(sym);
+      const d=await loadTicker(sym, key);
       loaded[sym]=d; priceSrc=priceSrc||d.priceSrc;
       console.log("✓ "+sym.padEnd(6)+" "+d.prices.length+" monthly bars");
     }catch(e){ errors.push(sym+": "+(e.message||e)); console.warn("✗ "+sym.padEnd(6)+" — "+(e.message||e)); }
-    await sleep(300); // be polite to both APIs
+    await sleep(300); // be polite to SEC EDGAR (Polygon is unthrottled on Starter)
   }
 
   const h12=buildObservations(loaded,12);

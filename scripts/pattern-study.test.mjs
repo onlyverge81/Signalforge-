@@ -22,14 +22,16 @@ test("parsePolygonAggs: maps Polygon aggregate bars to candles (app's polyBars s
 });
 
 test("RESOLUTIONS: every supported timeframe maps to a Polygon (mult, span) and a period", () => {
-  for (const key of ["1min","5min","15min","30min","1hour","1day"]) {
+  for (const key of ["1min","5min","15min","30min","1hour","1day","1week","1month"]) {
     const r = RESOLUTIONS[key];
     assert.ok(r, key + " missing");
-    assert.ok(["minute","hour","day"].includes(r.span));
+    assert.ok(["minute","hour","day","week","month"].includes(r.span));
     assert.ok(r.mult >= 1 && r.ms > 0);
   }
   assert.deepEqual([RESOLUTIONS["15min"].mult, RESOLUTIONS["15min"].span], [15, "minute"]);
   assert.deepEqual([RESOLUTIONS["1hour"].mult, RESOLUTIONS["1hour"].span], [1, "hour"]);
+  // the merit study prices off Polygon monthly bars:
+  assert.deepEqual([RESOLUTIONS["1month"].mult, RESOLUTIONS["1month"].span], [1, "month"]);
   assert.equal(RESOLUTIONS["5min"].ms, 300000);
 });
 
