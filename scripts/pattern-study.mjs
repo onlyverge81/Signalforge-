@@ -63,6 +63,30 @@ export function parsePolygonAggs(j){
   })).filter(d => d.close > 0);
 }
 
+// ─── Regular trading hours (RTH) filter for intraday bars ────────────────────
+// Polygon /v2/aggs include PRE/POST-market trades. For liquid names those sessions are
+// thin: 15-min bars there repeat closes (→ audit "frozen") and the overnight gap reads as
+// a bar-to-bar "jump" — both flagged SEVERE, so the name is wrongly dropped. A swing/EOD
+// study wants the regular session anyway. We key off the bar's epoch `time`, converted to
+// New York local time (DST-correct via Intl), and keep only 09:30 ≤ start < 16:00 ET.
+const ET_HM = new Intl.DateTimeFormat("en-US", { timeZone: "America/New_York", hour: "2-digit", minute: "2-digit", hour12: false });
+export function etMinutes(epochMs){
+  let h = 0, m = 0;
+  for(const p of ET_HM.formatToParts(new Date(epochMs))){
+    if(p.type === "hour")   h = +p.value;
+    if(p.type === "minute") m = +p.value;
+  }
+  if(h === 24) h = 0; // some ICU builds emit 24 for midnight
+  return h * 60 + m;
+}
+export function filterRegularHours(candles){
+  return (candles || []).filter(c => {
+    if(!Number.isFinite(c.time)) return true; // no intraday stamp (e.g. daily bars) → keep
+    const t = etMinutes(c.time);
+    return t >= 570 && t < 960;                // 09:30 (570) … 16:00 (960)
+  });
+}
+
 // Pool per-ticker backtest results into one universe aggregate. Per-ticker means
 // are weighted by their signal counts (baseline by eligible-bar counts) so a
 // ticker with more triggers carries proportionally more weight. Pure.
