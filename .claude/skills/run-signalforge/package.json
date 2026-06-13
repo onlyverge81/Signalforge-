@@ -1,0 +1,12 @@
+{
+  "name": "run-signalforge",
+  "private": true,
+  "type": "module",
+  "description": "Driver harness for the SignalForge web app (Playwright + local vendored CDN libs).",
+  "dependencies": {
+    "@babel/standalone": "^7.25.0",
+    "playwright-core": "^1.56.0",
+    "react": "^18.3.1",
+    "react-dom": "^18.3.1"
+  }
+}
