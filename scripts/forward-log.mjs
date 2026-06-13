@@ -153,7 +153,7 @@ export function buildEntry({ sym, settled, fundaDB, loggedAt = new Date().toISOS
     tags: { ...gate.tags, fundamentalGrade: grade, meritsActivated: false },
     status: isObs ? "OBSERVATION" : "OPEN",
     exit: null, exitAt: null, exitDate: null, barsHeld: null,
-    pnl: null, grossPct: null, pnlPct: null,
+    pnl: null, grossPct: null, pnlPct: null, benchClose: null,
   };
 }
 
@@ -180,6 +180,12 @@ export function markToMarket(entry, settled, exitAt = new Date().toISOString()) 
         pnl: parseFloat(net.pnl.toFixed(4)),
         grossPct: parseFloat(net.grossPct.toFixed(4)),
         pnlPct: net.pnlPct,
+        // Buy-&-hold benchmark reference: the underlying's CLOSE on the exit bar.
+        // Same name, same entry, same matched window — but held passively to the
+        // close instead of exiting at the SL/TP touch. forward-perf measures the
+        // strategy's return against this to isolate alpha (skill) from beta (just
+        // being long the tape). null on open/observation rows where no window exists.
+        benchClose: parseFloat(after[i].close.toFixed(4)),
       };
     }
   }
