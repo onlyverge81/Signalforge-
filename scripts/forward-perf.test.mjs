@@ -1,0 +1,144 @@
+// Offline unit tests for the forward-performance scorer — no network.
+// Run: node --test scripts/
+import { test } from "node:test";
+import assert from "node:assert/strict";
+import {
+  buyHoldGrossPct, tradeAlpha, variantAlpha, scoreLedger, isBenchmarkable,
+  defaultVariants, COST_PER_TRADE,
+} from "./forward-perf.mjs";
+import { markToMarket } from "./forward-log.mjs";
+
+// A minimal closed-trade row, mirroring the ledger schema.
+function closed({ id = "T", ticker = "X", signal = "BUY", entry = 100, exit, benchClose, grade = null, merits = false }) {
+  const grossPct = (exit - entry) / entry * 100;
+  return {
+    id, ticker, signal, entry, exit,
+    grossPct: parseFloat(grossPct.toFixed(4)),
+    pnlPct: parseFloat((grossPct - COST_PER_TRADE).toFixed(4)),
+    status: grossPct >= 0 ? "WIN" : "LOSS",
+    benchClose,
+    tags: { fundamentalGrade: grade, meritsActivated: merits },
+  };
+}
+
+// ─── buy-&-hold benchmark ─────────────────────────────────────────────────────
+test("buyHoldGrossPct: long return over the matched window", () => {
+  assert.equal(buyHoldGrossPct(100, 110, "BUY"), 10);
+  assert.equal(buyHoldGrossPct(100, 90, "BUY"), -10);
+  assert.equal(buyHoldGrossPct(100, 110, "SELL"), -10); // short loses on a rally
+});
+
+// ─── the core property: alpha is cost-invariant ───────────────────────────────
+test("tradeAlpha: cost cancels — alpha is identical at any cost level", () => {
+  // strategy exits at 104 (TP); the same name closes the exit bar at 108.
+  const t = closed({ entry: 100, exit: 104, benchClose: 108 });
+  const a0 = tradeAlpha(t, 0);
+  const a5 = tradeAlpha(t, 5);
+  assert.equal(a0.alphaPct, a5.alphaPct);
+  // strat +4% vs bench +8% over the same window → it gave up 4 points of alpha.
+  assert.equal(a0.alphaPct, -4);
+  assert.equal(a0.beatBench, false);
+});
+
+test("tradeAlpha: beating buy-&-hold yields positive alpha", () => {
+  // strategy banks +6 (exit 106) while holding to close would have given +2 (102).
+  const t = closed({ entry: 100, exit: 106, benchClose: 102 });
+  const a = tradeAlpha(t);
+  assert.equal(a.alphaPct, 4);
+  assert.equal(a.beatBench, true);
+});
+
+// ─── the whole point: positive raw return can be NEGATIVE alpha (beta trap) ───
+test("variantAlpha: a profitable book that lags buy-&-hold has negative alpha", () => {
+  // Both trades make money, but each badly trails simply holding the name.
+  const trades = [
+    closed({ id: "A", entry: 100, exit: 103, benchClose: 115 }), // +3 vs +15
+    closed({ id: "B", entry: 100, exit: 102, benchClose: 110 }), // +2 vs +10
+  ];
+  const v = variantAlpha(trades, 0);
+  assert.equal(v.n, 2);
+  assert.ok(v.stratGrowthPct > 0, "strategy is profitable in raw terms");
+  assert.ok(v.alphaGrowthPct < 0, "yet it destroyed alpha vs. just holding");
+  assert.equal(v.beatBench, 0);
+  assert.equal(v.beatBenchRate, 0);
+});
+
+test("variantAlpha: compounded growth multiplies, not adds", () => {
+  const trades = [
+    closed({ id: "A", entry: 100, exit: 110, benchClose: 100 }), // +10 strat, 0 bench
+    closed({ id: "B", entry: 100, exit: 110, benchClose: 100 }), // +10 strat, 0 bench
+  ];
+  const v = variantAlpha(trades, 0);
+  // net per trade = +10 − 0.12 cost = 9.88. additive: 19.76;
+  // compounded: 1.0988² − 1 = 20.74% > the additive sum (growth multiplies).
+  assert.equal(v.stratNetSum, 19.76);
+  assert.equal(v.stratGrowthPct, 20.7361);
+  assert.ok(v.stratGrowthPct > v.stratNetSum);
+});
+
+// ─── coverage is surfaced, not hidden ─────────────────────────────────────────
+test("isBenchmarkable / uncovered: closed-but-no-benchClose is counted, not dropped", () => {
+  const ok = closed({ id: "A", entry: 100, exit: 105, benchClose: 108 });
+  const noBench = { id: "B", ticker: "Y", signal: "BUY", entry: 100, exit: 105, grossPct: 5, pnlPct: 4.88, status: "WIN", benchClose: null, tags: {} };
+  const open = { id: "C", status: "OPEN", entry: 100, benchClose: null, tags: {} };
+  assert.equal(isBenchmarkable(ok), true);
+  assert.equal(isBenchmarkable(noBench), false);
+  assert.equal(isBenchmarkable(open), false);
+  const v = variantAlpha([ok, noBench, open]);
+  assert.equal(v.n, 1);
+  assert.equal(v.closed, 2);     // ok + noBench are closed
+  assert.equal(v.uncovered, 1);  // noBench counted as uncovered
+});
+
+// ─── variant grouping ─────────────────────────────────────────────────────────
+test("scoreLedger: variants carve the ledger by gate tags", () => {
+  const ledger = [
+    closed({ id: "A", entry: 100, exit: 106, benchClose: 102, grade: "A" }), // +alpha
+    closed({ id: "B", entry: 100, exit: 101, benchClose: 112, grade: "C" }), // -alpha
+  ];
+  const perf = scoreLedger(ledger);
+  assert.equal(perf.ledger.benchmarkable, 2);
+  assert.equal(perf.variants["all"].n, 2);
+  assert.equal(perf.variants["grade-A"].n, 1);
+  assert.equal(perf.variants["grade-C"].n, 1);
+  assert.equal(perf.variants["grade-B"].n, 0);
+  assert.ok(perf.variants["grade-A"].alphaGrowthPct > 0);
+  assert.ok(perf.variants["grade-C"].alphaGrowthPct < 0);
+});
+
+test("scoreLedger: empty ledger is honest, not a crash", () => {
+  const perf = scoreLedger([]);
+  assert.equal(perf.ledger.rows, 0);
+  assert.equal(perf.ledger.benchmarkable, 0);
+  assert.equal(perf.variants["all"].n, 0);
+  assert.equal(perf.variants["all"].alphaGrowthPct, 0);
+});
+
+test("defaultVariants: covers all + grade + merit lenses", () => {
+  const labels = defaultVariants().map(v => v.label);
+  assert.ok(labels.includes("all"));
+  assert.ok(labels.includes("grade-A"));
+  assert.ok(labels.includes("merits-on"));
+});
+
+// ─── markToMarket now captures the benchmark reference (exit-bar close) ────────
+test("markToMarket: records benchClose = close of the exit bar", () => {
+  const openTrade = {
+    id: "X-1day-2026-01-10-BUY", ticker: "X", interval: "1day", signal: "BUY",
+    entry: 100, sl: 98, tp1: 104, tp2: 110, status: "OPEN",
+    dataAsOf: { date: "2026-01-10", close: 100 },
+  };
+  const bar = (date, high, low, close) => ({ date, open: 100, high, low, close });
+  const settled = [
+    bar("2026-01-10", 105, 99, 100),    // entry day — ignored (no lookahead)
+    bar("2026-01-11", 101, 100, 100.5), // no touch
+    bar("2026-01-12", 106, 101, 103),   // high ≥ tp1 → WIN; bench holds to close 103
+  ];
+  const out = markToMarket(openTrade, settled, "2026-01-12T22:00:00Z");
+  assert.equal(out.status, "WIN");
+  assert.equal(out.exit, 104);          // exited at the TP touch
+  assert.equal(out.benchClose, 103);    // benchmark held to the exit bar's close
+  // sanity: strat (+4 gross) beat buy-&-hold (+3) here
+  const a = tradeAlpha(out, 0);
+  assert.ok(a.alphaPct > 0);
+});
