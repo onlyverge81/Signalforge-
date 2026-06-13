@@ -3,21 +3,21 @@
 import { test } from "node:test";
 import assert from "node:assert/strict";
 import {
-  buyHoldGrossPct, tradeAlpha, variantAlpha, scoreLedger, isBenchmarkable,
+  buyHoldGrossPct, buyHoldTotalPct, tradeAlpha, variantAlpha, scoreLedger, isBenchmarkable,
   defaultVariants, COST_PER_TRADE,
   betai, tUpperP, tTest, attachSignificance, MIN_TRADES_SIG,
 } from "./forward-perf.mjs";
 import { markToMarket } from "./forward-log.mjs";
 
 // A minimal closed-trade row, mirroring the ledger schema.
-function closed({ id = "T", ticker = "X", signal = "BUY", entry = 100, exit, benchClose, grade = null, merits = false }) {
+function closed({ id = "T", ticker = "X", signal = "BUY", entry = 100, exit, benchClose, benchDiv, grade = null, merits = false }) {
   const grossPct = (exit - entry) / entry * 100;
   return {
     id, ticker, signal, entry, exit,
     grossPct: parseFloat(grossPct.toFixed(4)),
     pnlPct: parseFloat((grossPct - COST_PER_TRADE).toFixed(4)),
     status: grossPct >= 0 ? "WIN" : "LOSS",
-    benchClose,
+    benchClose, benchDiv,
     tags: { fundamentalGrade: grade, meritsActivated: merits },
   };
 }
@@ -27,6 +27,22 @@ test("buyHoldGrossPct: long return over the matched window", () => {
   assert.equal(buyHoldGrossPct(100, 110, "BUY"), 10);
   assert.equal(buyHoldGrossPct(100, 90, "BUY"), -10);
   assert.equal(buyHoldGrossPct(100, 110, "SELL"), -10); // short loses on a rally
+});
+
+test("buyHoldTotalPct: dividends lift the long hold (and are paid by a short)", () => {
+  assert.equal(buyHoldTotalPct(100, 110, 0, "BUY"), 10);     // no div → price-only
+  assert.equal(buyHoldTotalPct(100, 110, 2, "BUY"), 12);     // +$2/sh div on a $100 entry → +2%
+  assert.equal(buyHoldTotalPct(100, 110, 2, "SELL"), -12);   // short pays the dividend
+  assert.equal(buyHoldTotalPct(100, 110, undefined, "BUY"), 10); // missing benchDiv → price-only
+});
+
+test("tradeAlpha: a dividend the holder collects raises the bar (shrinks alpha)", () => {
+  // strat +4% (exit 104); hold closes at 108 AND collects a $1 dividend → bench 9%, not 8%.
+  const t = closed({ entry: 100, exit: 104, benchClose: 108, benchDiv: 1 });
+  const a = tradeAlpha(t);
+  assert.equal(a.benchGross, 9);
+  assert.equal(a.alphaPct, -5);     // 4 − 9; the dividend made buy-&-hold harder to beat
+  assert.equal(a.beatBench, false);
 });
 
 // ─── the core property: alpha is cost-invariant ───────────────────────────────

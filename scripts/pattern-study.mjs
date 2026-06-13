@@ -122,6 +122,40 @@ export async function fetchPolygonDaily(sym, key){
   return fetchPolygonAggs(sym, "1day", key);
 }
 
+// ─── Corporate actions: cash dividends (for the total-return benchmark) ───────
+// Polygon aggregates with adjusted=true adjust for SPLITS only, NOT dividends — so a
+// price-only buy-&-hold understates the true total return a holder earns. These helpers
+// supply the missing dividend cash so the benchmark (and thus alpha) is honest.
+
+// Polygon /v3/reference/dividends JSON → [{exDate, cash}] (positive cash only). Pure.
+export function parseDividends(j){
+  const res = j && j.results;
+  if(!Array.isArray(res)) return [];
+  return res.map(d => ({ exDate: d.ex_dividend_date, cash: +d.cash_amount || 0 }))
+            .filter(d => d.exDate && d.cash > 0);
+}
+
+// Cash per share a holder receives over (fromDate, toDate]: dividends whose EX-date falls
+// strictly after entry (they owned before it) and on/before exit. Date strings compare
+// lexically (YYYY-MM-DD). Pure.
+export function dividendsInWindow(divs, fromDate, toDate){
+  if(!Array.isArray(divs) || !fromDate || !toDate) return 0;
+  let sum = 0;
+  for(const d of divs){
+    if(d && d.exDate > fromDate && d.exDate <= toDate && Number.isFinite(d.cash)) sum += d.cash;
+  }
+  return +sum.toFixed(4);
+}
+
+// All cash dividends for a symbol (most recent first; default 1000 covers decades). Network.
+export async function fetchPolygonDividends(sym, key, opts = {}){
+  const u = `${POLY}/v3/reference/dividends?ticker=${encodeURIComponent(sym)}&limit=${opts.limit || 1000}&apiKey=${encodeURIComponent(key)}`;
+  const r = await fetch(u);
+  if(r.status === 429) throw new Error("rate limited (429) — raise POLYGON_PACE_MS");
+  if(!r.ok) throw new Error("polygon HTTP "+r.status+" on dividends");
+  return parseDividends(await r.json());
+}
+
 function parseArgs(argv){
   const a = { preview:false, dryRun:false, horizon:HORIZON, tickersFile:null,
               pace: +(process.env.POLYGON_PACE_MS || 0) };  // Starter: unlimited calls — no throttle needed
