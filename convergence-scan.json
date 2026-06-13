@@ -1,0 +1,202 @@
+{
+ "generatedAt": "2026-06-13T15:31:00.659Z",
+ "pattern": "Uptrend Convergence (trend-filtered)",
+ "resolution": "15min",
+ "lookbackDays": 45,
+ "topN": 300,
+ "priceSrc": "Polygon 15min (adjusted)",
+ "universeSource": "universe.json (dollar-volume ranked, top N)",
+ "scanned": 300,
+ "withData": 267,
+ "skippedCount": 33,
+ "horizons": [
+  {
+   "horizon": 6,
+   "tickersWithSignals": 221,
+   "totalSignals": 5805,
+   "pooledWinRate": 0.5069767441860465,
+   "pooledAvgFwdRet": 0.0009820705967621122,
+   "baselineAvgFwdRet": 0.0003889202386930856,
+   "edge": 0.0005931503580690267,
+   "edgeTStatAcrossTickers": -2.34,
+   "verdict": "SIGNIFICANT −"
+  },
+  {
+   "horizon": 12,
+   "tickersWithSignals": 221,
+   "totalSignals": 5802,
+   "pooledWinRate": 0.525680799724233,
+   "pooledAvgFwdRet": 0.0021794809345842517,
+   "baselineAvgFwdRet": 0.0007717967930934472,
+   "edge": 0.0014076841414908045,
+   "edgeTStatAcrossTickers": -1.8,
+   "verdict": "SUGGESTIVE −"
+  },
+  {
+   "horizon": 24,
+   "tickersWithSignals": 220,
+   "totalSignals": 5766,
+   "pooledWinRate": 0.5294831772459244,
+   "pooledAvgFwdRet": 0.0029985207363709765,
+   "baselineAvgFwdRet": 0.0015408467035534393,
+   "edge": 0.0014576740328175373,
+   "edgeTStatAcrossTickers": -2.16,
+   "verdict": "SIGNIFICANT −"
+  },
+  {
+   "horizon": 48,
+   "tickersWithSignals": 220,
+   "totalSignals": 5567,
+   "pooledWinRate": 0.535117657625292,
+   "pooledAvgFwdRet": 0.006650238468703687,
+   "baselineAvgFwdRet": 0.0029849242352349074,
+   "edge": 0.0036653142334687797,
+   "edgeTStatAcrossTickers": -2.44,
+   "verdict": "SIGNIFICANT −"
+  }
+ ],
+ "best": {
+  "horizon": 48,
+  "edge": 0.0036653142334687797,
+  "verdict": "SIGNIFICANT −"
+ },
+ "caveats": [
+  "In-sample exploration over ~1 month of intraday bars — a profitable horizon here is a HYPOTHESIS for the OOS ledger, not a proven edge.",
+  "Edge is forward return vs a matched same-window baseline (alpha), not a raw win rate; the t-stat is cross-sectional across names.",
+  "No costs subtracted in this forward-return scan — a positive edge must still clear the 2× round-trip cost gate before it is tradeable."
+ ],
+ "skipped": [
+  {
+   "sym": "SPCX",
+   "reason": "only 33 bars for SPCX @ 15min"
+  },
+  {
+   "sym": "AAL",
+   "reason": "data audit"
+  },
+  {
+   "sym": "HPE",
+   "reason": "data audit"
+  },
+  {
+   "sym": "PG",
+   "reason": "data audit"
+  },
+  {
+   "sym": "PFE",
+   "reason": "data audit"
+  },
+  {
+   "sym": "PEP",
+   "reason": "data audit"
+  },
+  {
+   "sym": "ABBV",
+   "reason": "data audit"
+  },
+  {
+   "sym": "NUVL",
+   "reason": "data audit"
+  },
+  {
+   "sym": "TJX",
+   "reason": "data audit"
+  },
+  {
+   "sym": "TMUS",
+   "reason": "data audit"
+  },
+  {
+   "sym": "NKE",
+   "reason": "data audit"
+  },
+  {
+   "sym": "CMCSA",
+   "reason": "data audit"
+  },
+  {
+   "sym": "CVNA",
+   "reason": "data audit"
+  },
+  {
+   "sym": "F",
+   "reason": "data audit"
+  },
+  {
+   "sym": "PL",
+   "reason": "data audit"
+  },
+  {
+   "sym": "ALB",
+   "reason": "data audit"
+  },
+  {
+   "sym": "ATI",
+   "reason": "data audit"
+  },
+  {
+   "sym": "BX",
+   "reason": "data audit"
+  },
+  {
+   "sym": "CSX",
+   "reason": "data audit"
+  },
+  {
+   "sym": "AEP",
+   "reason": "data audit"
+  },
+  {
+   "sym": "RIVN",
+   "reason": "data audit"
+  },
+  {
+   "sym": "CDE",
+   "reason": "data audit"
+  },
+  {
+   "sym": "VSH",
+   "reason": "data audit"
+  },
+  {
+   "sym": "INSM",
+   "reason": "data audit"
+  },
+  {
+   "sym": "WBD",
+   "reason": "data audit"
+  },
+  {
+   "sym": "MTSI",
+   "reason": "data audit"
+  },
+  {
+   "sym": "MNST",
+   "reason": "data audit"
+  },
+  {
+   "sym": "POET",
+   "reason": "data audit"
+  },
+  {
+   "sym": "HAL",
+   "reason": "data audit"
+  },
+  {
+   "sym": "DKNG",
+   "reason": "data audit"
+  },
+  {
+   "sym": "KDP",
+   "reason": "data audit"
+  },
+  {
+   "sym": "TEL",
+   "reason": "data audit"
+  },
+  {
+   "sym": "GM",
+   "reason": "data audit"
+  }
+ ]
+}
