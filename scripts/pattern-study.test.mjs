@@ -3,7 +3,7 @@
 
 import { test } from "node:test";
 import assert from "node:assert/strict";
-import { parsePolygonAggs, aggregate } from "./pattern-study.mjs";
+import { parsePolygonAggs, aggregate, RESOLUTIONS } from "./pattern-study.mjs";
 
 test("parsePolygonAggs: maps Polygon aggregate bars to candles (app's polyBars shape)", () => {
   const j = { results: [
@@ -16,6 +16,21 @@ test("parsePolygonAggs: maps Polygon aggregate bars to candles (app's polyBars s
   assert.equal(rows[1].high, 102);
   assert.equal(rows[1].volume, 1200000);
   assert.match(rows[0].date, /^\d{4}-\d{2}-\d{2}$/);
+  // intraday orderability: the epoch-ms bar start is preserved alongside `date`.
+  assert.equal(rows[0].time, 1704153600000);
+  assert.ok(rows[1].time > rows[0].time);
+});
+
+test("RESOLUTIONS: every supported timeframe maps to a Polygon (mult, span) and a period", () => {
+  for (const key of ["1min","5min","15min","30min","1hour","1day"]) {
+    const r = RESOLUTIONS[key];
+    assert.ok(r, key + " missing");
+    assert.ok(["minute","hour","day"].includes(r.span));
+    assert.ok(r.mult >= 1 && r.ms > 0);
+  }
+  assert.deepEqual([RESOLUTIONS["15min"].mult, RESOLUTIONS["15min"].span], [15, "minute"]);
+  assert.deepEqual([RESOLUTIONS["1hour"].mult, RESOLUTIONS["1hour"].span], [1, "hour"]);
+  assert.equal(RESOLUTIONS["5min"].ms, 300000);
 });
 
 test("parsePolygonAggs: drops non-positive closes and tolerates an empty payload", () => {

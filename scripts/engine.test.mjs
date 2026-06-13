@@ -11,7 +11,7 @@
 
 import { test } from "node:test";
 import assert from "node:assert/strict";
-import { analyze, runBacktest, scoreAt, checkBarExit, tradeNet, realizedStats, convergenceBreakout, backtestPattern, edgeStatus } from "./engine.mjs";
+import { analyze, runBacktest, scoreAt, checkBarExit, checkBarExitFine, isAmbiguousBar, tradeNet, realizedStats, convergenceBreakout, backtestPattern, edgeStatus } from "./engine.mjs";
 
 // ─── Helper: deterministic OHLC series (no RNG, fixed formula) ───────────────
 function gen(n){
@@ -44,6 +44,44 @@ test("checkBarExit: clean TP hit is a WIN; no touch is null; SELL side mirrors",
   // SELL: high ≥ sl is the loss leg, checked first.
   assert.deepEqual(checkBarExit(sell, {open:100,high:103,low:97,close:99}), {exit:102, result:"LOSS"});
   assert.deepEqual(checkBarExit(sell, {open:100,high:101,low:97,close:99}), {exit:98, result:"WIN"});
+});
+
+// ─── 1b) checkBarExitFine — resolve the straddle from finer sub-bars ─────────
+test("isAmbiguousBar: true only when a bar straddles BOTH stop and target", () => {
+  const t={dir:"BUY", entry:100, sl:98, tp:102};
+  assert.equal(isAmbiguousBar(t, {high:103, low:97}), true);   // both touched
+  assert.equal(isAmbiguousBar(t, {high:103, low:99}), false);  // only TP
+  assert.equal(isAmbiguousBar(t, {high:101, low:97}), false);  // only SL
+});
+
+test("checkBarExitFine: sub-bars reveal TP came first → WIN, overturning the pessimistic LOSS", () => {
+  const t={dir:"BUY", entry:100, sl:98, tp:102};
+  const coarse={open:100,high:103,low:97,close:101};          // ambiguous: straddles both
+  assert.deepEqual(checkBarExit(t, coarse), {exit:98, result:"LOSS"}); // pessimistic guess
+  // intraday path: price tagged TP (high 102.5) BEFORE it ever traded down to SL.
+  const subBars=[
+    {open:100,high:102.5,low:100,close:102},                  // TP touched here, SL not yet
+    {open:102,high:102,low:97,close:98},                      // SL later — but we already exited
+  ];
+  assert.deepEqual(checkBarExitFine(t, coarse, subBars), {exit:102, result:"WIN", resolvedBy:"subbars"});
+});
+
+test("checkBarExitFine: sub-bars confirming SL-first keep the LOSS", () => {
+  const t={dir:"BUY", entry:100, sl:98, tp:102};
+  const coarse={open:100,high:103,low:97,close:101};
+  const subBars=[
+    {open:100,high:100.5,low:97,close:98},                    // SL first
+    {open:98,high:103,low:98,close:102},                      // TP only afterwards
+  ];
+  assert.deepEqual(checkBarExitFine(t, coarse, subBars), {exit:98, result:"LOSS", resolvedBy:"subbars"});
+});
+
+test("checkBarExitFine: unambiguous bars and the no-sub-bars case defer to checkBarExit", () => {
+  const t={dir:"BUY", entry:100, sl:98, tp:102};
+  // clean TP, sub-bars irrelevant → identical to checkBarExit (no resolvedBy tag)
+  assert.deepEqual(checkBarExitFine(t, {open:100,high:103,low:99,close:101}, []), {exit:102, result:"WIN"});
+  // ambiguous but no finer data → falls back to the safe pessimistic LOSS
+  assert.deepEqual(checkBarExitFine(t, {open:100,high:103,low:97,close:101}, null), {exit:98, result:"LOSS"});
 });
 
 // ─── 2) tradeNet — round-trip cost model ─────────────────────────────────────

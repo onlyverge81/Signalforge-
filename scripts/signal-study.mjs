@@ -68,7 +68,7 @@ const fmtPct = v => v!=null ? (v>=0?"+":"")+v.toFixed(2)+"%" : "—";
 
 // ─── runner ──────────────────────────────────────────────────────────────────
 function parseArgs(argv){
-  const a = { preview:false, dryRun:false, tickersFile:null, pace:+(process.env.POLYGON_PACE_MS || 13000) };
+  const a = { preview:false, dryRun:false, tickersFile:null, pace:+(process.env.POLYGON_PACE_MS || 0) };  // Starter: unlimited calls
   for(let i=2;i<argv.length;i++){ const x=argv[i];
     if(x==="--preview") a.preview=true;
     else if(x==="--dry-run") a.dryRun=true;

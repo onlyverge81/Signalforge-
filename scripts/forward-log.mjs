@@ -44,8 +44,9 @@ export const CFG = {
   entryFill: "close@settled",
 };
 const costPerTrade = (CFG.costs.slip + CFG.costs.comm) * 2;
-// Polygon free tier is 5 req/min → pace ~13s between tickers (override per plan).
-const PACE = +(process.env.POLYGON_PACE_MS || 13000);
+// Stocks Starter has UNLIMITED API calls, so no inter-ticker throttle by default
+// (override POLYGON_PACE_MS if running on a rate-limited tier).
+const PACE = +(process.env.POLYGON_PACE_MS || 0);
 
 // ─── Candle provenance: separate SETTLED bars from a trailing FORMING bar ────
 // A daily bar dated "today" is still forming until the US session settles. Treat
@@ -288,7 +289,7 @@ async function main() {
         const dup = ledger.some(e => e.id === entry.id) || fresh.some(e => e.id === entry.id);
         if (!dup) { fresh.push(entry); previews.push(entry); logged++; }
       }
-      if (!fixture) await sleep(PACE); // pace Polygon's free-tier rate limit
+      if (!fixture && PACE) await sleep(PACE); // throttle only if a rate-limited tier is set
     } catch (e) {
       skipped++;
       if (args.preview) console.warn("✗ " + sym + " — " + (e.message || e));

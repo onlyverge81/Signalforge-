@@ -148,8 +148,9 @@ export async function resolveSnapshot(key, start, maxBack = 7){
 
 // All ACTIVE US common stocks (type=CS) as a Set — used to drop ETFs, leveraged/
 // inverse funds, ADRs-as-funds, etc. so the universe is real companies. Pages via
-// next_url, paced for the free tier. Network; parseRefTickers is the unit-tested part.
-export async function fetchCommonStockSet(key, pace = 13000){
+// next_url; unthrottled on Starter (unlimited calls). Network; parseRefTickers is
+// the unit-tested part.
+export async function fetchCommonStockSet(key, pace = 0){
   const set = new Set();
   let url = `${POLY}/v3/reference/tickers?type=CS&market=stocks&active=true&limit=1000&apiKey=${encodeURIComponent(key)}`;
   for(let page = 0; url && page < 25; page++){
@@ -181,7 +182,7 @@ async function main(){
   const args = parseArgs(process.argv);
   const key = process.env.POLYGON_API_KEY || process.env.POLYGON_KEY || "";
   if(!key){ console.error("Set POLYGON_API_KEY (the REST key) — no fallback vendor by design."); process.exit(2); }
-  const pace = +(process.env.POLYGON_PACE_MS || 13000);
+  const pace = +(process.env.POLYGON_PACE_MS || 0);  // Starter: unlimited calls — no throttle needed
 
   // 1) The set of real companies (active common stock), so ETFs / leveraged funds drop out.
   console.log("fetching active common-stock list (type=CS)…");

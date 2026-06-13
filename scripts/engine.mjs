@@ -532,6 +532,33 @@ export function checkBarExit(t, candle){
   return null;
 }
 
+// True when a bar straddles BOTH stop and target — the case where coarse OHLC
+// cannot tell which was hit first, and checkBarExit has to guess (pessimistically).
+export function isAmbiguousBar(t, candle){
+  if(t.dir==="BUY")  return candle.low<=t.sl && candle.high>=t.tp;
+  return candle.high>=t.sl && candle.low<=t.tp;
+}
+
+// Resolve a bar's exit using FINER sub-bars when the coarse bar is ambiguous.
+// On a daily (or any coarse) bar that straddles both SL and TP, the true order is
+// unknowable from OHLC alone — so checkBarExit books a pessimistic LOSS, which
+// systematically understates winners. Given the finer bars that make up the coarse
+// bar (e.g. Polygon minute or second aggregates), we replay them in time order and
+// take the FIRST real touch. Falls back to the pessimistic checkBarExit only when
+// no sub-bars are supplied, so behavior is unchanged unless finer data is provided.
+// `subBars` must be the finer bars within this coarse bar, ascending by time.
+export function checkBarExitFine(t, candle, subBars){
+  if(!isAmbiguousBar(t, candle) || !subBars || !subBars.length){
+    return checkBarExit(t, candle);
+  }
+  for(const sb of subBars){
+    const ex = checkBarExit(t, sb);
+    if(ex) return { ...ex, resolvedBy: "subbars" };
+  }
+  // Sub-bars never tagged a level (gap/rounding) — fall back to the safe convention.
+  return checkBarExit(t, candle);
+}
+
 // Net P&L of a closed trade after round-trip costs (slip+comm, entry+exit).
 export function tradeNet(dir, entry, exit, costPerTrade){
   const pnl = dir==="BUY" ? (exit-entry) : (entry-exit);
