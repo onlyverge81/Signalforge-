@@ -24,7 +24,7 @@ import path from "node:path";
 import { fileURLToPath } from "node:url";
 import { analyze, runBacktest, scoreAt, auditData, checkBarExit, tradeNet, valueScore, edgeStatus } from "./engine.mjs";
 import { readTickers } from "./build-fundamentals.mjs";
-import { fetchPolygonDaily, fetchPolygonDividends, dividendsInWindow } from "./pattern-study.mjs";
+import { fetchPolygonDaily, fetchPolygonDividends, dividendsInWindow, fetchPolygonNews, newsWindow } from "./pattern-study.mjs";
 
 const __dirname = path.dirname(fileURLToPath(import.meta.url));
 const ROOT = path.resolve(__dirname, "..");
@@ -119,7 +119,7 @@ export function forwardGates({ signal, entry, tp1, stats, suspect, costPerTrade,
 // A tradeable long → OPEN position; HOLD, a long-only-blocked short, or a thin /
 // proven-losing setup → OBSERVATION (no position, no P&L). Every row carries its
 // gate tags so realized stats can later be segmented by them.
-export function buildEntry({ sym, settled, fundaDB, loggedAt = new Date().toISOString() }) {
+export function buildEntry({ sym, settled, fundaDB, news = [], loggedAt = new Date().toISOString() }) {
   if (settled.length < 30) return null; // not enough history for a trustworthy signal
   const a = analyze(settled, sym, CFG.market, CFG.strategy, CFG.slMult, CFG.tpMult);
   const bt = settled.length >= 40
@@ -151,6 +151,9 @@ export function buildEntry({ sym, settled, fundaDB, loggedAt = new Date().toISOS
     support: a.support, resistance: a.resistance,
     dataAsOf: { date: decision.date, close: decision.close, provider: CFG.provider },
     barState: "closed",
+    // Event context at signal time: fresh news in the 3 days up to the decision bar. Captured
+    // for later analysis (do signals near news behave differently?), not yet a hard gate.
+    events: newsWindow(news, decision.date + "T23:59:59Z", 3),
     tags: { ...gate.tags, fundamentalGrade: grade, meritsActivated: false },
     status: isObs ? "OBSERVATION" : "OPEN",
     exit: null, exitAt: null, exitDate: null, barsHeld: null,
@@ -291,8 +294,10 @@ async function main() {
           if (upd.status !== "OPEN") { fresh.push(upd); closed++; }
         }
       }
-      // 2) Build today's entry.
-      const entry = buildEntry({ sym, settled, fundaDB });
+      // 2) Build today's entry, stamping its news/event context (best-effort, [] on failure).
+      let news = [];
+      if (!fixture && key) { try { news = await fetchPolygonNews(sym, key); } catch { news = []; } }
+      const entry = buildEntry({ sym, settled, fundaDB, news });
       if (entry) {
         const dup = ledger.some(e => e.id === entry.id) || fresh.some(e => e.id === entry.id);
         if (!dup) { fresh.push(entry); previews.push(entry); logged++; }

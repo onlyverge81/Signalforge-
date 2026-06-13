@@ -3,7 +3,34 @@
 
 import { test } from "node:test";
 import assert from "node:assert/strict";
-import { parsePolygonAggs, aggregate, RESOLUTIONS, parseDividends, dividendsInWindow, studyFileFor } from "./pattern-study.mjs";
+import { parsePolygonAggs, aggregate, RESOLUTIONS, parseDividends, dividendsInWindow, studyFileFor, parseNews, newsWindow } from "./pattern-study.mjs";
+
+test("parseNews: maps Polygon news rows, lifts first-insight sentiment, drops dateless items", () => {
+  const j = { results: [
+    { published_utc: "2026-06-12T13:00:00Z", title: "Beat", insights: [{ sentiment: "positive" }] },
+    { published_utc: "2026-06-11T09:00:00Z", title: "No insight" },
+    { title: "dropped — no date" },
+  ] };
+  const rows = parseNews(j);
+  assert.equal(rows.length, 2);
+  assert.deepEqual(rows[0], { publishedUtc: "2026-06-12T13:00:00Z", title: "Beat", sentiment: "positive" });
+  assert.equal(rows[1].sentiment, null);
+  assert.deepEqual(parseNews({}), []);
+});
+
+test("newsWindow: counts only items in the days before asOf and nets the sentiment", () => {
+  const news = [
+    { publishedUtc: "2026-06-12T13:00:00Z", sentiment: "positive" },  // inside
+    { publishedUtc: "2026-06-11T13:00:00Z", sentiment: "positive" },  // inside
+    { publishedUtc: "2026-06-11T08:00:00Z", sentiment: "negative" },  // inside
+    { publishedUtc: "2026-06-01T13:00:00Z", sentiment: "negative" },  // too old (>3d)
+  ];
+  const w = newsWindow(news, "2026-06-12T23:59:59Z", 3);
+  assert.equal(w.count, 3);
+  assert.equal(w.freshestUtc, "2026-06-12T13:00:00Z");
+  assert.equal(w.sentiment, "positive");          // 2 pos vs 1 neg
+  assert.deepEqual(newsWindow([], "2026-06-12T23:59:59Z"), { count: 0, freshestUtc: null, sentiment: null });
+});
 
 test("studyFileFor: daily keeps the canonical artifact; intraday writes a suffixed sibling", () => {
   assert.equal(studyFileFor("1day"), "pattern-study.json");
