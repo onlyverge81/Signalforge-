@@ -3,7 +3,18 @@
 
 import { test } from "node:test";
 import assert from "node:assert/strict";
-import { parsePolygonAggs, aggregate, RESOLUTIONS, parseDividends, dividendsInWindow } from "./pattern-study.mjs";
+import { parsePolygonAggs, aggregate, RESOLUTIONS, parseDividends, dividendsInWindow, studyFileFor } from "./pattern-study.mjs";
+
+test("studyFileFor: daily keeps the canonical artifact; intraday writes a suffixed sibling", () => {
+  assert.equal(studyFileFor("1day"), "pattern-study.json");
+  assert.equal(studyFileFor(undefined), "pattern-study.json");
+  assert.equal(studyFileFor("15min"), "pattern-study-15min.json");
+  assert.equal(studyFileFor("1hour"), "pattern-study-1hour.json");
+  // every intraday resolution is a real, fetchable timeframe (no typo'd siblings)
+  for (const r of Object.keys(RESOLUTIONS)) {
+    if (r !== "1day") assert.equal(studyFileFor(r), `pattern-study-${r}.json`);
+  }
+});
 
 test("parseDividends: keeps ex-date + positive cash, drops zero/empty payloads", () => {
   const j = { results: [
