@@ -74,6 +74,21 @@ export function parseRefTickers(j){
   return res.map(t => t && t.ticker).filter(Boolean);
 }
 
+// Polygon reference-tickers JSON → rich rows {ticker, cik, active, delistedUtc}. Unlike
+// parseRefTickers (symbols only), this keeps the CIK — the key that lets the merit study
+// resolve DE-LISTED names (active=false) by CIK, which SEC's survivor-biased symbol map
+// cannot. CIK is normalized to SEC's zero-padded 10-digit form (or null). Pure.
+export function parseRefTickerRows(j){
+  const res = j && j.results;
+  if(!Array.isArray(res)) return [];
+  return res.filter(t => t && t.ticker).map(t => ({
+    ticker: t.ticker,
+    cik: t.cik != null ? String(t.cik).replace(/\D/g, "").padStart(10, "0") : null,
+    active: t.active !== false,
+    delistedUtc: t.delisted_utc || null,
+  }));
+}
+
 // Shift an ISO date (YYYY-MM-DD) by `days` (may be negative). Pure, UTC.
 export function shiftDay(dateStr, days){
   const d = new Date(dateStr + "T00:00:00Z");
@@ -102,13 +117,13 @@ export function normTickers(list){
 
 // Choose the study universe with a clear precedence (pure, testable):
 //   1) an explicit --tickers list (operator override) always wins
-//   2) else the broad, survivorship-free universe.json (if present & non-empty)
+//   2) else the broad ACTIVE universe.json (if present & non-empty)
 //   3) else the static tickers.txt fallback (the legacy 36 names)
 // Returns the resolved tickers plus a human-readable `source` for the run log.
 export function pickUniverse({ explicit, universe, fallback }){
   const e = normTickers(explicit), u = normTickers(universe), f = normTickers(fallback);
   if(e.length) return { tickers:e, source:"--tickers override" };
-  if(u.length) return { tickers:u, source:"universe.json (broad, survivorship-free)" };
+  if(u.length) return { tickers:u, source:"universe.json (broad active universe)" };
   return { tickers:f, source:"tickers.txt (legacy default)" };
 }
 
@@ -199,7 +214,7 @@ async function main(){
     snapshotDate: date,
     marketRows: rows.length,
     screen: { minPrice:5, minDollarVol:args.minDollarVol, limit:args.limit, commonStocksOnly:true },
-    note: "Liquidity-ranked broad universe of ACTIVE COMMON STOCKS (type=CS) — ETFs and leveraged/inverse funds excluded; supersedes the 36-name tickers.txt to remove survivorship bias.",
+    note: "Liquidity-ranked broad universe of ACTIVE COMMON STOCKS (type=CS) — ETFs and leveraged/inverse funds excluded. Broadens the 36-name tickers.txt to cut small-sample/hand-pick bias; still ACTIVE-only — NOT survivorship-free. See roster.json for the de-listed-inclusive, CIK-keyed company roster the merit study uses.",
     count: tickers.length,
     tickers,
   };

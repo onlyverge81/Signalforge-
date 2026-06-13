@@ -83,10 +83,28 @@ code enforces "no fallback by design"). Exhaust Polygon before reaching elsewher
   `build-fundamentals.mjs` → `build-study.mjs`.
 - Forward pipeline (nightly CI): `forward-log.mjs` → `forward-perf.mjs` → `promote.mjs`.
 
-## Active task
+## Active task — progress & resume checklist
 
-The driving task is the **"Wheel of Problem-Solving"** profitability analysis (four logic
-quadrants → synthesis → action plan). Track A (long-only default, cost gate, honest verdict
-surface) is shipped; remaining: this CLAUDE.md, then **Track B** — hunt a real edge via deeper
-Polygon (survivorship-free universe, total-return benchmark, intraday search), every candidate
-clearing no-lookahead + OOS t≥2 after FDR before it's ever shown as tradeable.
+Driving task: the **"Wheel of Problem-Solving"** profitability analysis → action plan (full
+analysis in the approved plan file; branch `claude/signalforge-profitability-wheel-qbclby`).
+
+**Done & pushed:**
+- Resolution-aware data layer (`RESOLUTIONS`, `fetchPolygonAggs`, 1min…1month) +
+  `checkBarExitFine` intrabar exit fix; dropped obsolete free-tier pacing.
+- Track A (already shipped in the merged PR #23): long-only default, 2×-cost gate, honest
+  verdict surface (expectancy/t-stat/buy-&-hold) — verified live, not re-implemented.
+- `CLAUDE.md` (this file).
+- **Track B 1a:** merit study (`build-study.mjs`) priced off **Polygon** monthly bars, not
+  Yahoo/Stooq (no fallback). CI passes `POLYGON_API_KEY`.
+- **Track B 1b (foundation):** `parseRefTickerRows` (carries CIK + de-listed flag, tested);
+  corrected `universe.json`'s overstated "survivorship-free" label (it's ACTIVE-only).
+
+**Next — Track B 1b (finish the survivorship-free merit study):**
+1. Add `fetchTickerRoster(key, pace)` to `universe-build.mjs` — page `active=true` + `active=false`
+   CS via `parseRefTickerRows`; emit `roster.json` (CIK-bearing companies incl. de-listed).
+2. Rewire `build-study.mjs` to resolve CIK from `roster.json` (incl. de-listed names — bypassing
+   the survivor-biased `secCik` symbol map), bounded by a sane cap; fall back to `readTickers`.
+   This makes the merit study genuinely survivorship-free (its remaining #1 caveat).
+3. Then Track B 2–5: total-return benchmark (Polygon corporate actions), intraday edge search,
+   event gates, WebSocket live plumbing. Every candidate clears no-lookahead + OOS t≥2 after FDR
+   before it's ever shown as tradeable.

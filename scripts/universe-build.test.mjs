@@ -2,7 +2,7 @@
 // Run: node --test scripts/
 import { test } from "node:test";
 import assert from "node:assert/strict";
-import { parseGroupedDaily, selectUniverse, recentWeekday, normTickers, pickUniverse, parseRefTickers, shiftDay } from "./universe-build.mjs";
+import { parseGroupedDaily, selectUniverse, recentWeekday, normTickers, pickUniverse, parseRefTickers, parseRefTickerRows, shiftDay } from "./universe-build.mjs";
 
 // ─── parseGroupedDaily — Polygon grouped JSON → liquidity-tagged rows ─────────
 test("parseGroupedDaily: maps fields, derives dollar volume, drops malformed rows", () => {
@@ -57,6 +57,22 @@ test("parseRefTickers: extracts ticker symbols, drops malformed", () => {
   const j = { results: [ { ticker:"AAPL", type:"CS" }, { name:"no-ticker" }, { ticker:"MSFT" } ] };
   assert.deepEqual(parseRefTickers(j), ["AAPL", "MSFT"]);
   assert.deepEqual(parseRefTickers(null), []);
+});
+
+// ─── parseRefTickerRows — rich rows carrying CIK + de-listed flag ─────────────
+test("parseRefTickerRows: keeps CIK (10-digit) and de-listed status, drops ticker-less rows", () => {
+  const j = { results: [
+    { ticker:"AAPL", cik:"0000320193", active:true },
+    { ticker:"LEHMQ", cik:320194, active:false, delisted_utc:"2010-03-12T00:00:00Z" }, // de-listed loser
+    { name:"no-ticker", cik:"999" },                                                   // dropped
+    { ticker:"NOCIK", active:true },                                                   // cik → null
+  ] };
+  assert.deepEqual(parseRefTickerRows(j), [
+    { ticker:"AAPL",  cik:"0000320193", active:true,  delistedUtc:null },
+    { ticker:"LEHMQ", cik:"0000320194", active:false, delistedUtc:"2010-03-12T00:00:00Z" },
+    { ticker:"NOCIK", cik:null,         active:true,  delistedUtc:null },
+  ]);
+  assert.deepEqual(parseRefTickerRows(null), []);
 });
 
 // ─── shiftDay — UTC date arithmetic across boundaries ────────────────────────
