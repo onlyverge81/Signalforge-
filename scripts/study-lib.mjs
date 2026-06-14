@@ -59,11 +59,16 @@ export function assessSignificance(series){
   const sd=Math.sqrt(variance);
   const se=sd>0?sd/Math.sqrt(n):0;
   const t=se>0?mean/se:0;
-  let verdict="NOT SIGNIFICANT";
-  if(n<6) verdict="TOO FEW PERIODS";
-  else if(Math.abs(t)>2) verdict="SIGNIFICANT";
-  else if(Math.abs(t)>1.5) verdict="SUGGESTIVE";
-  return {n, mean:round(mean), sd:round(sd), t:round(t), verdict};
+  return {n, mean:round(mean), sd:round(sd), t:round(t), verdict:verdictFor(t,n)};
+}
+
+// Shared verdict thresholds — sized for a small-sample mean test. One source of truth
+// so assessSignificance, the overlap-adjusted t and the deflated t all agree.
+export function verdictFor(t, n){
+  if(n<6) return "TOO FEW PERIODS";
+  if(Math.abs(t)>2) return "SIGNIFICANT";
+  if(Math.abs(t)>1.5) return "SUGGESTIVE";
+  return "NOT SIGNIFICANT";
 }
 const round=x=>Math.round(x*1e4)/1e4;
 
@@ -75,11 +80,20 @@ function byPeriod(observations){
 }
 
 // Full cross-sectional study over the observation panel.
-export function runStudy(observations, {oosFrac=0.3}={}){
-  const grouped=byPeriod(observations);
-  const periods=grouped.map(([period,rows])=>({
-    period, n:rows.length, ic:rankIC(rows), spread:tertileSpread(rows),
-  })).filter(p=>p.ic!=null);
+// Per-period cross-section stats, chronological. `mktRet` is the equal-weight universe
+// forward return that period — the "market" leg the beta diagnostic checks the spread against.
+export function periodStats(observations){
+  return byPeriod(observations).map(([period,rows])=>{
+    const fr=rows.map(r=>r.fwdRet).filter(v=>v!=null&&isFinite(v));
+    return {
+      period, n:rows.length, ic:rankIC(rows), spread:tertileSpread(rows),
+      mktRet: fr.length ? fr.reduce((a,b)=>a+b,0)/fr.length : null,
+    };
+  }).filter(p=>p.ic!=null);
+}
+
+export function runStudy(observations, {oosFrac=0.3, overlap=0, trials=1}={}){
+  const periods=periodStats(observations);
   const ics=periods.map(p=>p.ic);
   const overall=assessSignificance(ics);
   const spread=assessSignificance(periods.map(p=>p.spread));
@@ -91,6 +105,11 @@ export function runStudy(observations, {oosFrac=0.3}={}){
     meanIC:overall.mean, icT:overall.t, n:overall.n, significance:overall.verdict,
     spread,
     oos:{ splitIdx:cut, trainPct:Math.round((1-oosFrac)*100), testPct:Math.round(oosFrac*100), inSample, outSample },
+    // Additive hardening (Step 1) — none of these change the fields above:
+    walkForward: walkForward(observations),         // does past IC predict next-period IC?
+    betaControl: betaControl(periods),              // is the long-short spread disguised beta-timing?
+    overlapAdjusted: overlapAdjustedT(ics, overlap),// honest t when windows overlap (HAC)
+    deflated: deflatedSignificance(ics, { trials }),// overfit haircut for # of configs tried
   };
 }
 
@@ -117,10 +136,84 @@ export function placebo(observations, seed=1){
 // significance — with the small period counts this universe yields, an OOS slice
 // can never reach significance on its own, so demanding it would be a gate that
 // no honest result could ever pass. The UI still shows the OOS verdict in full.
+// TIGHTENED gate (Step 1): merit may move the live signal ONLY if the full-sample edge is
+// significant, positive, same-signed in BOTH halves, placebo-null AND — new — it survives
+// walk-forward (past IC predicts next-period IC, hitRate>0.5 with positive out-of-fold mean)
+// AND the overfit-deflated t is still at least suggestive. "Proven" now means
+// walk-forward-and-overfit-survived, not just one 70/30 split.
 export function meritEdgeProven(study, placeboRes){
   const ok=v=>v==="SIGNIFICANT"||v==="SUGGESTIVE";
+  const wf=study&&study.walkForward, df=study&&study.deflated;
   return !!(study && placeboRes
     && ok(study.significance) && study.meanIC>0
     && study.oos.inSample.mean>0 && study.oos.outSample.mean>0
-    && !ok(placeboRes.verdict));
+    && !ok(placeboRes.verdict)
+    && wf && wf.hitRate!=null && wf.hitRate>0.5 && wf.oof && wf.oof.mean>0
+    && df && ok(df.verdict));
+}
+
+// ─── Step-1 hardening: walk-forward, beta diagnostic, HAC t, overfit haircut ──
+
+// Walk-forward: expanding one-step-ahead folds. For each period k≥minTrain, the only
+// information used to "predict" is the mean IC over periods [0..k); we then check whether
+// the realised IC at k has the SAME SIGN. `hitRate` is the fraction of folds that agree —
+// the honest "does the past predict the next period" test the one-shot 70/30 split cannot
+// answer. The out-of-fold IC series is summarised with the same small-sample t-test.
+export function walkForward(observations, {minTrain=3}={}){
+  const ics=periodStats(observations).map(p=>p.ic);
+  const n=ics.length, oofIC=[], trainMeanByFold=[]; let hits=0, folds=0;
+  for(let k=minTrain;k<n;k++){
+    const train=ics.slice(0,k);
+    const tm=train.reduce((a,b)=>a+b,0)/train.length;
+    oofIC.push(ics[k]); trainMeanByFold.push(round(tm)); folds++;
+    if(tm!==0 && Math.sign(ics[k])===Math.sign(tm)) hits++;
+  }
+  return { folds, minTrain, oofIC:oofIC.map(round), oof:assessSignificance(oofIC),
+    hitRate: folds?round(hits/folds):null, trainMeanByFold };
+}
+
+// Beta diagnostic. rankIC and tertileSpread are already WITHIN-PERIOD cross-sectional, so a
+// uniform market move that period cancels — they are beta-neutral in LEVEL (which is why
+// cross-sectionally demeaning forward returns would be a no-op here). What can still hide
+// beta is TIMING: a long-short spread that only pays in up-markets. So we correlate the
+// per-period spread series with the per-period market (equal-weight) return. |corr|≈0 ⇒ the
+// spread is genuine cross-sectional skill; strongly positive ⇒ the "edge" is market-timing.
+export function betaControl(periods){
+  const pairs=(periods||[]).filter(p=>p.spread!=null&&isFinite(p.spread)&&p.mktRet!=null&&isFinite(p.mktRet));
+  const spread=pairs.map(p=>p.spread), mkt=pairs.map(p=>p.mktRet);
+  const corr=pearson(spread, mkt);
+  const meanSpread=spread.length?spread.reduce((a,b)=>a+b,0)/spread.length:null;
+  return { n:pairs.length, meanSpread:round(meanSpread), spreadMktCorr: corr==null?null:round(corr) };
+}
+
+// Overlap-adjusted t for the IC mean (Newey–West HAC, Bartlett kernel). When rebalances are
+// spaced CLOSER than the return horizon, forward windows overlap and the IC series is
+// autocorrelated — the naive t (assessSignificance) is then inflated. `overlap` = number of
+// overlapping lags (≈ horizon/step − 1). Reduces to ~the naive SE at overlap=0.
+export function overlapAdjustedT(series, overlap=0){
+  const xs=(series||[]).filter(v=>v!=null&&isFinite(v));
+  const n=xs.length;
+  if(n<2) return { n, mean:n?round(xs[0]):null, seHAC:null, tHAC:null, overlap:0, verdict:"TOO FEW PERIODS" };
+  const mean=xs.reduce((a,b)=>a+b,0)/n;
+  const d=xs.map(x=>x-mean);
+  const L=Math.max(0, Math.min(overlap, n-1));
+  let varSum=d.reduce((a,e)=>a+e*e,0)/n;            // γ0
+  for(let l=1;l<=L;l++){
+    let g=0; for(let i=l;i<n;i++) g+=d[i]*d[i-l];
+    g/=n;
+    varSum+=2*(1-l/(L+1))*g;                        // Bartlett-weighted γl
+  }
+  const seHAC=varSum>0?Math.sqrt(varSum/n):0;
+  const t=seHAC>0?mean/seHAC:0;
+  return { n, mean:round(mean), seHAC:round(seHAC), tHAC:round(t), overlap:L, verdict:verdictFor(t,n) };
+}
+
+// Deflated significance: haircut the IC t-stat for the number of configurations effectively
+// tried (`trials`). The expected maximum of `trials` iid t's grows like √(2·ln trials); we
+// subtract that from |t|. trials=1 → no haircut (reproduces assessSignificance's verdict).
+export function deflatedSignificance(series, {trials=1}={}){
+  const base=assessSignificance(series);
+  const threshold=trials>1?Math.sqrt(2*Math.log(trials)):0;
+  const tDeflated=round(Math.sign(base.t)*Math.max(0, Math.abs(base.t)-threshold));
+  return { trials, t:base.t, threshold:round(threshold), tDeflated, n:base.n, verdict:verdictFor(tDeflated, base.n) };
 }

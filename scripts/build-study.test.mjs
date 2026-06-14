@@ -3,9 +3,29 @@
 
 import { test } from "node:test";
 import assert from "node:assert/strict";
-import { selectMeritUniverse } from "./build-study.mjs";
+import { selectMeritUniverse, priceOnOrBefore, meritAsOfISO, MERIT_FILING_LAG_DAYS } from "./build-study.mjs";
 
 const co = (ticker, active, cik = "0000000001") => ({ ticker, active, cik });
+
+// ─── no-lookahead pins ────────────────────────────────────────────────────────
+test("priceOnOrBefore: latest close at-or-before the target, never one dated after", () => {
+  const prices = [
+    { t: Date.UTC(2020, 0, 31), close: 10 },
+    { t: Date.UTC(2020, 1, 29), close: 11 },
+    { t: Date.UTC(2020, 2, 31), close: 12 },
+  ];
+  assert.equal(priceOnOrBefore(prices, Date.UTC(2020, 1, 29)), 11); // exact match
+  assert.equal(priceOnOrBefore(prices, Date.UTC(2020, 1, 15)), 10); // between → the EARLIER close
+  assert.equal(priceOnOrBefore(prices, Date.UTC(2019, 11, 1)), null); // before first → none (no peeking ahead)
+  assert.equal(priceOnOrBefore(prices, Date.UTC(2025, 0, 1)), 12);  // after last → last available
+});
+
+test("meritAsOfISO: enforces the 75-day point-in-time filing lag", () => {
+  assert.equal(MERIT_FILING_LAG_DAYS, 75);
+  const rb = Date.UTC(2020, 5, 30); // 2020-06-30
+  assert.equal(meritAsOfISO(rb), new Date(rb - 75 * 864e5).toISOString().slice(0, 10));
+  assert.ok(meritAsOfISO(rb) < "2020-06-30", "as-of date must be strictly before the rebalance");
+});
 
 test("selectMeritUniverse: returns the whole roster (ticker-sorted) when it fits under the cap", () => {
   const roster = [ co("ZZZ", true), co("AAA", true), co("LEHMQ", false), co("WAMUQ", false) ];

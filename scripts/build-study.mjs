@@ -42,11 +42,16 @@ async function fetchPrices(sym, key){
 // ─── date / lookup helpers ───────────────────────────────────────────────────
 const iso = ms => new Date(ms).toISOString().slice(0,10);
 function addMonths(ms,n){ const d=new Date(ms); d.setUTCMonth(d.getUTCMonth()+n); return d.getTime(); }
-function priceOnOrBefore(prices, targetMs){ // monthly close at-or-before target
+export function priceOnOrBefore(prices, targetMs){ // monthly close at-or-before target (never after)
   let best=null;
   for(const p of prices){ if(p.t<=targetMs) best=p; else break; }
   return best?best.close:null;
 }
+// Fundamentals must be PUBLIC before they may inform a rebalance: the as-of date is the
+// rebalance minus a filing lag. Named + exported so the no-lookahead contract is pinned by a
+// test, not just a comment (changing the lag is then a deliberate, test-visible decision).
+export const MERIT_FILING_LAG_DAYS = 75;
+export function meritAsOfISO(rbMs){ return iso(rbMs - MERIT_FILING_LAG_DAYS*DAY); }
 // Rebalance grid: every `stepM` months from 2010-06-30 up to now.
 function grid(stepM){
   const out=[]; const until=Date.now();
@@ -80,7 +85,7 @@ function buildObservations(loaded, horizonM){
       const entry=priceOnOrBefore(d.prices, rb);
       const exit =priceOnOrBefore(d.prices, fwdT);
       if(!(entry>0)||!(exit>0)) continue;
-      const rec=distill(d.j, iso(rb-75*DAY)).rec;       // fundamentals public ≥75d before rebalance
+      const rec=distill(d.j, meritAsOfISO(rb)).rec;     // fundamentals public ≥75d before rebalance
       const merit=meritScore(meritMetrics(rec, entry));
       if(merit==null) continue;
       obs.push({ sym, period:iso(rb), merit, fwdRet:exit/entry-1 });
@@ -103,6 +108,11 @@ function pack(obs){
       outSample: { n:study.oos.outSample.n, meanIC:study.oos.outSample.mean, verdict:study.oos.outSample.verdict },
     },
     placebo: { meanIC: plac.mean, verdict: plac.verdict },
+    // Step-1 hardening, surfaced honestly beside the headline:
+    walkForward: { folds: study.walkForward.folds, hitRate: study.walkForward.hitRate,
+      oofMeanIC: study.walkForward.oof.mean, oofVerdict: study.walkForward.oof.verdict },
+    betaControl: { spreadMktCorr: study.betaControl.spreadMktCorr, meanSpread: study.betaControl.meanSpread },
+    deflated: { trials: study.deflated.trials, tDeflated: study.deflated.tDeflated, verdict: study.deflated.verdict },
     proven: meritEdgeProven(study, plac),
     perPeriod: study.periods.map(p=>({ period:p.period, n:p.n, ic:round(p.ic), spread:round(p.spread) })),
   };

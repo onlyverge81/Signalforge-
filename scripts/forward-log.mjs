@@ -85,6 +85,19 @@ export function gradeFor(sym, price, fundaDB) {
   return vs ? vs.grade : null;
 }
 
+// ─── Merit overlay tag (propose-only) ─────────────────────────────────────────
+// Does this name's point-in-time fundamental grade clear the merit bar? This is a LABEL,
+// not a gate: it never enters forwardGates / actionable, so it does NOT change which trades
+// open. It simply marks the opened-longs subset the merit overlay would favour, so the
+// "merits-on" vs "merits-off" buckets in forward-perf become a clean A/B inside the SAME
+// population — and the existing FDR promotion gate decides, out-of-sample, whether
+// conditioning on merit actually adds alpha. Pure. Higher grade = better (A best).
+const GRADE_RANK = { A: 4, B: 3, C: 2, D: 1, F: 0 };
+export function meritGate(grade, { minGrade = "B" } = {}) {
+  const g = GRADE_RANK[grade], m = GRADE_RANK[minGrade];
+  return g != null && m != null && g >= m;
+}
+
 // ─── Pure trading-policy gates for the forward record (testable, no network) ──
 // Decide whether a signal opens a paper position and why it is/ isn't muted:
 //   longOnlyMuted — a SELL under the long-only policy (shorts lose; never taken)
@@ -154,7 +167,7 @@ export function buildEntry({ sym, settled, fundaDB, news = [], loggedAt = new Da
     // Event context at signal time: fresh news in the 3 days up to the decision bar. Captured
     // for later analysis (do signals near news behave differently?), not yet a hard gate.
     events: newsWindow(news, decision.date + "T23:59:59Z", 3),
-    tags: { ...gate.tags, fundamentalGrade: grade, meritsActivated: false },
+    tags: { ...gate.tags, fundamentalGrade: grade, meritsActivated: meritGate(grade) },
     status: isObs ? "OBSERVATION" : "OPEN",
     exit: null, exitAt: null, exitDate: null, barsHeld: null,
     pnl: null, grossPct: null, pnlPct: null, benchClose: null, benchDiv: null,
