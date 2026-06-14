@@ -2,7 +2,7 @@
 // Run: node --test scripts/
 import { test } from "node:test";
 import assert from "node:assert/strict";
-import { splitSettled, markToMarket, mergeLedger, buildEntry, parseFeed, gradeFor, forwardGates } from "./forward-log.mjs";
+import { splitSettled, markToMarket, mergeLedger, buildEntry, parseFeed, gradeFor, forwardGates, meritGate } from "./forward-log.mjs";
 
 // ─── splitSettled — drop a trailing FORMING bar, keep settled history ────────
 test("splitSettled: a bar dated today before settlement is treated as forming", () => {
@@ -167,6 +167,33 @@ test("parseFeed: maps a Twelve Data response oldest-first and drops bad rows", (
   assert.equal(rows.length, 2);
   assert.equal(rows[0].date, "2026-01-02"); // reversed to chronological
   assert.equal(rows[1].close, 3.5);
+});
+
+// ─── meritGate — propose-only merit LABEL (must not change the trade decision) ─
+test("meritGate: grade A/B clear the bar; C/D/F/null do not", () => {
+  assert.equal(meritGate("A"), true);
+  assert.equal(meritGate("B"), true);
+  assert.equal(meritGate("C"), false);
+  assert.equal(meritGate("F"), false);
+  assert.equal(meritGate(null), false);
+  assert.equal(meritGate("A", { minGrade: "A" }), true);
+  assert.equal(meritGate("B", { minGrade: "A" }), false);
+});
+
+test("buildEntry: meritsActivated tracks grade but never changes the OPEN/OBSERVATION decision", () => {
+  const settled = genUp(120);
+  const base = buildEntry({ sym: "TST", settled, fundaDB: null, loggedAt: "2026-06-11T22:00:00Z" });
+  assert.equal(base.tags.meritsActivated, false); // no grade → overlay off
+  const db = { TST: { epsTTM: 10, bvps: 20, de: 0.3, roe: 0.25, npm: 0.25, cr: 2, revG: 0.2, epsG: 0.2 } };
+  const graded = buildEntry({ sym: "TST", settled, fundaDB: db, loggedAt: "2026-06-11T22:00:00Z" });
+  // The label is exactly the pure gate applied to the resolved grade…
+  assert.equal(graded.tags.meritsActivated, meritGate(graded.tags.fundamentalGrade));
+  // …and the decision, signal, entry and id are byte-identical with or without the overlay:
+  // merit is a label, not a gate (the Step-3 safety property).
+  assert.equal(graded.status, base.status);
+  assert.equal(graded.signal, base.signal);
+  assert.equal(graded.id, base.id);
+  assert.equal(graded.entry, base.entry);
 });
 
 test("gradeFor: returns a letter grade from filed figures + price, null when absent", () => {

@@ -123,6 +123,22 @@ test("scoreLedger: variants carve the ledger by gate tags", () => {
   assert.ok(perf.variants["grade-C"].alphaGrowthPct < 0);
 });
 
+test("scoreLedger: merits-on / merits-off partition the SAME population by the meritsActivated tag", () => {
+  const ledger = [
+    closed({ id: "A", entry: 100, exit: 106, benchClose: 102, grade: "A", merits: true }),  // high-merit, +alpha
+    closed({ id: "B", entry: 100, exit: 101, benchClose: 112, grade: "C", merits: false }), // low-merit, -alpha
+    closed({ id: "C", entry: 100, exit: 108, benchClose: 103, grade: "B", merits: true }),  // high-merit, +alpha
+  ];
+  const perf = scoreLedger(ledger);
+  // The two buckets are a clean A/B that re-unions to the whole "all" variant.
+  assert.equal(perf.variants["merits-on"].n + perf.variants["merits-off"].n, perf.variants["all"].n);
+  assert.equal(perf.variants["merits-on"].n, 2);
+  assert.equal(perf.variants["merits-off"].n, 1);
+  // Each gets its own independent alpha record.
+  assert.ok(perf.variants["merits-on"].alphaGrowthPct > 0);
+  assert.ok(perf.variants["merits-off"].alphaGrowthPct < 0);
+});
+
 test("scoreLedger: empty ledger is honest, not a crash", () => {
   const perf = scoreLedger([]);
   assert.equal(perf.ledger.rows, 0);
