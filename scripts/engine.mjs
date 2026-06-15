@@ -456,20 +456,29 @@ export function analyze(data, ticker, market, strategy, slMult, tpMult) {
 export function scorePosition(slice){
   if(slice.length<30)return null;
   const cl=slice.map(d=>d.close),last=slice[slice.length-1];
-  const s50=sma(cl,Math.min(50,cl.length));
-  const s200=sma(cl,Math.min(200,cl.length));
-  const R=rsi(cl);
-  if(!s50||!s200) return {score:0,signal:"HOLD",atr:atr(slice)};
+  // The long-term trend filter is only meaningful with a TRUE 200-bar window. With less
+  // history we must NOT silently trade a short-SMA proxy (the old Math.min(200,len) bug) —
+  // report "not engaged" honestly so POSITION holds instead of acting on a fake trend.
+  if(cl.length<200) return {score:0, signal:"HOLD", atr:atr(slice), engaged:false,
+    reason:"long-term trend needs 200 bars; have "+cl.length, trendStrength:0, dipDepth:0};
+  const s50=sma(cl,50), s200=sma(cl,200), R=rsi(cl);
+  if(!s50||!s200) return {score:0, signal:"HOLD", atr:atr(slice), engaged:false,
+    reason:"insufficient data", trendStrength:0, dipDepth:0};
   const longUptrend = last.close>s200 && s50>s200;
   const longDowntrend = last.close<s200 && s50<s200;
   let signal="HOLD", score=0;
   if(longUptrend){
     score=3;
-    if(R!=null && R<45){ signal="BUY"; score=6; }
+    if(R!=null && R<45){ signal="BUY"; score=6; }  // buy a pullback within the uptrend
   } else if(longDowntrend){
-    score=-6; signal="SELL";
+    score=-6; signal="SELL";                        // long-term thesis broken — exit/avoid
   }
-  return {score, signal, atr:atr(slice)};
+  // Position-native conviction inputs (used instead of the tactical confluence number):
+  //  trendStrength = how far SMA50 sits above SMA200 (regime conviction);
+  //  dipDepth      = how far RSI is below the 45 buy threshold (entry conviction).
+  return { score, signal, atr:atr(slice), engaged:true,
+    trendStrength: s200>0 ? (s50-s200)/s200 : 0,
+    dipDepth: (longUptrend && R!=null) ? Math.max(0, 45-R) : 0 };
 }
 
 export function scoreFlat(slice){
@@ -655,6 +664,7 @@ export function runBacktest(data, scorer, slMult, tpMult, costs, range, holdMode
   const scoreFn = scorer || scoreAt;
   const SLM = slMult || 1.5;
   const TPM = tpMult || 2.0;
+  const TRAIL_MULT = 3;               // POSITION trailing-stop width in ATRs (hold mode only)
   const slipPct = costs?.slip || 0;   // % per side
   const commPct = costs?.comm || 0;   // % per side
   const costPerTrade = (slipPct + commPct) * 2; // entry + exit
@@ -675,7 +685,7 @@ export function runBacktest(data, scorer, slMult, tpMult, costs, range, holdMode
         dir:pending.dir, entry, openIndex:i, entryDate:candle.date,
         sl: pending.dir==="BUY"?entry-A*SLM:entry+A*SLM,
         tp: pending.dir==="BUY"?entry+A*TPM:entry-A*TPM,
-        score:pending.score,
+        score:pending.score, atr:A, highWater:entry,
       };
       pending=null;
     }
@@ -684,16 +694,23 @@ export function runBacktest(data, scorer, slMult, tpMult, costs, range, holdMode
     if (openTrade) {
       const t=openTrade;
       let closed=false;
-      const ex=checkBarExit(t, candle);                 // SL/TP touch, SL-first tie
-      if (ex) { t.exit=ex.exit; t.result=ex.result; closed=true; }
-      // POSITION/hold mode: exit a long when the long-term thesis breaks (scorer flips to SELL)
-      if (!closed && holdMode && t.dir==="BUY") {
-        const sNow=scoreFn(slice);
-        if (sNow && sNow.signal==="SELL") {
-          t.exit=candle.close;
-          t.result = candle.close>=t.entry ? "WIN" : "LOSS";
-          closed=true;
+      if (holdMode && t.dir==="BUY") {
+        // POSITION: a TRAILING stop (let winners run — no fixed TP cap) ratcheting up from the
+        // initial wide stop, plus a thesis-break exit. The trail level uses the high-water mark
+        // as of PRIOR bars (updated only AFTER this bar's exit check → no intrabar lookahead).
+        const trailStop = Math.max(t.sl, t.highWater - t.atr*TRAIL_MULT);
+        if (candle.low <= trailStop) {
+          t.exit=trailStop; t.result = trailStop>=t.entry ? "WIN" : "LOSS"; closed=true;
+        } else {
+          t.highWater = Math.max(t.highWater, candle.high);
+          const sNow=scoreFn(slice);                      // exit if the long-term thesis breaks
+          if (sNow && sNow.signal==="SELL") {
+            t.exit=candle.close; t.result = candle.close>=t.entry ? "WIN" : "LOSS"; closed=true;
+          }
         }
+      } else {
+        const ex=checkBarExit(t, candle);                 // tactical: SL/TP touch, SL-first tie
+        if (ex) { t.exit=ex.exit; t.result=ex.result; closed=true; }
       }
       if (closed) {
         t.exitDate=candle.date;
