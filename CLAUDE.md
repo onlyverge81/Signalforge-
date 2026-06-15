@@ -126,6 +126,14 @@ analysis in the approved plan file; branch `claude/signalforge-profitability-whe
   pins the 75-day lag (`meritAsOfISO`) + `priceOnOrBefore` with tests. `forward-log.mjs`
   `meritGate` flips `meritsActivated` as a **propose-only label** (never touches
   `gate.actionable`) → the `merits-on` variant now competes under the existing FDR gate.
+- **POSITION mode realism — PR1 (DONE):** `scorePosition` now requires a TRUE 200-bar window
+  (was `Math.min(200,len)` — a silent short-SMA proxy); with fewer bars it returns
+  `engaged:false`/HOLD honestly. `runBacktest` hold-mode BUY exits via an ATR **trailing stop**
+  (let winners run, no fixed-TP cap) + thesis-break. POSITION shows its **own** conviction
+  (trendStrength + dipDepth) via `positionDisplay`, not the tactical confluence number.
+  Mirrored byte-for-byte into `index.html` (parity verified); tests + copy updated.
+  **PR2 (next):** log `scorePosition` as its own forward/OOS variant so the philosophy earns
+  "tradeable" under FDR (today it's app-only, never validated).
 
 **Next — Track B 2–5:**
 - Total-return benchmark (Polygon corporate actions / dividends) so alpha isn't vs an

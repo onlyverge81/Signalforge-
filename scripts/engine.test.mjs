@@ -11,7 +11,7 @@
 
 import { test } from "node:test";
 import assert from "node:assert/strict";
-import { analyze, runBacktest, scoreAt, checkBarExit, checkBarExitFine, isAmbiguousBar, tradeNet, realizedStats, convergenceBreakout, backtestPattern, edgeStatus } from "./engine.mjs";
+import { analyze, runBacktest, scoreAt, scorePosition, checkBarExit, checkBarExitFine, isAmbiguousBar, tradeNet, realizedStats, convergenceBreakout, backtestPattern, edgeStatus } from "./engine.mjs";
 
 // ─── Helper: deterministic OHLC series (no RNG, fixed formula) ───────────────
 function gen(n){
@@ -151,6 +151,53 @@ test("runBacktest() snapshot on the deterministic 160-bar series", () => {
   assert.equal(bt.stats.expectancy, 3.26);
   assert.equal(bt.stats.maxDrawdown, 0);
   assert.equal(bt.stats.significance, "TOO FEW TRADES"); // only 8 trades on this series
+});
+
+// ─── 5) POSITION mode — true 200-bar trend filter, dip-buy, thesis-break, trailing ──
+const pbar = c => { c=+(+c).toFixed(4); return { date:"2025-01-01", open:c, high:+(c+1).toFixed(4), low:+(c-1).toFixed(4), close:c, volume:1e6 }; };
+// `up` rising bars then `dip` declining bars (a pullback inside the uptrend).
+function posUp(up, dip=0){
+  const rows=[]; for(let i=0;i<up;i++) rows.push(pbar(100+0.5*i));
+  const top=100+0.5*(up-1); for(let i=1;i<=dip;i++) rows.push(pbar(top-1.2*i));
+  return rows;
+}
+
+test("scorePosition: NOT engaged under 200 bars — no silent short-SMA proxy (the fix)", () => {
+  const r=scorePosition(posUp(150));
+  assert.equal(r.engaged, false);
+  assert.equal(r.signal, "HOLD");
+  assert.match(r.reason, /200 bars/);
+});
+
+test("scorePosition: with 200+ bars, buys a pullback inside a real uptrend", () => {
+  const r=scorePosition(posUp(206, 14)); // 206 up, then a 14-bar dip → RSI<45, still > SMA200
+  assert.equal(r.engaged, true);
+  assert.equal(r.signal, "BUY");
+  assert.ok(r.dipDepth > 0 && r.trendStrength > 0);
+});
+
+test("scorePosition: a broken long-term thesis flips to SELL", () => {
+  const rows=[]; for(let i=0;i<100;i++) rows.push(pbar(100+0.5*i));   // up to 149.5
+  for(let i=1;i<=180;i++) rows.push(pbar(149.5-0.6*i));               // long decline below SMA200
+  const r=scorePosition(rows);
+  assert.equal(r.engaged, true);
+  assert.equal(r.signal, "SELL");
+});
+
+test("runBacktest holdMode: a TRAILING stop lets a winner run past a fixed TP, exits on the pullback", () => {
+  const rows=[];
+  for(let i=0;i<35;i++) rows.push(pbar(100));            // base
+  for(let i=1;i<=20;i++) rows.push(pbar(100+i));         // rally 101..120 (peak)
+  for(let i=1;i<=10;i++) rows.push(pbar(120-i));         // pullback 119..110
+  // Custom scorer: one BUY early (atr=1), HOLD after — isolates the EXIT logic from entry.
+  let fired=false;
+  const scorer=slice=>{ if(!fired && slice.length===34){ fired=true; return {score:6,signal:"BUY",atr:1}; } return {score:0,signal:"HOLD",atr:1}; };
+  const bt=runBacktest(rows, scorer, 3, 6, {slip:0,comm:0}, null, true); // holdMode (POSITION)
+  assert.equal(bt.trades.length, 1);
+  const tr=bt.trades[0];
+  assert.ok(tr.exit > tr.entry + 6, "winner ran PAST the 6xATR fixed-TP cap (trailing let it run)");
+  assert.ok(tr.exit < 120, "but exited on the pullback — did not sell the exact top");
+  assert.equal(tr.result, "WIN");
 });
 
 // ─── edgeStatus — the SIGN-aware gate (the inverted-significance bug fix) ─────
