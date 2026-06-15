@@ -132,8 +132,12 @@ analysis in the approved plan file; branch `claude/signalforge-profitability-whe
   (let winners run, no fixed-TP cap) + thesis-break. POSITION shows its **own** conviction
   (trendStrength + dipDepth) via `positionDisplay`, not the tactical confluence number.
   Mirrored byte-for-byte into `index.html` (parity verified); tests + copy updated.
-  **PR2 (next):** log `scorePosition` as its own forward/OOS variant so the philosophy earns
-  "tradeable" under FDR (today it's app-only, never validated).
+- **POSITION mode — PR2 (DONE):** `scorePosition` now logs its OWN forward/OOS stream.
+  `forward-log.mjs` `buildPositionEntry` (engaged ≥200-bar dip-buy → OPEN, else null/OBSERVATION)
+  + `markToMarketPosition` (ATR trailing stop + thesis-break, no-lookahead) under `POS_CFG`,
+  tagged `mode:"position"` with `…-POS-…` ids. `forward-perf.mjs` adds a **`position`** variant
+  and scopes the tactical family (all/grades/merits) to `mode!=="position"` so the two
+  philosophies never conflate. Judged under the same FDR gate; nothing auto-activates.
 
 **Next — Track B 2–5:**
 - Total-return benchmark (Polygon corporate actions / dividends) so alpha isn't vs an

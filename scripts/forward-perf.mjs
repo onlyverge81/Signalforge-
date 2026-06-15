@@ -141,16 +141,21 @@ export function variantAlpha(trades, costPerTrade = COST_PER_TRADE) {
 // overlays?). Promotion later asks: which of these variants earns its alpha
 // SIGNIFICANTLY? Buckets with no trades simply report n:0 — honest emptiness.
 export function defaultVariants() {
-  const grade = g => t => (t.tags && t.tags.fundamentalGrade) === g;
+  // POSITION is a distinct philosophy with its own entry/exit, logged as its own stream
+  // (tag mode:"position"). Keep it OUT of the tactical family (all/grades/merits) so the two
+  // are never conflated, and judge it as its own "position" variant under the same FDR gate.
+  const tac = t => !(t.tags && t.tags.mode === "position");
+  const grade = g => t => tac(t) && (t.tags && t.tags.fundamentalGrade) === g;
   return [
-    { label: "all", where: () => true },
+    { label: "all", where: tac },
     { label: "grade-A", where: grade("A") },
     { label: "grade-B", where: grade("B") },
     { label: "grade-C", where: grade("C") },
     { label: "grade-D", where: grade("D") },
     { label: "grade-F", where: grade("F") },
-    { label: "merits-on", where: t => !!(t.tags && t.tags.meritsActivated) },
-    { label: "merits-off", where: t => !(t.tags && t.tags.meritsActivated) },
+    { label: "merits-on", where: t => tac(t) && !!(t.tags && t.tags.meritsActivated) },
+    { label: "merits-off", where: t => tac(t) && !(t.tags && t.tags.meritsActivated) },
+    { label: "position", where: t => !!(t.tags && t.tags.mode === "position") },
   ];
 }
 

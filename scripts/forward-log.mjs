@@ -22,7 +22,7 @@
 import fs from "node:fs";
 import path from "node:path";
 import { fileURLToPath } from "node:url";
-import { analyze, runBacktest, scoreAt, auditData, checkBarExit, tradeNet, valueScore, edgeStatus } from "./engine.mjs";
+import { analyze, runBacktest, scoreAt, scorePosition, auditData, checkBarExit, tradeNet, valueScore, edgeStatus } from "./engine.mjs";
 import { readTickers } from "./build-fundamentals.mjs";
 import { fetchPolygonDaily, fetchPolygonDividends, dividendsInWindow, fetchPolygonNews, newsWindow } from "./pattern-study.mjs";
 
@@ -44,6 +44,18 @@ export const CFG = {
   entryFill: "close@settled",
 };
 const costPerTrade = (CFG.costs.slip + CFG.costs.comm) * 2;
+
+// ─── POSITION forward stream (PR2) ───────────────────────────────────────────
+// The app's POSITION philosophy (patient long-trend: buy dips in a real 200-bar uptrend,
+// wide ATR trailing stop, hold for big moves) was never validated out-of-sample — the
+// tactical scorer above is all the ledger tracked. POS_CFG logs scorePosition as its OWN
+// ledger stream (tag mode:"position", distinct …-POS-… ids) so forward-perf scores it as a
+// separate variant under the same FDR gate. Nothing auto-activates.
+export const POS_CFG = {
+  interval: CFG.interval, market: CFG.market, strategy: "Position (long-trend, ATR trailing)",
+  slMult: 3.0, trailMult: 3.0, longOnly: true,
+  costs: CFG.costs, provider: CFG.provider, source: CFG.source, entryFill: CFG.entryFill,
+};
 // Stocks Starter has UNLIMITED API calls, so no inter-ticker throttle by default
 // (override POLYGON_PACE_MS if running on a rate-limited tier).
 const PACE = +(process.env.POLYGON_PACE_MS || 0);
@@ -212,6 +224,69 @@ export function markToMarket(entry, settled, exitAt = new Date().toISOString(), 
   return entry; // still open
 }
 
+// ─── POSITION entry (PR2): scorePosition decision, logged as its own stream ────
+// Only logs when the long-term trend filter is genuinely ENGAGED (≥200 bars) — short-history
+// names are skipped (null), matching the in-app "not engaged" honesty. An engaged BUY (a dip
+// inside a real uptrend) OPENs a position with a wide ATR stop + trailing exit; engaged HOLD or
+// a thesis-break SELL is a no-position OBSERVATION. Long-only by construction.
+export function buildPositionEntry({ sym, settled, fundaDB, news = [], loggedAt = new Date().toISOString() }) {
+  if (settled.length < 200) return null;                 // trend filter can't engage — don't log
+  const ps = scorePosition(settled);
+  if (!ps || ps.engaged === false) return null;
+  const decision = settled[settled.length - 1];
+  const grade = gradeFor(sym, decision.close, fundaDB);
+  const actionable = ps.signal === "BUY" && ps.atr > 0;  // dip-buy only (never shorts)
+  const entry = decision.close;
+  const sl = actionable ? parseFloat((entry - ps.atr * POS_CFG.slMult).toFixed(4)) : null;
+  return {
+    id: `${sym}-${POS_CFG.interval}-POS-${decision.date}-${ps.signal}`,
+    loggedAt, ticker: sym, market: POS_CFG.market, interval: POS_CFG.interval,
+    source: POS_CFG.source, entryFill: POS_CFG.entryFill,
+    signal: ps.signal, confidence: null,
+    trend: ps.signal === "SELL" ? "DOWNTREND" : "UPTREND", strength: null,
+    entry: actionable ? entry : null, sl, tp1: null, tp2: null, rr: null,
+    atr: parseFloat((ps.atr).toFixed(4)), highWater: actionable ? entry : null,
+    support: null, resistance: null,
+    dataAsOf: { date: decision.date, close: decision.close, provider: POS_CFG.provider },
+    barState: "closed",
+    events: newsWindow(news, decision.date + "T23:59:59Z", 3),
+    tags: { mode: "position", engaged: true, fundamentalGrade: grade,
+      trendStrength: parseFloat((ps.trendStrength || 0).toFixed(4)),
+      dipDepth: parseFloat((ps.dipDepth || 0).toFixed(4)) },
+    status: actionable ? "OPEN" : "OBSERVATION",
+    exit: null, exitAt: null, exitDate: null, barsHeld: null,
+    pnl: null, grossPct: null, pnlPct: null, benchClose: null, benchDiv: null,
+  };
+}
+
+// ─── Mark a POSITION trade to market: ATR TRAILING stop + thesis-break (no lookahead) ─
+// Mirrors runBacktest's hold-mode exit: trail level uses the high-water mark as of PRIOR bars,
+// updated only AFTER the per-bar exit check. Returns a NEW object; persists the ratcheted
+// high-water while still open.
+export function markToMarketPosition(entry, settled, exitAt = new Date().toISOString(), dividends = [], trailMult = POS_CFG.trailMult) {
+  if (entry.status !== "OPEN") return entry;
+  const after = settled.filter(c => String(c.date) > String(entry.dataAsOf.date));
+  const atrV = entry.atr || 0, initialSl = entry.sl;
+  let highWater = entry.highWater != null ? entry.highWater : entry.entry;
+  const close = (exit, c, bars) => {
+    const net = tradeNet("BUY", entry.entry, exit, costPerTrade);
+    return { ...entry, status: exit >= entry.entry ? "WIN" : "LOSS",
+      exit: parseFloat(exit.toFixed(4)), exitDate: c.date, exitAt, barsHeld: bars,
+      pnl: parseFloat(net.pnl.toFixed(4)), grossPct: parseFloat(net.grossPct.toFixed(4)), pnlPct: net.pnlPct,
+      benchClose: parseFloat(c.close.toFixed(4)),
+      benchDiv: dividendsInWindow(dividends, entry.dataAsOf.date, c.date) };
+  };
+  for (let i = 0; i < after.length; i++) {
+    const c = after[i];
+    const trailStop = Math.max(initialSl, highWater - atrV * trailMult);
+    if (c.low <= trailStop) return close(trailStop, c, i + 1);
+    highWater = Math.max(highWater, c.high);
+    const sNow = scorePosition(settled.filter(b => String(b.date) <= String(c.date)));
+    if (sNow && sNow.signal === "SELL") return close(c.close, c, i + 1);
+  }
+  return { ...entry, highWater };                        // still open — persist the trail
+}
+
 // ─── Merge ledgers by id: keep the more-advanced status, latest timestamps ────
 const RANK = { OBSERVATION: 0, OPEN: 1, WIN: 2, LOSS: 2, CLOSED: 2 };
 export function mergeLedger(existing, incoming) {
@@ -303,15 +378,18 @@ async function main() {
       if (hasOpen && !fixture && key) { try { divs = await fetchPolygonDividends(sym, key); } catch { divs = []; } }
       for (const e of ledger) {
         if (e.ticker === sym && e.interval === CFG.interval && e.status === "OPEN") {
-          const upd = markToMarket(e, settled, undefined, divs);
+          // POSITION trades exit via the trailing/thesis-break mark; tactical via SL/TP.
+          const isPos = e.tags && e.tags.mode === "position";
+          const upd = isPos ? markToMarketPosition(e, settled, undefined, divs)
+                            : markToMarket(e, settled, undefined, divs);
           if (upd.status !== "OPEN") { fresh.push(upd); closed++; }
         }
       }
-      // 2) Build today's entry, stamping its news/event context (best-effort, [] on failure).
+      // 2) Build today's entries (tactical + POSITION), stamping news/event context.
       let news = [];
       if (!fixture && key) { try { news = await fetchPolygonNews(sym, key); } catch { news = []; } }
-      const entry = buildEntry({ sym, settled, fundaDB, news });
-      if (entry) {
+      for (const entry of [ buildEntry({ sym, settled, fundaDB, news }), buildPositionEntry({ sym, settled, fundaDB, news }) ]) {
+        if (!entry) continue;
         const dup = ledger.some(e => e.id === entry.id) || fresh.some(e => e.id === entry.id);
         if (!dup) { fresh.push(entry); previews.push(entry); logged++; }
       }
