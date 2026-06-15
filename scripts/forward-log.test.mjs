@@ -2,7 +2,15 @@
 // Run: node --test scripts/
 import { test } from "node:test";
 import assert from "node:assert/strict";
-import { splitSettled, markToMarket, mergeLedger, buildEntry, parseFeed, gradeFor, forwardGates, meritGate } from "./forward-log.mjs";
+import { splitSettled, markToMarket, mergeLedger, buildEntry, parseFeed, gradeFor, forwardGates, meritGate, buildPositionEntry, markToMarketPosition } from "./forward-log.mjs";
+
+// A long uptrend of `up` rising bars then `dip` declining bars (a pullback inside the trend).
+const _pbar = c => { c=+(+c).toFixed(4); return { date:"2025-01-01", open:c, high:+(c+1).toFixed(4), low:+(c-1).toFixed(4), close:c, volume:1e6 }; };
+function posUp(up, dip=0){
+  const rows=[]; for(let i=0;i<up;i++) rows.push(_pbar(100+0.5*i));
+  const top=100+0.5*(up-1); for(let i=1;i<=dip;i++) rows.push(_pbar(top-1.2*i));
+  return rows;
+}
 
 // ─── splitSettled — drop a trailing FORMING bar, keep settled history ────────
 test("splitSettled: a bar dated today before settlement is treated as forming", () => {
@@ -194,6 +202,40 @@ test("buildEntry: meritsActivated tracks grade but never changes the OPEN/OBSERV
   assert.equal(graded.signal, base.signal);
   assert.equal(graded.id, base.id);
   assert.equal(graded.entry, base.entry);
+});
+
+// ─── POSITION forward stream (PR2) ────────────────────────────────────────────
+test("buildPositionEntry: skips short history; OPENs a dip-buy in a REAL 200-bar uptrend", () => {
+  assert.equal(buildPositionEntry({ sym:"X", settled: posUp(150), fundaDB:null }), null); // <200 → not engaged → not logged
+  const e = buildPositionEntry({ sym:"X", settled: posUp(206,14), fundaDB:null, loggedAt:"2026-06-15T22:00:00Z" });
+  assert.ok(e);
+  assert.equal(e.tags.mode, "position");
+  assert.equal(e.signal, "BUY");
+  assert.equal(e.status, "OPEN");
+  assert.ok(e.sl < e.entry && e.highWater === e.entry); // wide stop set, high-water seeded
+  assert.match(e.id, /-POS-/);
+});
+
+test("buildPositionEntry: an engaged uptrend with no pullback is a HOLD observation (no position)", () => {
+  const e = buildPositionEntry({ sym:"X", settled: posUp(220, 0), fundaDB:null });
+  assert.ok(e);
+  assert.equal(e.signal, "HOLD");
+  assert.equal(e.status, "OBSERVATION");
+  assert.equal(e.entry, null);
+});
+
+test("markToMarketPosition: a TRAILING stop lets a winner run, then exits on the pullback", () => {
+  const d = n => "2026-02-" + String(n).padStart(2,"0");
+  const bar = (day,c) => ({ date:d(day), open:c, high:c+1, low:c-1, close:c });
+  const settled = [ bar(1,100) ];                            // entry bar
+  for(let i=1;i<=20;i++) settled.push(bar(1+i, 100+i));      // rally 101..120
+  for(let i=1;i<=10;i++) settled.push(bar(21+i, 120-i));     // pullback 119..110
+  const entry = { status:"OPEN", signal:"BUY", ticker:"X", interval:"1day", entry:100, sl:97, atr:1,
+    highWater:100, dataAsOf:{date:d(1), close:100}, tags:{mode:"position"} };
+  const r = markToMarketPosition(entry, settled, "2026-03-01T00:00:00Z", []);
+  assert.equal(r.status, "WIN");
+  assert.ok(r.exit > 100 + 6, "ran past a 6xATR fixed cap (trailing let it run)");
+  assert.ok(r.exit < 120, "exited on the pullback, not the exact top");
 });
 
 test("gradeFor: returns a letter grade from filed figures + price, null when absent", () => {

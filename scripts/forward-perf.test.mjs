@@ -139,6 +139,18 @@ test("scoreLedger: merits-on / merits-off partition the SAME population by the m
   assert.ok(perf.variants["merits-off"].alphaGrowthPct < 0);
 });
 
+test("scoreLedger: POSITION is its own variant; the tactical family excludes it (no conflation)", () => {
+  const ledger = [
+    closed({ id:"T1", entry:100, exit:106, benchClose:102, grade:"A", merits:true }),       // tactical
+    { ...closed({ id:"P1", entry:100, exit:112, benchClose:104 }), tags:{ mode:"position" } }, // position
+  ];
+  const perf = scoreLedger(ledger);
+  assert.equal(perf.variants["all"].n, 1);          // tactical 'all' = T1 only
+  assert.equal(perf.variants["position"].n, 1);     // position bucket = P1
+  assert.equal(perf.variants["grade-A"].n, 1);      // tactical grade still resolves (T1)
+  assert.equal(perf.variants["merits-on"].n, 1);    // and merits (T1), unaffected by the position row
+});
+
 test("scoreLedger: empty ledger is honest, not a crash", () => {
   const perf = scoreLedger([]);
   assert.equal(perf.ledger.rows, 0);
