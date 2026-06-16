@@ -1487,6 +1487,17 @@ function Chart({rows,analysis,muted}) {
       ctx.fillStyle=up?"#00e676":"#cc3333";
       ctx.fillRect(x-cw*.38,bt,cw*.76,Math.max(bb_-bt,1));
       if(!up){ctx.strokeStyle="#ff5252";ctx.lineWidth=.5;ctx.strokeRect(x-cw*.38,bt,cw*.76,Math.max(bb_-bt,1));}
+      // Live FORMING bar: the streamed price folded into the last visible candle — drawn hollow +
+      // cyan with a "LIVE" tag so it's unmistakably unsettled. Cosmetic only: it never re-runs
+      // analyze(), so the verdict is unchanged (no real-time signal faked on the delayed feed). On
+      // a Polygon tier upgrade the cluster flips to realtime (one-word mode change) and this SAME
+      // bar becomes a genuine real-time forming candle — its future status, revealed automatically.
+      if(d.forming){
+        ctx.fillStyle="#080b14";ctx.fillRect(x-cw*.38+.7,bt+.7,Math.max(cw*.76-1.4,0),Math.max(bb_-bt-1.4,0));
+        ctx.strokeStyle="#00e5ff";ctx.lineWidth=1;ctx.strokeRect(x-cw*.38,bt,cw*.76,Math.max(bb_-bt,1));
+        ctx.fillStyle="#00e5ff";ctx.font="bold 7px monospace";ctx.textAlign="center";
+        ctx.fillText("● LIVE",x,toY(d.high)-4);
+      }
     });
     // Entry/SL lines
     if(analysis){
@@ -1989,6 +2000,10 @@ function App() {
     if(liveWatchRef.current){ clearInterval(liveWatchRef.current); liveWatchRef.current=null; }
     liveEndRef.current=null;
     if(liveSockRef.current){ liveSockRef.current.close(); liveSockRef.current=null; }
+    // Clear the forming flag so the chart's last bar settles back to a normal candle.
+    setRows(prev=>{ if(!prev||!prev.length||!prev[prev.length-1].forming) return prev;
+      const last={...prev[prev.length-1]}; delete last.forming;
+      return [...prev.slice(0,-1), last]; });
     setStreaming(false);
   }
   function goLive(){
@@ -1998,7 +2013,14 @@ function App() {
     stopLive();
     const sock=new PolyLiveSocket({ key, tickers:[sym], channel:"AM", mode:"delayed",
       onBar:(b)=>{ liveEndRef.current=b.end; const f=wsBand(b.end);
-        setLiveFreshness(prev=>({ ...(prev||{}), provider:"Polygon", band:f.band, stalenessSec:f.stalenessSec, isOpen:f.band!=="STALE", price:b.close, lastTs:b.end })); },
+        setLiveFreshness(prev=>({ ...(prev||{}), provider:"Polygon", band:f.band, stalenessSec:f.stalenessSec, isOpen:f.band!=="STALE", price:b.close, lastTs:b.end }));
+        // Cosmetic: fold the streamed price into the LAST visible candle (a forming bar). Never
+        // recomputes analyze() — the verdict stays frozen; only the chart breathes with the feed.
+        setRows(prev=>{ if(!prev||!prev.length) return prev;
+          const last={...prev[prev.length-1], close:b.close,
+            high:Math.max(prev[prev.length-1].high, b.high, b.close),
+            low:Math.min(prev[prev.length-1].low, b.low, b.close), forming:true };
+          return [...prev.slice(0,-1), last]; }); },
       onStatus:(s)=>{ if(s && (s.status==="auth_failed"||/max|error/i.test(s.status||""))){ setError("Polygon stream: "+(s.message||s.status)); stopLive(); } } });
     liveSockRef.current=sock; sock.connect(); setStreaming(true);
     // Staleness watchdog: re-age the badge from the LAST bar's end-time even when no new bar
@@ -2018,6 +2040,7 @@ function App() {
     if(!key){setError(usePoly?"Enter your Polygon REST API key first (polygon.io → Accessing the API).":"Enter your free Twelve Data API key first (twelvedata.com).");setTab("live");return;}
     const sym=ticker.trim().toUpperCase();
     if(!sym){setError("Enter a ticker symbol.");return;}
+    stopLive(); // tear down any active stream so it can't fold a stale symbol's bar into the new series
     setFetching(true);setError("");setOutlook(null);setOutlookError(null);setLiveFreshness(null);
     try{localStorage.setItem(usePoly?"sf_polygon_key":"sf_td_key",key);localStorage.setItem("sf_provider",provider);}catch(e){}
     try{

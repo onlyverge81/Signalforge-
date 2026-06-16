@@ -236,9 +236,18 @@ ranking the batch, NEVER touching `gate.actionable`. `forward-perf.mjs` adds `qu
 Quality shares inputs with the merit grade → correlated variants; lean on the FDR family's BY (dependence-
 robust) cross-check. CI: `quality-study.yml` (weekly Sun 11:23). Tests +9 (209 green).
 
+**Live forming-bar chart (DONE) — Phase 4 (cosmetic, app-only):** `goLive`'s `onBar` folds the streamed
+price into the LAST visible candle (`forming:true`, expanding high/low, close=latest) via `setRows` —
+NEVER re-running `analyze()`, so the verdict stays frozen (no real-time signal faked on the delayed feed).
+`Chart` draws the forming bar hollow + cyan with a "● LIVE" tag. `stopLive` clears the flag; `fetchLive`
+calls `stopLive` first so a stale symbol's bar can't bleed into a new series. Honest-cosmetic now; on a
+Polygon tier upgrade the cluster flips to `realtime` (one-word `mode` change) and this SAME bar becomes a
+genuine real-time forming candle — "its future status, revealed automatically" (user's framing). Engine
+parity untouched (the change is in Chart + the live socket, not analyze/runBacktest/scoreAt). 209 tests green.
+
 **Factor-expansion roadmap (user-approved, by priority):** Phase 1 reversal DONE ↑; Phase 2 low-volatility
-DONE ↑; Phase 3 quality (profitability) DONE ↑; Phase 4 live forming-bar chart (cosmetic) — REMAINING.
-Each is propose-only / FDR-gated / never auto-activated — candidates, not proven edges.
+DONE ↑; Phase 3 quality (profitability) DONE ↑; Phase 4 live forming-bar chart DONE ↑. ALL FOUR COMPLETE.
+Each factor is propose-only / FDR-gated / never auto-activated — candidates, not proven edges.
 
 **Next — Track B:**
 - Mature the `momentum-on` / `merits-on` / `news-*` / `earnings-recent-on` OOS ledgers to n≥10; human-ratify
