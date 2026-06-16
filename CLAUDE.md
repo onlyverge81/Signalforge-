@@ -138,6 +138,18 @@ analysis in the approved plan file; branch `claude/signalforge-profitability-whe
   tagged `mode:"position"` with `…-POS-…` ids. `forward-perf.mjs` adds a **`position`** variant
   and scopes the tactical family (all/grades/merits) to `mode!=="position"` so the two
   philosophies never conflate. Judged under the same FDR gate; nothing auto-activates.
+- **OUTLOOK "correction period" rebuild (DONE):** the projection now uses the **average**
+  trailing-20-day gain of the 3 indexes (not the session **sum**), via pure
+  `avgIndexGainByDate`. `correctionLevels` sets an error-buffered **TP = price+|proj|+avgErr**
+  (let it run) and a tight **SL = price−min(|proj|,avgErr)** (red-flag). New `runBacktest`
+  custom-target seam (`pending.customSl/customTp ?? ATR fallback`) is additive — existing
+  callers unchanged (regression snapshots green). `backtestCorrection` replaces the
+  directional-only test with **full P&L vs matched buy-&-hold** (alpha-honest), expanding-window
+  `avgErr` (no-lookahead); `proven` only when ≥20 trades **AND** significant **AND** meanAlpha>0.
+  Mirrored byte-for-byte into `index.html` (parity verified); panel leads with alpha/expectancy/
+  significance. Beta-by-construction → honest likely verdict is "no proven edge"; **not** wired
+  into any OOS ledger/registry (display-only). Next bet: **cross-sectional momentum study**
+  reusing the merit tooling (separate research-pipeline task).
 
 **Next — Track B 2–5:**
 - Total-return benchmark (Polygon corporate actions / dividends) so alpha isn't vs an

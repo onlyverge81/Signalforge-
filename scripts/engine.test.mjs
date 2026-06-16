@@ -11,7 +11,7 @@
 
 import { test } from "node:test";
 import assert from "node:assert/strict";
-import { analyze, runBacktest, scoreAt, scorePosition, checkBarExit, checkBarExitFine, isAmbiguousBar, tradeNet, realizedStats, convergenceBreakout, backtestPattern, edgeStatus } from "./engine.mjs";
+import { analyze, runBacktest, scoreAt, scorePosition, checkBarExit, checkBarExitFine, isAmbiguousBar, tradeNet, realizedStats, convergenceBreakout, backtestPattern, edgeStatus, avgIndexGainByDate, correctionLevels, backtestCorrection } from "./engine.mjs";
 
 // ─── Helper: deterministic OHLC series (no RNG, fixed formula) ───────────────
 function gen(n){
@@ -282,4 +282,101 @@ test("trend filter: suppresses a breakout off a flat base", () => {
   const on =backtestPattern(series, {horizon:5, minBars:50, trendFilter:true});
   assert.ok(off.signals>0, "filter-off should still see the raw breakout, got "+off.signals);
   assert.ok(on.signals<off.signals, "filter-on must drop flat-base signals: on="+on.signals+" off="+off.signals);
+});
+
+// ─── 5) Custom-target seam — scorer-supplied TP/SL override the ATR default ───
+test("runBacktest: scorer customTp/customSl set the trade's targets (not the ATR fallback)", () => {
+  const data=gen(60);
+  // Fire exactly once (at the first eligible bar, i=30 → slice.length 31) with absolute
+  // custom levels; everything after holds. The fill is at the NEXT bar's open.
+  let injTp=null, injSl=null;
+  const scorer=(slice)=>{
+    if(slice.length!==31) return {signal:"HOLD"};
+    const c=slice[slice.length-1].close;
+    injTp=c+0.5; injSl=c-0.5;
+    return {signal:"BUY", atr:1, score:1, customSl:injSl, customTp:injTp};
+  };
+  const bt=runBacktest(data, scorer, 1.5, 2.0, {slip:0,comm:0}, null, false);
+  assert.ok(bt.trades.length>=1, "expected the BUY to open a trade");
+  const t=bt.trades[0];
+  assert.equal(t.tp, injTp, "tp must equal the injected customTp");
+  assert.equal(t.sl, injSl, "sl must equal the injected customSl");
+  // And it must NOT be the ATR default (entry ± atr*mult with atr=1).
+  assert.notEqual(t.tp, t.entry+1*2.0, "tp should not be the ATR fallback");
+});
+
+test("runBacktest: omitting custom targets keeps the ATR fallback byte-identical", () => {
+  // A BUY with no custom fields → tp/sl are entry ± atr*mult exactly.
+  const data=gen(60);
+  const scorer=(slice)=> slice.length===31 ? {signal:"BUY", atr:2, score:1} : {signal:"HOLD"};
+  const bt=runBacktest(data, scorer, 1.5, 2.0, {slip:0,comm:0}, null, false);
+  assert.ok(bt.trades.length>=1);
+  const t=bt.trades[0];
+  assert.equal(t.tp, t.entry+2*2.0, "ATR tp fallback unchanged");
+  assert.equal(t.sl, t.entry-2*1.5, "ATR sl fallback unchanged");
+});
+
+// ─── 6) avgIndexGainByDate — averaged trailing-window gain, date-aligned ──────
+test("avgIndexGainByDate: averages each index's trailing-window % at aligned dates", () => {
+  const A=[{date:"1",close:100},{date:"2",close:100},{date:"3",close:110}]; // +10% at "3"
+  const B=[{date:"1",close:200},{date:"2",close:200},{date:"3",close:230}]; // +15% at "3"
+  const C=[{date:"1",close:50}, {date:"2",close:50}, {date:"3",close:55}];  // +10% at "3"
+  const m=avgIndexGainByDate([A,B,C],2);
+  assert.ok(Math.abs(m.get("3")-(10+15+10)/3)<1e-9, "avg of 10/15/10 at date 3");
+  assert.equal(m.get("1"), undefined, "no full window at date 1 → omitted");
+  assert.equal(m.get("2"), undefined, "no full window at date 2 → omitted");
+});
+
+test("avgIndexGainByDate: a date missing from any index is dropped (exact alignment)", () => {
+  const A=[{date:"1",close:100},{date:"2",close:100},{date:"3",close:110}];
+  const B=[{date:"1",close:200},{date:"2",close:200},{date:"9",close:230}]; // no date "3"
+  const m=avgIndexGainByDate([A,B],2);
+  assert.equal(m.get("3"), undefined, "date present in A but not B must be omitted");
+  assert.equal(m.size, 0);
+});
+
+// ─── 7) correctionLevels — TP adds the error buffer, SL takes the lesser ──────
+test("correctionLevels: TP = entry + mag + err; SL = entry − min(mag, err)", () => {
+  // err > mag → SL uses mag (the lesser).
+  let lv=correctionLevels({entry:100, gainsPct:2, avgErr:3});
+  assert.equal(lv.mag, 2);
+  assert.equal(lv.tp, 105, "100 + 2 + 3");
+  assert.equal(lv.sl, 98, "100 − min(2,3)=2");
+  // mag > err → SL uses err (the lesser).
+  lv=correctionLevels({entry:100, gainsPct:5, avgErr:2});
+  assert.equal(lv.tp, 107, "100 + 5 + 2");
+  assert.equal(lv.sl, 98, "100 − min(5,2)=2");
+  // delta keeps the sign of the projected gain; mag is absolute.
+  lv=correctionLevels({entry:100, gainsPct:-4, avgErr:1});
+  assert.equal(lv.delta, -4);
+  assert.equal(lv.mag, 4);
+  assert.equal(lv.tp, 105, "100 + 4 + 1");
+  assert.equal(lv.sl, 99, "100 − min(4,1)=1");
+});
+
+// ─── 8) backtestCorrection — full P&L + alpha + alpha-honest proven gate ──────
+test("backtestCorrection: produces stats/alpha and an HONEST proven gate", () => {
+  const data=gen(160);
+  // A positive trailing-gain map over every aligned date (uptrend assumption).
+  const gain=new Map(data.map(d=>[d.date, 1.5]));
+  const r=backtestCorrection(data, gain, {period:20, costs:{slip:0.05,comm:0.05}});
+  assert.ok(r, "expected a result object");
+  assert.equal(typeof r.trades, "number");
+  assert.ok(r.stats && typeof r.stats.expectancy==="number", "carries realized stats");
+  assert.equal(typeof r.proven, "boolean");
+  // The gate is exactly: ≥20 trades AND resolved AND positive mean alpha — never green otherwise.
+  const sig=r.stats.significance;
+  const expectGate = r.trades>=20 && (sig==="SIGNIFICANT"||sig==="SUGGESTIVE") && r.meanAlpha>0;
+  assert.equal(r.proven, expectGate, "proven must equal the alpha-honest gate");
+  if(r.proven){ assert.ok(r.meanAlpha>0, "proven implies positive alpha"); }
+});
+
+test("backtestCorrection: returns null without enough bars, and never trades on a null map", () => {
+  assert.equal(backtestCorrection(gen(10), new Map(), {period:20}), null, "too few bars → null");
+  assert.equal(backtestCorrection(gen(60), null, {period:20}), null, "no gain map → null");
+  // An empty gain map yields no BUYs (every bar is HOLD) → zero trades, proven false.
+  const r=backtestCorrection(gen(60), new Map(), {period:20});
+  assert.ok(r, "empty map still returns a (descriptive) result");
+  assert.equal(r.trades, 0);
+  assert.equal(r.proven, false);
 });
