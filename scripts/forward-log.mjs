@@ -141,6 +141,21 @@ export function momentumRankGate(values, { topFrac = 1 / 3 } = {}) {
   return flags;
 }
 
+// ─── Event overlay (propose-only) — two news hypotheses as A/B LABELS ─────────
+// Reads ONLY the already-captured point-in-time `events` summary (newsWindow up to the
+// decision bar) — it NEVER re-fetches, so it stays no-lookahead. Like meritGate, these are
+// labels: they never enter forwardGates / actionable, so which trades open is unchanged.
+// Two independent, opposite hypotheses, each judged on its own under the FDR gate:
+//   newsPositive — post-news DRIFT (PEAD-like): fresh positive news flow confirms the long.
+//   newsQuiet    — event-risk AVOIDANCE: no fresh NEGATIVE news in the window (count 0 = quiet).
+export function eventTags(events){
+  const e = events || {};
+  return {
+    newsPositive: e.count > 0 && e.sentiment === "positive",
+    newsQuiet: e.sentiment !== "negative",
+  };
+}
+
 // ─── Pure trading-policy gates for the forward record (testable, no network) ──
 // Decide whether a signal opens a paper position and why it is/ isn't muted:
 //   longOnlyMuted — a SELL under the long-only policy (shorts lose; never taken)
@@ -188,6 +203,7 @@ export function buildEntry({ sym, settled, fundaDB, news = [], loggedAt = new Da
   });
   const decision = settled[settled.length - 1];
   const grade = gradeFor(sym, decision.close, fundaDB);
+  const eventsAtSignal = newsWindow(news, decision.date + "T23:59:59Z", 3);
 
   const isObs = !gate.actionable;
   const id = `${sym}-${CFG.interval}-${decision.date}-${a.signal}`;
@@ -207,14 +223,14 @@ export function buildEntry({ sym, settled, fundaDB, news = [], loggedAt = new Da
     support: a.support, resistance: a.resistance,
     dataAsOf: { date: decision.date, close: decision.close, provider: CFG.provider },
     barState: "closed",
-    // Event context at signal time: fresh news in the 3 days up to the decision bar. Captured
-    // for later analysis (do signals near news behave differently?), not yet a hard gate.
-    events: newsWindow(news, decision.date + "T23:59:59Z", 3),
+    // Event context at signal time: fresh news in the 3 days up to the decision bar (point-in-time).
+    events: eventsAtSignal,
     // momentum = raw 12-1 trailing return (per-name); momentumActivated is set CROSS-SECTIONALLY
-    // by the run loop after every name's momentum is known (default false until then).
+    // by the run loop after every name's momentum is known (default false until then). The news
+    // labels (newsPositive / newsQuiet) ride the captured events — propose-only, never a gate.
     tags: { ...gate.tags, fundamentalGrade: grade, meritsActivated: meritGate(grade),
       momentum: (m => m == null ? null : parseFloat(m.toFixed(4)))(momentumValue(settled)),
-      momentumActivated: false },
+      momentumActivated: false, ...eventTags(eventsAtSignal) },
     status: isObs ? "OBSERVATION" : "OPEN",
     exit: null, exitAt: null, exitDate: null, barsHeld: null,
     pnl: null, grossPct: null, pnlPct: null, benchClose: null, benchDiv: null,
@@ -270,6 +286,7 @@ export function buildPositionEntry({ sym, settled, fundaDB, news = [], loggedAt 
   if (!ps || ps.engaged === false) return null;
   const decision = settled[settled.length - 1];
   const grade = gradeFor(sym, decision.close, fundaDB);
+  const eventsAtSignal = newsWindow(news, decision.date + "T23:59:59Z", 3);
   const actionable = ps.signal === "BUY" && ps.atr > 0;  // dip-buy only (never shorts)
   const entry = decision.close;
   const sl = actionable ? parseFloat((entry - ps.atr * POS_CFG.slMult).toFixed(4)) : null;
@@ -284,10 +301,10 @@ export function buildPositionEntry({ sym, settled, fundaDB, news = [], loggedAt 
     support: null, resistance: null,
     dataAsOf: { date: decision.date, close: decision.close, provider: POS_CFG.provider },
     barState: "closed",
-    events: newsWindow(news, decision.date + "T23:59:59Z", 3),
+    events: eventsAtSignal,
     tags: { mode: "position", engaged: true, fundamentalGrade: grade,
       trendStrength: parseFloat((ps.trendStrength || 0).toFixed(4)),
-      dipDepth: parseFloat((ps.dipDepth || 0).toFixed(4)) },
+      dipDepth: parseFloat((ps.dipDepth || 0).toFixed(4)), ...eventTags(eventsAtSignal) },
     status: actionable ? "OPEN" : "OBSERVATION",
     exit: null, exitAt: null, exitDate: null, barsHeld: null,
     pnl: null, grossPct: null, pnlPct: null, benchClose: null, benchDiv: null,

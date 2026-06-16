@@ -159,6 +159,12 @@ export function defaultVariants() {
     // conditioning on top-tertile trailing momentum add OOS alpha? Judged under the same FDR gate.
     { label: "momentum-on", where: t => tac(t) && !!(t.tags && t.tags.momentumActivated) },
     { label: "momentum-off", where: t => tac(t) && !(t.tags && t.tags.momentumActivated) },
+    // Event overlays (propose-only): two opposite news hypotheses, each an A/B inside the
+    // tactical longs. news-pos = post-news drift; news-quiet = avoiding fresh negative news.
+    { label: "news-pos-on", where: t => tac(t) && !!(t.tags && t.tags.newsPositive) },
+    { label: "news-pos-off", where: t => tac(t) && !(t.tags && t.tags.newsPositive) },
+    { label: "news-quiet-on", where: t => tac(t) && !!(t.tags && t.tags.newsQuiet) },
+    { label: "news-quiet-off", where: t => tac(t) && !(t.tags && t.tags.newsQuiet) },
     { label: "position", where: t => !!(t.tags && t.tags.mode === "position") },
   ];
 }

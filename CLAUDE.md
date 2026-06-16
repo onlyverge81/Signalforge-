@@ -180,9 +180,19 @@ tickers skipped. Strongest in-sample factor in the repo — still NOT proven. No
 `markToMarket` + position `markToMarketPosition`); `forward-perf.mjs` `buyHoldTotalPct`/`tradeAlpha`
 add the dividends the holder collects. So alpha is measured vs a same-name TOTAL-return hold.
 
+**Event gates — propose-only labels (DONE), hard gate deferred:** the `events` summary
+(`newsWindow`: count/freshest/sentiment, point-in-time ≤ decision bar) was already captured on every
+ledger row; now `eventTags(events)` (pure, `forward-log.mjs`) turns it into TWO opposite A/B hypotheses,
+tagged on tactical + position rows: `newsPositive` (count>0 && sentiment positive → post-news drift /
+PEAD) and `newsQuiet` (sentiment≠negative → event-risk avoidance). `forward-perf.mjs` adds
+`news-pos-on/off` + `news-quiet-on/off` under the existing FDR gate. Reads ONLY the captured events
+(never re-fetches → no-lookahead); NEVER touches `gate.actionable` (statuses byte-identical, tested).
+A HARD event gate is deferred until a label earns it OOS. Tests +3 (169 green). Earnings-proximity gate
+still open — needs verifying Polygon Stocks Starter exposes an earnings calendar before scoping.
+
 **Next — Track B:**
-- Mature the `momentum-on` (and `merits-on`) OOS ledgers to n≥10; human-ratify only if they clear FDR.
-  This is PASSIVE — the nightly `forward-log → forward-perf → promote` already partitions both variants.
-- Event gates (Polygon news / earnings — `events` context already captured, not yet a hard gate);
-  WebSocket live plumbing (`delayed.socket`). Both are new subsystems → scope before building.
+- Mature the `momentum-on` / `merits-on` / `news-*` OOS ledgers to n≥10; human-ratify only if they clear
+  FDR. PASSIVE — the nightly `forward-log → forward-perf → promote` already partitions every variant.
+- WebSocket live plumbing (`delayed.socket`); earnings-proximity gate (verify Starter entitlement first).
+  Both are new subsystems → scope before building.
 - Every candidate clears no-lookahead + OOS t≥2 after FDR before it's ever shown as tradeable.
