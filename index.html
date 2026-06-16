@@ -1862,6 +1862,8 @@ function App() {
   const [liveMeta,  setLiveMeta]  = useState(null);
   const [streaming, setStreaming] = useState(false); // Polygon WebSocket on/off
   const liveSockRef = useRef(null);
+  const liveWatchRef = useRef(null);   // staleness-watchdog interval
+  const liveEndRef = useRef(null);     // end-time (ms) of the last streamed bar
   const [outlook,   setOutlook]   = useState(null); // Market Outlook → correction-period price (live only)
   const [outlookError, setOutlookError] = useState(null); // why the Outlook is empty (vs silent blank)
   const [fundaMeta, setFundaMeta] = useState(null); // provenance of auto-filled fundamentals
@@ -1983,19 +1985,32 @@ function App() {
   }
 
   // ── Live streaming control (Polygon WebSocket) ──
-  function stopLive(){ if(liveSockRef.current){ liveSockRef.current.close(); liveSockRef.current=null; } setStreaming(false); }
+  function stopLive(){
+    if(liveWatchRef.current){ clearInterval(liveWatchRef.current); liveWatchRef.current=null; }
+    liveEndRef.current=null;
+    if(liveSockRef.current){ liveSockRef.current.close(); liveSockRef.current=null; }
+    setStreaming(false);
+  }
   function goLive(){
     const sym=(liveMeta?.sym||ticker||"").trim().toUpperCase();
     const key=(polyKey||"").trim();
     if(!sym || provider!=="polygon" || !key){ setError("Streaming needs a Polygon key and a fetched symbol."); return; }
     stopLive();
     const sock=new PolyLiveSocket({ key, tickers:[sym], channel:"AM", mode:"delayed",
-      onBar:(b)=>{ const f=wsBand(b.end);
+      onBar:(b)=>{ liveEndRef.current=b.end; const f=wsBand(b.end);
         setLiveFreshness(prev=>({ ...(prev||{}), provider:"Polygon", band:f.band, stalenessSec:f.stalenessSec, isOpen:f.band!=="STALE", price:b.close, lastTs:b.end })); },
       onStatus:(s)=>{ if(s && (s.status==="auth_failed"||/max|error/i.test(s.status||""))){ setError("Polygon stream: "+(s.message||s.status)); stopLive(); } } });
     liveSockRef.current=sock; sock.connect(); setStreaming(true);
+    // Staleness watchdog: re-age the badge from the LAST bar's end-time even when no new bar
+    // arrives, so a stalled stream (disconnect / lunch lull / market close) honestly decays
+    // toward STALE instead of freezing at "DELAYED". Pure wsBand math on a timer; no fake freshness.
+    liveWatchRef.current=setInterval(()=>{
+      const end=liveEndRef.current; if(end==null) return;
+      const f=wsBand(end);
+      setLiveFreshness(prev=> prev ? { ...prev, band:f.band, stalenessSec:f.stalenessSec, isOpen:f.band!=="STALE" } : prev);
+    }, 15000);
   }
-  useEffect(()=>()=>stopLive(),[]); // close the socket on unmount
+  useEffect(()=>()=>stopLive(),[]); // close the socket + watchdog on unmount
 
   async function fetchLive(){
     const usePoly=provider==="polygon";

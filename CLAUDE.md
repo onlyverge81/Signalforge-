@@ -203,5 +203,12 @@ forward-log only logs the current bar. Tests +5 (174 green). `lastFiled` populat
 - Mature the `momentum-on` / `merits-on` / `news-*` / `earnings-recent-on` OOS ledgers to n≥10; human-ratify
   only if they clear FDR. PASSIVE — the nightly `forward-log → forward-perf → promote` already partitions every
   variant, and the BH+BY FDR family auto-grows to include each new label once it has ≥ MIN_TRADES_SIG trades.
-- WebSocket live plumbing (`delayed.socket`) — the last new subsystem; scope before building.
+- **WebSocket live plumbing is ~built, not greenfield:** `scripts/poly-ws.mjs` (unit-tested protocol:
+  auth/subscribe/parse/`wsFreshness`) + `PolyLiveSocket` in `index.html` (auth→subscribe→onBar, auto-reconnect,
+  cleanup) + a "GO LIVE" UI toggle + honest DELAYED badge (never fakes REALTIME on Starter; cluster is a one-word
+  `mode` flip on upgrade). Confirmed entitled: the user's Stocks-Starter plan **includes WebSockets** (delayed).
+  Added a **staleness watchdog** (15s `setInterval` re-ages the badge from the last bar's end via `wsBand`, so a
+  stalled stream decays to STALE instead of freezing). Remaining = OPTIONAL: fold the live forming bar into the
+  chart (cosmetic on a delayed/swing feed — NOT a real-time signal) + a PolyLiveSocket↔poly-ws.mjs parity test.
+  Live end-to-end needs a key in a real browser (the delayed socket is egress-blocked in CI).
 - Every candidate clears no-lookahead + OOS t≥2 after FDR before it's ever shown as tradeable.
