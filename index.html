@@ -707,7 +707,7 @@ class PolyLiveSocket{
           const ok = ev.status==="auth_success" || (ev.status==="success" && /authenticated/i.test(ev.message||""));
           if(ok) ws.send(JSON.stringify({action:"subscribe",params:this.tickers.map(t=>this.channel+"."+t).join(",")}));
         } else if(ev.ev==="AM"||ev.ev==="A"){
-          this.onBar({sym:ev.sym, open:+ev.o, high:+ev.h, low:+ev.l, close:+ev.c, volume:+ev.v||0, start:+ev.s, end:+ev.e, vwap:ev.vw!=null?+ev.vw:null});
+          this.onBar({sym:ev.sym, ev:ev.ev, open:+ev.o, high:+ev.h, low:+ev.l, close:+ev.c, volume:+ev.v||0, start:+ev.s, end:+ev.e, vwap:ev.vw!=null?+ev.vw:null});
         }
       }
     };
