@@ -258,7 +258,9 @@ inputs with merit). `studyHarness` got a one-line guard so a SINGLE-window study
 a redundant self-comparison line (`six && six!==H`); merit/momentum unaffected. NO engine/parity impact
 (EVIDENCE viewer only, not analyze/runBacktest). Verified: all 5 cards render, single-window guard holds,
 zero app JS errors via a Playwright drive of the EVIDENCE tab; 209 tests green. Cards populate live once the
-weekly CI builds the three JSONs.
+weekly CI builds the three JSONs. Also added `reversal-on`/`lowvol-on`/`quality-on` (+ `quality-on` beside
+`merits-on`) to the OOS variant SCOREBOARD's row list (hardcoded labels, `.filter(([k])=>V[k])` still hides
+rows with no data) so the new propose-only labels surface there once forward-perf logs them.
 
 **Next — Track B:**
 - Mature the `momentum-on` / `merits-on` / `news-*` / `earnings-recent-on` OOS ledgers to n≥10; human-ratify
