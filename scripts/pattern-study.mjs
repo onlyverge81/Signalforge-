@@ -146,6 +146,55 @@ export async function fetchPolygonDaily(sym, key){
   return fetchPolygonAggs(sym, "1day", key);
 }
 
+// ─── Sector classification (for the sector-neutral study diagnostic) ──────────
+// SIC code → broad SIC DIVISION label (range-based, the standard US census divisions). Coarse
+// on purpose: ~10 buckets give enough names per sector to demean within, unlike 4-digit groups.
+// Pure; returns null for missing/unclassifiable codes.
+export function sicDivision(sic){
+  const n = parseInt(String(sic ?? "").replace(/\D/g, ""), 10);
+  if(!Number.isFinite(n) || n <= 0) return null;
+  if(n < 1000) return "Agriculture";
+  if(n < 1500) return "Mining";
+  if(n < 1800) return "Construction";
+  if(n < 4000) return "Manufacturing";
+  if(n < 5000) return "Transport/Utilities";
+  if(n < 5200) return "Wholesale";
+  if(n < 6000) return "Retail";
+  if(n < 6800) return "Finance";
+  if(n < 9000) return "Services";
+  if(n < 9730) return "PublicAdmin";
+  return null;                                       // 9900–9999 nonclassifiable → no sector
+}
+
+// Polygon ticker-detail JSON → SIC division label (or null). Pure.
+export function parseTickerSector(j){
+  const sic = j && j.results && (j.results.sic_code ?? j.results.sicCode);
+  return sicDivision(sic);
+}
+
+// Fetch one ticker's SIC division from Polygon's reference DETAIL endpoint. Best-effort:
+// returns null on any error/404 (de-listed names may lack a detail record) so a missing
+// sector never breaks a study — it just drops that name from the sector-neutral diagnostic.
+export async function fetchTickerSector(sym, key){
+  try{
+    const u = `${POLY}/v3/reference/tickers/${encodeURIComponent(sym)}?apiKey=${encodeURIComponent(key)}`;
+    const r = await fetch(u);
+    if(!r.ok) return null;
+    return parseTickerSector(await r.json());
+  }catch{ return null; }
+}
+
+// Build a { sym → sector } map for a list of tickers (sequential; Polygon Starter is unthrottled).
+// Names with no resolvable sector are simply omitted from the map.
+export async function fetchSectorMap(syms, key){
+  const map = {};
+  for(const sym of (syms || [])){
+    const s = await fetchTickerSector(sym, key);
+    if(s) map[sym] = s;
+  }
+  return map;
+}
+
 // ─── Corporate actions: cash dividends (for the total-return benchmark) ───────
 // Polygon aggregates with adjusted=true adjust for SPLITS only, NOT dividends — so a
 // price-only buy-&-hold understates the true total return a holder earns. These helpers

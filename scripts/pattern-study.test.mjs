@@ -3,7 +3,27 @@
 
 import { test } from "node:test";
 import assert from "node:assert/strict";
-import { parsePolygonAggs, aggregate, RESOLUTIONS, parseDividends, dividendsInWindow, studyFileFor, parseNews, newsWindow } from "./pattern-study.mjs";
+import { parsePolygonAggs, aggregate, RESOLUTIONS, parseDividends, dividendsInWindow, studyFileFor, parseNews, newsWindow, sicDivision, parseTickerSector } from "./pattern-study.mjs";
+
+test("sicDivision: maps SIC codes to broad census divisions; junk → null", () => {
+  assert.equal(sicDivision(3571), "Manufacturing");   // electronic computers
+  assert.equal(sicDivision("6021"), "Finance");       // national commercial banks (string ok)
+  assert.equal(sicDivision(4911), "Transport/Utilities"); // electric services
+  assert.equal(sicDivision(5812), "Retail");          // eating places
+  assert.equal(sicDivision(7372), "Services");        // prepackaged software
+  assert.equal(sicDivision(100), "Agriculture");
+  assert.equal(sicDivision(9995), null, "nonclassifiable → null");
+  assert.equal(sicDivision(0), null);
+  assert.equal(sicDivision(null), null);
+  assert.equal(sicDivision("n/a"), null);
+});
+
+test("parseTickerSector: pulls sic_code from Polygon ticker detail → division (or null)", () => {
+  assert.equal(parseTickerSector({ results: { sic_code: "7372" } }), "Services");
+  assert.equal(parseTickerSector({ results: { sicCode: 6021 } }), "Finance");
+  assert.equal(parseTickerSector({ results: {} }), null, "no sic → null");
+  assert.equal(parseTickerSector(null), null);
+});
 
 test("parseNews: maps Polygon news rows, lifts first-insight sentiment, drops dateless items", () => {
   const j = { results: [

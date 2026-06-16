@@ -2297,6 +2297,11 @@ function App() {
               {l:"TOP−BOTTOM SPREAD",v:pctOrDash(H.spread.mean),s:H.spread.verdict,c:vCol(H.spread.verdict)},
               {l:"WALK-FORWARD HIT",v:wf.hitRate==null?"—":(wf.hitRate*100).toFixed(0)+"%",s:(wf.oofVerdict||"—")+" · "+(wf.folds||0)+" folds",c:wf.hitRate>0.5?"#00e676":"#90a4ae"},
               {l:"DEFLATED t",v:df.tDeflated==null?"—":df.tDeflated,s:(df.verdict||"—")+(df.trials>1?" · "+df.trials+" trials":""),c:vCol(df.verdict)},
+              // Sector-neutral IC — alpha vs disguised sector bet. Only shown once the study carries
+              // sector tags (built once the weekly run resolves SIC divisions); else gracefully hidden.
+              ...((sc=>sc&&sc.available?[{l:"SECTOR-NEUTRAL IC",v:(sc.meanIC>=0?"+":"")+sc.meanIC,
+                s:sc.verdict+(sc.retention!=null?" · keeps "+Math.round(sc.retention*100)+"%":""),
+                c:/^SURVIVES/.test(sc.verdict)?"#00e676":/^PARTLY/.test(sc.verdict)?"#ffd740":"#ff5252"}]:[])(H.sectorControl)),
             ].map(x=>(
               <div key={x.l} style={{background:"#060810",padding:12,borderRadius:4}}>
                 <div style={{fontSize:9,color:DIM,letterSpacing:1,marginBottom:4}}>{x.l}</div>

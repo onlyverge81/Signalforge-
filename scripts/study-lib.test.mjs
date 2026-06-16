@@ -3,7 +3,8 @@
 import { test } from "node:test";
 import assert from "node:assert/strict";
 import { rankIC, tertileSpread, assessSignificance, runStudy, placebo, meritEdgeProven,
-  verdictFor, walkForward, betaControl, overlapAdjustedT, deflatedSignificance, periodStats } from "./study-lib.mjs";
+  verdictFor, walkForward, betaControl, overlapAdjustedT, deflatedSignificance, periodStats,
+  sectorNeutralIC } from "./study-lib.mjs";
 
 // Deterministic RNG so the planted/null panels are reproducible.
 function mulberry(a){ return function(){ a|=0; a=a+0x6D2B79F5|0; let t=Math.imul(a^a>>>15,1|a); t=t+Math.imul(t^t>>>7,61|t)^t; return ((t^t>>>14)>>>0)/4294967296; }; }
@@ -128,4 +129,54 @@ test("deflatedSignificance: more trials raises the bar; trials=1 reproduces the 
 test("meritEdgeProven: tightened gate still greenlights a strong planted edge", () => {
   const obs=plantedPanel(1.0, 42);
   assert.equal(meritEdgeProven(runStudy(obs), placebo(obs, 7)), true);
+});
+
+// ─── sector-neutral diagnostic: alpha vs disguised sector bet ──────────────────
+// Deterministic per-period wiggle so the IC series has variance (the t-test needs it) while
+// staying merit-INDEPENDENT, letting us plant either a within-sector signal or a pure sector bet.
+const wig = (p, i) => 0.0008 * Math.sin(p * 7.1 + i * 3.3);
+// Two sectors × 5 names, over `P` periods. `withinSlope` controls within-sector merit→return
+// signal; `sectorGap` makes merit (and the sector base return) differ BETWEEN sectors.
+function sectorPanel({ withinSlope, sectorGap, P = 9 }){
+  const obs = [];
+  for(let p = 0; p < P; p++){
+    const baseA = 0.10 + 0.01 * Math.sin(p), baseB = -0.05 + 0.01 * Math.cos(p); // sector effect varies by period
+    for(let s = 0; s < 2; s++){
+      const base = s === 0 ? baseA : baseB, sector = s === 0 ? "A" : "B";
+      for(let j = 0; j < 5; j++){
+        const gi = s * 5 + j;
+        const merit = sectorGap * s + j;                  // sector A sits `sectorGap` above B; within-sector by j
+        const fwdRet = base + withinSlope * j + wig(p, gi);
+        obs.push({ sym: "S" + gi, period: "2024-" + String(p + 1).padStart(2, "0"), merit, fwdRet, sector });
+      }
+    }
+  }
+  return obs;
+}
+
+test("sectorNeutralIC: a genuine WITHIN-sector signal SURVIVES neutralisation", () => {
+  const sc = sectorNeutralIC(sectorPanel({ withinSlope: 0.05, sectorGap: 0 }));
+  assert.equal(sc.available, true);
+  assert.ok(sc.meanIC > 0.5, "within-sector merit→return should keep a strong neutral IC, got " + sc.meanIC);
+  assert.match(sc.verdict, /SURVIVES/);
+});
+
+test("sectorNeutralIC: a pure SECTOR bet collapses (between-sector signal, none within)", () => {
+  // withinSlope 0 → all merit→return signal is BETWEEN sectors (sectorGap big); after demeaning by
+  // sector the residual carries only the merit-independent wiggle → neutral IC ≈ 0.
+  const obs = sectorPanel({ withinSlope: 0, sectorGap: 100 });
+  const raw = runStudy(obs);
+  const sc = sectorNeutralIC(obs);
+  assert.equal(sc.available, true);
+  assert.ok(Math.abs(raw.meanIC) > 0.5, "raw IC is strong — the disguised sector bet — got " + raw.meanIC);
+  assert.ok(Math.abs(sc.meanIC) < 0.4, "neutral IC collapses toward 0, got " + sc.meanIC);
+  assert.doesNotMatch(sc.verdict, /SURVIVES/);
+});
+
+test("sectorNeutralIC: additive no-op — obs without sector tags report unavailable", () => {
+  const noSector = sectorPanel({ withinSlope: 0.05, sectorGap: 0 }).map(({ sector, ...o }) => o);
+  assert.equal(sectorNeutralIC(noSector).available, false);
+  // runStudy carries the diagnostic, defaulting to unavailable for existing (untagged) studies.
+  assert.equal(runStudy(noSector).sectorControl.available, false);
+  assert.equal(runStudy(sectorPanel({ withinSlope: 0.05, sectorGap: 0 })).sectorControl.available, true);
 });

@@ -24,7 +24,7 @@ import fs from "node:fs";
 import path from "node:path";
 import { fileURLToPath } from "node:url";
 import { readTickers } from "./build-fundamentals.mjs";
-import { fetchPolygonAggs } from "./pattern-study.mjs";
+import { fetchPolygonAggs, fetchSectorMap } from "./pattern-study.mjs";
 import { priceOnOrBefore, selectMeritUniverse, pack, grid, addMonths, iso } from "./build-study.mjs";
 
 const __dirname = path.dirname(fileURLToPath(import.meta.url));
@@ -45,13 +45,14 @@ async function fetchPrices(sym, key){
 //   merit = price(rb−1mo) / price(rb−lookbackM) − 1     (signal uses only prices ≤ rb−1mo)
 //   fwdRet = price(rb+1mo) / price(rb) − 1              (formed/entered at rb, held one month)
 // No-lookahead: the signal cutoff (rb−1mo) precedes entry (rb); forward windows don't overlap.
-export function buildMomentumObservations(loaded, lookbackM){
+export function buildMomentumObservations(loaded, lookbackM, { sectorOf = null } = {}){
   const dates = grid(1);                                  // monthly rebalance
   const obs = [];
   for(const [sym, d] of Object.entries(loaded)){
     const prices = d.prices;
     if(!prices || !prices.length) continue;
     const lastT = prices[prices.length-1].t;
+    const sector = sectorOf ? (sectorOf[sym] || null) : null;
     for(const rb of dates){
       const fwdT = addMonths(rb, 1);
       if(fwdT > lastT) continue;                           // forward window not complete yet
@@ -60,7 +61,7 @@ export function buildMomentumObservations(loaded, lookbackM){
       const entry = priceOnOrBefore(prices, rb);
       const exit  = priceOnOrBefore(prices, fwdT);
       if(!(pSig>0) || !(pBack>0) || !(entry>0) || !(exit>0)) continue;
-      obs.push({ sym, period: iso(rb), merit: pSig/pBack - 1, fwdRet: exit/entry - 1 });
+      obs.push({ sym, period: iso(rb), merit: pSig/pBack - 1, fwdRet: exit/entry - 1, sector });
     }
   }
   return obs;
@@ -116,11 +117,16 @@ async function main(){
     // Polygon Starter is unthrottled (POLYGON_PACE_MS=0) — no sleep, no SEC politeness needed.
   }
 
+  // Sector tags (SIC division) for the sector-neutral diagnostic — best-effort; names without a
+  // resolvable sector simply drop out of that one diagnostic, nothing else is affected.
+  const sectorOf = await fetchSectorMap(Object.keys(loaded), key);
+  console.log("sectors resolved: " + Object.keys(sectorOf).length + "/" + Object.keys(loaded).length);
+
   // trials=2 — two lookback windows (12-1 and 6-1) are tested, so the deflated-t is haircut for
   // the configuration search even in-sample (an honest overfit control, not just a comment).
   const TRIALS = 2;
-  const mom12 = pack(buildMomentumObservations(loaded, 12), { trials: TRIALS });
-  const mom6  = pack(buildMomentumObservations(loaded, 6),  { trials: TRIALS });
+  const mom12 = pack(buildMomentumObservations(loaded, 12, { sectorOf }), { trials: TRIALS });
+  const mom6  = pack(buildMomentumObservations(loaded, 6,  { sectorOf }), { trials: TRIALS });
 
   const out = {
     generatedAt: new Date().toISOString(),
