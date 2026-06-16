@@ -29,6 +29,7 @@ import path from "node:path";
 import { fileURLToPath } from "node:url";
 import { distill as realDistill } from "./build-fundamentals.mjs";
 import { loadTicker, resolveMeritUniverse, priceOnOrBefore, meritAsOfISO, pack, grid, addMonths, iso } from "./build-study.mjs";
+import { fetchSectorMap } from "./pattern-study.mjs";
 
 const __dirname = path.dirname(fileURLToPath(import.meta.url));
 const ROOT = path.resolve(__dirname, "..");
@@ -37,13 +38,14 @@ const ROOT = path.resolve(__dirname, "..");
 //   merit  = rec[metric] at rb−75d (ROE or NPM, point-in-time)   (more profitable ⇒ higher)
 //   fwdRet = price(rb+1mo) / price(rb) − 1                        (held one month)
 // `distill` is injectable so the no-lookahead/sign contract can be unit-tested without raw XBRL.
-export function buildQualityObservations(loaded, metric, { distill = realDistill } = {}){
+export function buildQualityObservations(loaded, metric, { distill = realDistill, sectorOf = null } = {}){
   const dates = grid(1);                                  // monthly rebalance
   const obs = [];
   for(const [sym, d] of Object.entries(loaded)){
     const prices = d.prices;
     if(!prices || !prices.length) continue;
     const lastT = prices[prices.length-1].t;
+    const sector = sectorOf ? (sectorOf[sym] || null) : null;
     for(const rb of dates){
       const fwdT = addMonths(rb, 1);
       if(fwdT > lastT) continue;                           // forward window not complete yet
@@ -53,7 +55,7 @@ export function buildQualityObservations(loaded, metric, { distill = realDistill
       const rec = distill(d.j, meritAsOfISO(rb)).rec;      // fundamentals public ≥75d before rebalance
       const v = rec ? rec[metric] : null;
       if(v == null || !isFinite(v)) continue;
-      obs.push({ sym, period: iso(rb), merit: Number(v), fwdRet: exit/entry - 1 });
+      obs.push({ sym, period: iso(rb), merit: Number(v), fwdRet: exit/entry - 1, sector });
     }
   }
   return obs;
@@ -86,11 +88,15 @@ async function main(){
     await new Promise(r=>setTimeout(r,300)); // be polite to SEC EDGAR (Polygon is unthrottled)
   }
 
+  // Sector tags (SIC division) for the sector-neutral diagnostic — best-effort.
+  const sectorOf = await fetchSectorMap(Object.keys(loaded), key);
+  console.log("sectors resolved: " + Object.keys(sectorOf).length + "/" + Object.keys(loaded).length);
+
   // trials=2 — two profitability windows (ROE and net margin) are tested, so the deflated-t is
   // haircut for the configuration search even in-sample (an honest overfit control).
   const TRIALS = 2;
-  const roe = pack(buildQualityObservations(loaded, "roe"), { trials: TRIALS });
-  const npm = pack(buildQualityObservations(loaded, "npm"), { trials: TRIALS });
+  const roe = pack(buildQualityObservations(loaded, "roe", { sectorOf }), { trials: TRIALS });
+  const npm = pack(buildQualityObservations(loaded, "npm", { sectorOf }), { trials: TRIALS });
 
   const out = {
     generatedAt: new Date().toISOString(),

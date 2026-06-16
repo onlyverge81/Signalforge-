@@ -110,6 +110,7 @@ export function runStudy(observations, {oosFrac=0.3, overlap=0, trials=1}={}){
     betaControl: betaControl(periods),              // is the long-short spread disguised beta-timing?
     overlapAdjusted: overlapAdjustedT(ics, overlap),// honest t when windows overlap (HAC)
     deflated: deflatedSignificance(ics, { trials }),// overfit haircut for # of configs tried
+    sectorControl: sectorNeutralIC(observations),   // alpha, or a disguised sector bet? (sector-tagged obs only)
   };
 }
 
@@ -216,4 +217,41 @@ export function deflatedSignificance(series, {trials=1}={}){
   const threshold=trials>1?Math.sqrt(2*Math.log(trials)):0;
   const tDeflated=round(Math.sign(base.t)*Math.max(0, Math.abs(base.t)-threshold));
   return { trials, t:base.t, threshold:round(threshold), tDeflated, n:base.n, verdict:verdictFor(tDeflated, base.n) };
+}
+
+// ─── Sector-neutral diagnostic: alpha, not a disguised sector bet ──────────────
+// A cross-sectional factor can be a SECTOR tilt in disguise — low-vol≈utilities/staples,
+// momentum≈whatever sector ran, quality≈software. The headline rank-IC then rewards being in
+// the right sector, not picking the right NAME (beta, not alpha). This re-measures the IC after
+// removing each period's WITHIN-SECTOR mean forward return: residual_i = fwdRet_i − mean(fwdRet
+// over names in the same sector that period). rankIC(merit, residual) then asks "does merit rank
+// names correctly INSIDE their sector?" If the neutral IC retains most of the raw IC the edge is
+// genuine stock-selection; if it collapses, the factor was mostly a sector bet.
+//
+// Pure and ADDITIVE: runs only when observations carry a `sector` tag and ≥2 sectors populate a
+// period; otherwise returns {available:false} so factors without sector data are unaffected.
+export function sectorNeutralIC(observations){
+  const neutral=[], raw=[];
+  for(const [,rows] of byPeriod(observations)){
+    const clean=rows.filter(r=>r.merit!=null&&isFinite(r.merit)&&r.fwdRet!=null&&isFinite(r.fwdRet)&&r.sector!=null&&r.sector!=="");
+    if(clean.length<3) continue;
+    const sectors=new Set(clean.map(r=>r.sector));
+    if(sectors.size<2) continue;                    // need ≥2 sectors to neutralise anything
+    const sum=new Map(), cnt=new Map();
+    for(const r of clean){ sum.set(r.sector,(sum.get(r.sector)||0)+r.fwdRet); cnt.set(r.sector,(cnt.get(r.sector)||0)+1); }
+    const resid=clean.map(r=>({ merit:r.merit, fwdRet:r.fwdRet - sum.get(r.sector)/cnt.get(r.sector) }));
+    const icN=rankIC(resid), icR=rankIC(clean);
+    if(icN!=null&&icR!=null){ neutral.push(icN); raw.push(icR); }
+  }
+  if(neutral.length<6) return { available:false, periods:neutral.length };
+  const nStat=assessSignificance(neutral);
+  const rawMean=raw.reduce((a,b)=>a+b,0)/raw.length;
+  // Retention = how much of the raw IC survives sector-neutralisation (signed; clamped for display).
+  const retention=Math.abs(rawMean)>1e-9 ? round(nStat.mean/rawMean) : null;
+  const ok=v=>v==="SIGNIFICANT"||v==="SUGGESTIVE";
+  const verdict = !ok(nStat.verdict) ? "SECTOR-DRIVEN (mostly beta)"
+    : (retention!=null&&retention>=0.5) ? "SURVIVES (stock-selection)"
+    : "PARTLY SECTOR-DRIVEN";
+  return { available:true, periods:neutral.length, meanIC:nStat.mean, icT:nStat.t,
+    significance:nStat.verdict, rawMeanIC:round(rawMean), retention, verdict };
 }

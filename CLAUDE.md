@@ -262,6 +262,21 @@ weekly CI builds the three JSONs. Also added `reversal-on`/`lowvol-on`/`quality-
 `merits-on`) to the OOS variant SCOREBOARD's row list (hardcoded labels, `.filter(([k])=>V[k])` still hides
 rows with no data) so the new propose-only labels surface there once forward-perf logs them.
 
+**Sector-neutral honesty hardening (DONE) — "alpha, not a disguised sector bet":** a cross-sectional factor
+can be a SECTOR tilt in disguise (low-vol≈utilities, momentum≈whatever ran, quality≈software). Added pure
+`sectorNeutralIC(obs)` to `study-lib.mjs`: per period it removes each name's WITHIN-SECTOR mean forward
+return (residual = fwdRet − sectorMeanFwdRet) and recomputes rank-IC(merit, residual); if the neutral IC
+keeps most of the raw IC the edge is genuine stock-selection (verdict SURVIVES), if it collapses it was
+mostly beta (SECTOR-DRIVEN). ADDITIVE: wired into `runStudy` as `sectorControl` and surfaced by `pack()`,
+defaulting to `{available:false}` when obs lack a `sector` tag (existing studies unchanged). Sector source:
+SIC division via Polygon ticker-DETAIL — pure `sicDivision`/`parseTickerSector` + best-effort `fetchSectorMap`
+in `pattern-study.mjs` (names with no SIC just drop from the diagnostic). All five studies (momentum/reversal/
+lowvol/quality/merit) now tag obs with `sector` (`buildXObservations` gained an optional `{sectorOf}`; each
+`main()` builds the map). EVIDENCE harness shows a "SECTOR-NEUTRAL IC" tile (green SURVIVES / yellow PARTLY /
+red SECTOR-DRIVEN) when available. Tests +5 (214 green): the diagnostic SURVIVES a within-sector signal,
+COLLAPSES a pure sector bet, and is a no-op without sector tags; SIC mapping unit-tested. NOT wired into any
+gate (`meritEdgeProven` untouched) — diagnostic only, for now. Populates once the weekly CI resolves SICs.
+
 **Next — Track B:**
 - Mature the `momentum-on` / `merits-on` / `news-*` / `earnings-recent-on` OOS ledgers to n≥10; human-ratify
   only if they clear FDR. PASSIVE — the nightly `forward-log → forward-perf → promote` already partitions every

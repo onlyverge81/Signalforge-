@@ -21,7 +21,7 @@ import { fileURLToPath } from "node:url";
 import { readTickers, distill } from "./build-fundamentals.mjs";
 import { secCik, secFetch, meritMetrics, meritScore } from "./sec-lib.mjs";
 import { runStudy, placebo, meritEdgeProven } from "./study-lib.mjs";
-import { fetchPolygonAggs } from "./pattern-study.mjs";
+import { fetchPolygonAggs, fetchSectorMap } from "./pattern-study.mjs";
 
 const __dirname = path.dirname(fileURLToPath(import.meta.url));
 const ROOT = path.resolve(__dirname, "..");
@@ -75,11 +75,12 @@ export async function loadTicker(sym, key, cik=null){
 }
 
 // Observations for one horizon across all loaded tickers, aligned on the grid.
-function buildObservations(loaded, horizonM){
+function buildObservations(loaded, horizonM, { sectorOf = null } = {}){
   const dates=grid(horizonM);
   const obs=[];
   for(const [sym,d] of Object.entries(loaded)){
     const lastT=d.prices[d.prices.length-1].t;
+    const sector = sectorOf ? (sectorOf[sym] || null) : null;
     for(const rb of dates){
       const fwdT=addMonths(rb,horizonM);
       if(fwdT>lastT) continue;                          // forward window not complete yet
@@ -89,7 +90,7 @@ function buildObservations(loaded, horizonM){
       const rec=distill(d.j, meritAsOfISO(rb)).rec;     // fundamentals public ≥75d before rebalance
       const merit=meritScore(meritMetrics(rec, entry));
       if(merit==null) continue;
-      obs.push({ sym, period:iso(rb), merit, fwdRet:exit/entry-1 });
+      obs.push({ sym, period:iso(rb), merit, fwdRet:exit/entry-1, sector });
     }
   }
   return obs;
@@ -118,6 +119,7 @@ export function pack(obs, { trials = 1 } = {}){
       oofMeanIC: study.walkForward.oof.mean, oofVerdict: study.walkForward.oof.verdict },
     betaControl: { spreadMktCorr: study.betaControl.spreadMktCorr, meanSpread: study.betaControl.meanSpread },
     deflated: { trials: study.deflated.trials, tDeflated: study.deflated.tDeflated, verdict: study.deflated.verdict },
+    sectorControl: study.sectorControl,             // alpha-vs-sector-bet diagnostic (available only on sector-tagged studies)
     proven: meritEdgeProven(study, plac),
     perPeriod: study.periods.map(p=>({ period:p.period, n:p.n, ic:round(p.ic), spread:round(p.spread) })),
   };
@@ -202,8 +204,12 @@ async function main(){
     await sleep(300); // be polite to SEC EDGAR (Polygon is unthrottled on Starter)
   }
 
-  const h12=buildObservations(loaded,12);
-  const h6 =buildObservations(loaded,6);
+  // Sector tags (SIC division) for the sector-neutral diagnostic — best-effort.
+  const sectorOf = await fetchSectorMap(Object.keys(loaded), key);
+  console.log("sectors resolved: " + Object.keys(sectorOf).length + "/" + Object.keys(loaded).length);
+
+  const h12=buildObservations(loaded,12,{ sectorOf });
+  const h6 =buildObservations(loaded,6,{ sectorOf });
   const primary=pack(h12);
 
   const out={

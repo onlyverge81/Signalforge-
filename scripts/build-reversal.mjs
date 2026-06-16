@@ -26,7 +26,7 @@ import fs from "node:fs";
 import path from "node:path";
 import { fileURLToPath } from "node:url";
 import { readTickers } from "./build-fundamentals.mjs";
-import { fetchPolygonAggs } from "./pattern-study.mjs";
+import { fetchPolygonAggs, fetchSectorMap } from "./pattern-study.mjs";
 import { priceOnOrBefore, selectMeritUniverse, pack, grid, addMonths, iso } from "./build-study.mjs";
 
 const __dirname = path.dirname(fileURLToPath(import.meta.url));
@@ -46,13 +46,14 @@ async function fetchPrices(sym, key){
 //   merit  = −(price(rb) / price(rb−1mo) − 1)   (negated trailing 1-month return; loser ⇒ high)
 //   fwdRet = price(rb+1mo) / price(rb) − 1       (formed/entered at rb, held one month)
 // No-lookahead: the signal window ends at entry (rb); forward windows don't overlap.
-export function buildReversalObservations(loaded, lookbackM = 1){
+export function buildReversalObservations(loaded, lookbackM = 1, { sectorOf = null } = {}){
   const dates = grid(1);                                  // monthly rebalance
   const obs = [];
   for(const [sym, d] of Object.entries(loaded)){
     const prices = d.prices;
     if(!prices || !prices.length) continue;
     const lastT = prices[prices.length-1].t;
+    const sector = sectorOf ? (sectorOf[sym] || null) : null;
     for(const rb of dates){
       const fwdT = addMonths(rb, 1);
       if(fwdT > lastT) continue;                           // forward window not complete yet
@@ -60,7 +61,7 @@ export function buildReversalObservations(loaded, lookbackM = 1){
       const entry = priceOnOrBefore(prices, rb);                        // signal cutoff == entry
       const exit  = priceOnOrBefore(prices, fwdT);
       if(!(pBack>0) || !(entry>0) || !(exit>0)) continue;
-      obs.push({ sym, period: iso(rb), merit: -(entry/pBack - 1), fwdRet: exit/entry - 1 });
+      obs.push({ sym, period: iso(rb), merit: -(entry/pBack - 1), fwdRet: exit/entry - 1, sector });
     }
   }
   return obs;
@@ -118,7 +119,10 @@ async function main(){
   }
 
   // A single factor configuration (1-month reversal) is tested → trials=1 (no config-search haircut).
-  const rev1 = pack(buildReversalObservations(loaded, 1), { trials: 1 });
+  // Sector tags (SIC division) for the sector-neutral diagnostic — best-effort.
+  const sectorOf = await fetchSectorMap(Object.keys(loaded), key);
+  console.log("sectors resolved: " + Object.keys(sectorOf).length + "/" + Object.keys(loaded).length);
+  const rev1 = pack(buildReversalObservations(loaded, 1, { sectorOf }), { trials: 1 });
 
   const out = {
     generatedAt: new Date().toISOString(),

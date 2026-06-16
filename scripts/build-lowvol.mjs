@@ -25,7 +25,7 @@ import fs from "node:fs";
 import path from "node:path";
 import { fileURLToPath } from "node:url";
 import { readTickers } from "./build-fundamentals.mjs";
-import { fetchPolygonAggs } from "./pattern-study.mjs";
+import { fetchPolygonAggs, fetchSectorMap } from "./pattern-study.mjs";
 import { priceOnOrBefore, selectMeritUniverse, pack, grid, addMonths, iso } from "./build-study.mjs";
 
 const __dirname = path.dirname(fileURLToPath(import.meta.url));
@@ -56,13 +56,14 @@ export function stdev(xs){
 //   fwdRet = price(rb+1mo) / price(rb) − 1                                                (held one month)
 // No-lookahead: every return in the trailing window ends at or before rb (the entry bar); the
 // forward window rb→rb+1mo doesn't overlap the signal window.
-export function buildLowVolObservations(loaded, lookbackM){
+export function buildLowVolObservations(loaded, lookbackM, { sectorOf = null } = {}){
   const dates = grid(1);                                  // monthly rebalance
   const obs = [];
   for(const [sym, d] of Object.entries(loaded)){
     const prices = d.prices;
     if(!prices || !prices.length) continue;
     const lastT = prices[prices.length-1].t;
+    const sector = sectorOf ? (sectorOf[sym] || null) : null;
     for(const rb of dates){
       const fwdT = addMonths(rb, 1);
       if(fwdT > lastT) continue;                           // forward window not complete yet
@@ -78,7 +79,7 @@ export function buildLowVolObservations(loaded, lookbackM){
       const entry = priceOnOrBefore(prices, rb);
       const exit  = priceOnOrBefore(prices, fwdT);
       if(!(entry>0) || !(exit>0)) continue;
-      obs.push({ sym, period: iso(rb), merit: -stdev(rets), fwdRet: exit/entry - 1 });
+      obs.push({ sym, period: iso(rb), merit: -stdev(rets), fwdRet: exit/entry - 1, sector });
     }
   }
   return obs;
@@ -133,11 +134,15 @@ async function main(){
     }catch(e){ errors.push(sym+": "+(e.message||e)); console.warn("✗ "+sym.padEnd(6)+" — "+(e.message||e)); }
   }
 
+  // Sector tags (SIC division) for the sector-neutral diagnostic — best-effort.
+  const sectorOf = await fetchSectorMap(Object.keys(loaded), key);
+  console.log("sectors resolved: " + Object.keys(sectorOf).length + "/" + Object.keys(loaded).length);
+
   // trials=2 — two trailing-vol windows (12-mo and 6-mo) are tested, so the deflated-t is haircut
   // for the configuration search even in-sample (an honest overfit control).
   const TRIALS = 2;
-  const lv12 = pack(buildLowVolObservations(loaded, 12), { trials: TRIALS });
-  const lv6  = pack(buildLowVolObservations(loaded, 6),  { trials: TRIALS });
+  const lv12 = pack(buildLowVolObservations(loaded, 12, { sectorOf }), { trials: TRIALS });
+  const lv6  = pack(buildLowVolObservations(loaded, 6,  { sectorOf }), { trials: TRIALS });
 
   const out = {
     generatedAt: new Date().toISOString(),
