@@ -82,6 +82,9 @@ code enforces "no fallback by design"). Exhaust Polygon before reaching elsewher
 - **`index.html` ↔ `scripts/engine.mjs` parity.** The app and the study engine must compute
   identical signals/backtests. Mirror every engine change into both; keep them byte-for-byte.
 - `POLYGON_API_KEY` is the only secret; scripts no-op gracefully without it in CI.
+- **Review before merge — never auto-merge to `main`.** Push the branch, open/update the PR,
+  and STOP. The user reviews and merges (or explicitly says "merge it") themselves. Keep PRs
+  single-feature so review stays tractable.
 
 ## Commands
 
@@ -198,6 +201,53 @@ surfaces it as `lastFiled` on every `fundamentals.json` record. `earningsGate(re
 hard numbers (complements the news-sentiment label). `forward-perf.mjs` adds `earnings-recent-on/off` under the
 FDR gate. Propose-only: never touches `gate.actionable` (tested). No-lookahead: filing dates are historical and
 forward-log only logs the current bar. Tests +5 (174 green). `lastFiled` populates on the next fundamentals CI run.
+
+**Cross-sectional SHORT-TERM REVERSAL factor (DONE) — Phase 1 of the factor-expansion roadmap:** the
+orthogonal complement to momentum (which SKIPS the most recent month precisely to dodge reversal).
+`scripts/build-reversal.mjs` (`buildReversalObservations`: `merit = −(price(rb)/price(rb−1mo)−1)` so a
+recent LOSER scores HIGH; 1-month non-overlapping forward; point-in-time) writes `reversal.json`,
+**reusing study-lib.mjs verbatim** (factor-agnostic). Single window (1mo, trials=1). Charter-clean:
+Polygon monthly bars, survivorship-free roster via `selectMeritUniverse`. **Propose-only OOS wiring:**
+`reversalValue` (daily negated 1-month return) + pure `reversalRankGate` (top-tertile = biggest recent
+losers) in `forward-log.mjs` set `tags.reversalActivated` in `main()` AFTER ranking the run's batch,
+NEVER touching `gate.actionable`. `forward-perf.mjs` adds `reversal-on`/`reversal-off` under the existing
+FDR gate. CI: `reversal-study.yml` (weekly Sun 09:23, clear of the sibling slots). Tests +12 (190 green).
+In-sample is NEVER trusted — only the OOS `reversal-on` ledger cleared through FDR counts.
+
+**Cross-sectional LOW-VOLATILITY factor (DONE) — Phase 2:** risk-based factor, orthogonal to the
+price-trend overlays. `scripts/build-lowvol.mjs` (`buildLowVolObservations`: `merit = −stdev(trailing
+monthly returns)` so a CALM name scores HIGH; `stdev` pure-helper exported & tested; 12-mo + 6-mo windows,
+trials=2; 1-month non-overlapping forward; point-in-time) writes `lowvol.json`, reusing study-lib.mjs
+verbatim. Charter-clean: Polygon monthly bars, survivorship-free roster. **Propose-only OOS wiring:**
+`lowVolValue` (daily negated realized vol over ~252d) + pure `lowVolRankGate` (top-tertile = calmest) in
+`forward-log.mjs` set `tags.lowVolActivated` after ranking the batch, NEVER touching `gate.actionable`.
+`forward-perf.mjs` adds `lowvol-on`/`lowvol-off` under the FDR gate. CI: `lowvol-study.yml` (weekly Sun
+10:23). Tests +10 (200 green). Only the OOS `lowvol-on` ledger cleared through FDR counts.
+
+**Cross-sectional QUALITY (profitability) factor (DONE) — Phase 3, first NON-PRICE expansion factor:**
+distinct from the merit COMPOSITE (valuation+health+growth) — quality reads pure profitability. Exported
+`loadTicker` + `resolveMeritUniverse` from `build-study.mjs` (additive) so `scripts/build-quality.mjs`
+reuses the merit SEC+price loading + point-in-time `distill` (75-day lag). `buildQualityObservations(loaded,
+metric, {distill})` sets `merit = rec[metric]` (ROE primary, NPM secondary → trials=2; `distill` injected so
+the no-lookahead/sign contract is unit-tested without raw XBRL). Charter-clean: SEC XBRL + Polygon monthly,
+survivorship-free roster. **Propose-only OOS wiring:** `qualityValue(rec)` (reads ROE off `fundaDB`) + pure
+`qualityRankGate` (top-tertile = most profitable) in `forward-log.mjs` set `tags.qualityActivated` after
+ranking the batch, NEVER touching `gate.actionable`. `forward-perf.mjs` adds `quality-on`/`quality-off`.
+Quality shares inputs with the merit grade → correlated variants; lean on the FDR family's BY (dependence-
+robust) cross-check. CI: `quality-study.yml` (weekly Sun 11:23). Tests +9 (209 green).
+
+**Live forming-bar chart (DONE) — Phase 4 (cosmetic, app-only):** `goLive`'s `onBar` folds the streamed
+price into the LAST visible candle (`forming:true`, expanding high/low, close=latest) via `setRows` —
+NEVER re-running `analyze()`, so the verdict stays frozen (no real-time signal faked on the delayed feed).
+`Chart` draws the forming bar hollow + cyan with a "● LIVE" tag. `stopLive` clears the flag; `fetchLive`
+calls `stopLive` first so a stale symbol's bar can't bleed into a new series. Honest-cosmetic now; on a
+Polygon tier upgrade the cluster flips to `realtime` (one-word `mode` change) and this SAME bar becomes a
+genuine real-time forming candle — "its future status, revealed automatically" (user's framing). Engine
+parity untouched (the change is in Chart + the live socket, not analyze/runBacktest/scoreAt). 209 tests green.
+
+**Factor-expansion roadmap (user-approved, by priority):** Phase 1 reversal DONE ↑; Phase 2 low-volatility
+DONE ↑; Phase 3 quality (profitability) DONE ↑; Phase 4 live forming-bar chart DONE ↑. ALL FOUR COMPLETE.
+Each factor is propose-only / FDR-gated / never auto-activated — candidates, not proven edges.
 
 **Next — Track B:**
 - Mature the `momentum-on` / `merits-on` / `news-*` / `earnings-recent-on` OOS ledgers to n≥10; human-ratify

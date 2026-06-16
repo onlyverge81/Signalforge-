@@ -1,0 +1,84 @@
+name: Build quality study
+
+# Cross-sectional QUALITY (profitability) evidence harness. Ranks the survivorship-free universe by
+# point-in-time SEC profitability (ROE / net margin, 75-day filing lag) against Polygon adjusted
+# MONTHLY forward returns (the only price vendor, no fallback), reusing the merit study's statistics
+# (study-lib.mjs) AND its SEC+price loading (loadTicker / resolveMeritUniverse) verbatim, and writes
+# quality.json. A non-price fundamental factor. Self-contained like the sibling study workflows.
+#
+# Requires the repo secret POLYGON_API_KEY (the REST key); fundamentals come from SEC EDGAR (no key).
+# Prefers roster.json (the survivorship-free universe from universe-build.yml); falls back to tickers.txt.
+#
+# Weekly cron + manual dispatch only — deliberately NOT on push. The data-builder workflows share the
+# 'pages' concurrency group, so a merge that triggers several at once cancels all but the latest
+# pending run. Its slot (Sun 11:23) is clear of fundamentals' 06:17, pattern's 07:23, momentum's
+# 08:23, reversal's 09:23 and lowvol's 10:23.
+
+on:
+  schedule:
+    - cron: "23 11 * * 0"   # weekly, Sunday 11:23 UTC (clear of the sibling slots)
+  workflow_dispatch:
+
+permissions:
+  contents: write   # to commit quality.json
+  pages: write
+  id-token: write
+
+# Share the 'pages' group with the other deploy workflows so they never clash.
+concurrency:
+  group: pages
+  cancel-in-progress: false
+
+jobs:
+  build-and-deploy:
+    runs-on: ubuntu-latest
+    environment:
+      name: github-pages
+      url: ${{ steps.deploy.outputs.page_url }}
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Set up Node
+        uses: actions/setup-node@v4
+        with:
+          node-version: 20
+
+      - name: Run offline unit tests
+        run: node --test scripts/*.test.mjs
+
+      - name: Build quality.json (SEC profitability × Polygon monthly, cross-sectional)
+        env:
+          POLYGON_API_KEY: ${{ secrets.POLYGON_API_KEY }}
+        run: node scripts/build-quality.mjs || echo "quality build skipped (non-fatal)"
+
+      - name: Commit quality.json if it changed
+        run: |
+          git config user.name "github-actions[bot]"
+          git config user.email "github-actions[bot]@users.noreply.github.com"
+          # Stage first, THEN check the staged diff — `git diff --quiet` alone ignores
+          # untracked files, so a never-before-committed file would never persist.
+          [ -f quality.json ] && git add quality.json || true
+          if git diff --cached --quiet; then
+            echo "quality.json unchanged — nothing to commit."
+          else
+            git commit -m "chore: refresh quality.json"
+            # Land on main, rebasing onto any concurrent bot push (the sibling
+            # data workflows can push between our checkout and this step).
+            for i in 1 2 3; do
+              git pull --rebase origin main && git push && break
+              echo "push race (attempt $i) — retrying"; sleep 3
+            done
+          fi
+
+      - name: Configure Pages
+        uses: actions/configure-pages@v5
+
+      - name: Upload artifact (repo root, incl. fresh quality.json)
+        uses: actions/upload-pages-artifact@v3
+        with:
+          path: '.'
+
+      - name: Deploy to GitHub Pages
+        id: deploy
+        uses: actions/deploy-pages@v4

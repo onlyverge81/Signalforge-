@@ -141,6 +141,94 @@ export function momentumRankGate(values, { topFrac = 1 / 3 } = {}) {
   return flags;
 }
 
+// ─── Cross-sectional SHORT-TERM REVERSAL overlay (propose-only) ───────────────
+// The reversal.json study judges this factor with monthly bars; here, on the live DAILY feed,
+// reversalValue computes the same 1-month idea: the NEGATED trailing ~1-month return, so a
+// recent LOSER scores HIGH. It's the orthogonal complement to momentum (which deliberately
+// SKIPS the most recent month). reversalRankGate flags the TOP TERTILE by reversal score — the
+// biggest recent losers, the names a reversal bet would favour. Like momentum, reversalActivated
+// is a LABEL: it never enters forwardGates / actionable, so it never changes which trades open.
+const REV_LOOKBACK = 21;                        // ≈ 1 month in trading days
+export function reversalValue(candles, { lookback = REV_LOOKBACK } = {}) {
+  const c = candles || [];
+  if (c.length <= lookback) return null;        // not enough history for a 1-month window
+  const last = c.length - 1;
+  const cNow = c[last] && c[last].close;
+  const cBack = c[last - lookback] && c[last - lookback].close;
+  if (!(cNow > 0) || !(cBack > 0)) return null;
+  return -(cNow / cBack - 1);                   // negated 1-month return: loser ⇒ high score
+}
+// Pure: flag the top `topFrac` by reversal score (biggest recent losers). Same conservative
+// rule as momentumRankGate — fewer than 3 rankable names ⇒ no activation. Distinct function so
+// the two overlays can diverge later without entangling.
+export function reversalRankGate(values, { topFrac = 1 / 3 } = {}) {
+  const flags = (values || []).map(() => false);
+  const idx = (values || []).map((v, i) => [v, i]).filter(([v]) => v != null && isFinite(v));
+  if (idx.length < 3) return flags;
+  idx.sort((a, b) => b[0] - a[0]);             // highest reversal score (biggest loser) first
+  const k = Math.max(1, Math.floor(idx.length * topFrac));
+  for (let i = 0; i < k; i++) flags[idx[i][1]] = true;
+  return flags;
+}
+
+// ─── Cross-sectional LOW-VOLATILITY overlay (propose-only) ────────────────────
+// The lowvol.json study judges this factor with monthly bars; here, on the live DAILY feed,
+// lowVolValue computes the same idea from DAILY returns: the NEGATED realized volatility over a
+// trailing ~12-month window, so a CALM name scores HIGH. It's a risk-based factor, orthogonal to
+// the price-trend overlays (momentum / reversal). lowVolRankGate flags the TOP TERTILE by low-vol
+// score — the calmest names a low-vol bet would favour. Like the others, lowVolActivated is a
+// LABEL: it never enters forwardGates / actionable, so it never changes which trades open.
+const LV_LOOKBACK = 252;                        // ≈ 12 months of daily returns
+export function lowVolValue(candles, { lookback = LV_LOOKBACK } = {}) {
+  const c = candles || [];
+  if (c.length <= lookback) return null;        // not enough history for a 12-month vol window
+  const rets = [];
+  for (let i = c.length - lookback; i < c.length; i++) {
+    const a = c[i - 1] && c[i - 1].close, b = c[i] && c[i].close;
+    if (!(a > 0) || !(b > 0)) return null;
+    rets.push(b / a - 1);
+  }
+  if (rets.length < 2) return null;
+  const mean = rets.reduce((s, v) => s + v, 0) / rets.length;
+  const varc = rets.reduce((s, v) => s + (v - mean) * (v - mean), 0) / rets.length;
+  return -Math.sqrt(varc);                      // negated realized vol: calm ⇒ high score
+}
+// Pure: flag the top `topFrac` by low-vol score (calmest names). Same conservative rule as the
+// other rank gates — fewer than 3 rankable names ⇒ no activation.
+export function lowVolRankGate(values, { topFrac = 1 / 3 } = {}) {
+  const flags = (values || []).map(() => false);
+  const idx = (values || []).map((v, i) => [v, i]).filter(([v]) => v != null && isFinite(v));
+  if (idx.length < 3) return flags;
+  idx.sort((a, b) => b[0] - a[0]);             // highest low-vol score (calmest) first
+  const k = Math.max(1, Math.floor(idx.length * topFrac));
+  for (let i = 0; i < k; i++) flags[idx[i][1]] = true;
+  return flags;
+}
+
+// ─── Cross-sectional QUALITY (profitability) overlay (propose-only) ───────────
+// The quality.json study judges this NON-PRICE factor with point-in-time SEC profitability; here,
+// qualityValue reads the same idea straight off the distilled fundamentals record already on
+// fundaDB (the ROE the merit grade also uses), so a MORE-PROFITABLE name scores HIGH. It's a
+// fundamental factor, distinct from the merit COMPOSITE (which blends valuation + growth too).
+// qualityRankGate flags the TOP TERTILE by profitability. Like the others, qualityActivated is a
+// LABEL: it never enters forwardGates / actionable, so it never changes which trades open.
+export function qualityValue(rec) {
+  if (!rec) return null;
+  const v = rec.roe;                            // return on equity — the canonical profitability proxy
+  return (v == null || !isFinite(v)) ? null : Number(v);
+}
+// Pure: flag the top `topFrac` by profitability. Same conservative rule as the other rank gates —
+// fewer than 3 rankable names ⇒ no activation.
+export function qualityRankGate(values, { topFrac = 1 / 3 } = {}) {
+  const flags = (values || []).map(() => false);
+  const idx = (values || []).map((v, i) => [v, i]).filter(([v]) => v != null && isFinite(v));
+  if (idx.length < 3) return flags;
+  idx.sort((a, b) => b[0] - a[0]);             // highest profitability first
+  const k = Math.max(1, Math.floor(idx.length * topFrac));
+  for (let i = 0; i < k; i++) flags[idx[i][1]] = true;
+  return flags;
+}
+
 // ─── Event overlay (propose-only) — two news hypotheses as A/B LABELS ─────────
 // Reads ONLY the already-captured point-in-time `events` summary (newsWindow up to the
 // decision bar) — it NEVER re-fetches, so it stays no-lookahead. Like meritGate, these are
@@ -241,7 +329,13 @@ export function buildEntry({ sym, settled, fundaDB, news = [], loggedAt = new Da
     // labels (newsPositive / newsQuiet) ride the captured events — propose-only, never a gate.
     tags: { ...gate.tags, fundamentalGrade: grade, meritsActivated: meritGate(grade),
       momentum: (m => m == null ? null : parseFloat(m.toFixed(4)))(momentumValue(settled)),
-      momentumActivated: false, ...eventTags(eventsAtSignal),
+      momentumActivated: false,
+      reversal: (r => r == null ? null : parseFloat(r.toFixed(4)))(reversalValue(settled)),
+      reversalActivated: false,
+      lowVol: (v => v == null ? null : parseFloat(v.toFixed(6)))(lowVolValue(settled)),
+      lowVolActivated: false,
+      quality: (q => q == null ? null : parseFloat(q.toFixed(4)))(qualityValue(fundaDB && fundaDB[sym])),
+      qualityActivated: false, ...eventTags(eventsAtSignal),
       earningsRecent: earningsGate(fundaDB && fundaDB[sym], decision.date) },
     status: isObs ? "OBSERVATION" : "OPEN",
     exit: null, exitAt: null, exitDate: null, barsHeld: null,
@@ -471,6 +565,18 @@ async function main() {
   const tacticalNew = previews.filter(e => e.tags && e.tags.mode !== "position");
   const momFlags = momentumRankGate(tacticalNew.map(e => e.tags.momentum));
   tacticalNew.forEach((e, i) => { e.tags.momentumActivated = momFlags[i]; });
+  // Cross-sectional reversal overlay: same top-tertile ranking on the reversal score (biggest
+  // recent losers). Independent label; touches only e.tags.reversalActivated, never the gate.
+  const revFlags = reversalRankGate(tacticalNew.map(e => e.tags.reversal));
+  tacticalNew.forEach((e, i) => { e.tags.reversalActivated = revFlags[i]; });
+  // Cross-sectional low-vol overlay: top-tertile ranking on the low-vol score (calmest names).
+  // Independent label; touches only e.tags.lowVolActivated, never the gate.
+  const lvFlags = lowVolRankGate(tacticalNew.map(e => e.tags.lowVol));
+  tacticalNew.forEach((e, i) => { e.tags.lowVolActivated = lvFlags[i]; });
+  // Cross-sectional quality overlay: top-tertile ranking on profitability (highest ROE).
+  // Independent label; touches only e.tags.qualityActivated, never the gate.
+  const qFlags = qualityRankGate(tacticalNew.map(e => e.tags.quality));
+  tacticalNew.forEach((e, i) => { e.tags.qualityActivated = qFlags[i]; });
 
   if (args.preview) {
     console.log("── FORWARD-TEST PREVIEW (no writes) ─────────────────────────");
