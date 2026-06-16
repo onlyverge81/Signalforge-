@@ -249,6 +249,17 @@ parity untouched (the change is in Chart + the live socket, not analyze/runBackt
 DONE ↑; Phase 3 quality (profitability) DONE ↑; Phase 4 live forming-bar chart DONE ↑. ALL FOUR COMPLETE.
 Each factor is propose-only / FDR-gated / never auto-activated — candidates, not proven edges.
 
+**EVIDENCE-tab surfacing of the new factors (DONE) — display-only, closes the factor loop:** the app's
+EVIDENCE tab rendered `study.json` (merit) + `momentum.json` but not the three shipped siblings. Added
+read-only same-origin fetches for `reversal.json` / `lowvol.json` / `quality.json` (guarded on `.windows`)
+and three `studyHarness(...)` cards mirroring the momentum card verbatim — same in-sample-only framing
+("STRONG IN-SAMPLE — NOT YET OOS-PROVEN"), the quality card points at the scoreboard's BY column (shared
+inputs with merit). `studyHarness` got a one-line guard so a SINGLE-window study (reversal) doesn't render
+a redundant self-comparison line (`six && six!==H`); merit/momentum unaffected. NO engine/parity impact
+(EVIDENCE viewer only, not analyze/runBacktest). Verified: all 5 cards render, single-window guard holds,
+zero app JS errors via a Playwright drive of the EVIDENCE tab; 209 tests green. Cards populate live once the
+weekly CI builds the three JSONs.
+
 **Next — Track B:**
 - Mature the `momentum-on` / `merits-on` / `news-*` / `earnings-recent-on` OOS ledgers to n≥10; human-ratify
   only if they clear FDR. PASSIVE — the nightly `forward-log → forward-perf → promote` already partitions every
