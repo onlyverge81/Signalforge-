@@ -1839,6 +1839,17 @@ function App() {
     fetch("./momentum.json").then(r=>r.ok?r.json():null).then(j=>{ if(alive&&j&&j.windows) setMomentum(j); }).catch(()=>{});
     return ()=>{ alive=false; };
   },[]);
+  // Sibling cross-sectional studies — same factor-agnostic harness, different factors.
+  // All read-only, same-origin, built weekly in CI. reversal/low-vol are price-only; quality is fundamental.
+  const [reversal, setReversal] = useState(null);
+  const [lowvol,   setLowvol]   = useState(null);
+  const [quality,  setQuality]  = useState(null);
+  useEffect(()=>{ let alive=true;
+    fetch("./reversal.json").then(r=>r.ok?r.json():null).then(j=>{ if(alive&&j&&j.windows) setReversal(j); }).catch(()=>{});
+    fetch("./lowvol.json").then(r=>r.ok?r.json():null).then(j=>{ if(alive&&j&&j.windows) setLowvol(j); }).catch(()=>{});
+    fetch("./quality.json").then(r=>r.ok?r.json():null).then(j=>{ if(alive&&j&&j.windows) setQuality(j); }).catch(()=>{});
+    return ()=>{ alive=false; };
+  },[]);
   // Out-of-sample variant scoreboard (forward-perf.json) — the alpha/FDR verdict per
   // propose-only variant (merits-on, momentum-on, news-*, earnings-recent-on, position).
   const [forwardPerf, setForwardPerf] = useState(null);
@@ -2319,10 +2330,12 @@ function App() {
               </tbody>
             </table>
           </div>
+          {six&&six!==H&&(
           <div style={{marginTop:10,fontSize:10,color:FADE,lineHeight:1.7}}>
             {s.altName} for comparison: <b style={{color:vCol(six.significance)}}>{six.significance}</b>,
             mean IC {six.meanIC>=0?"+":""}{six.meanIC} over {six.periods} periods.
           </div>
+          )}
         </div>
 
         <div style={{...card,border:"1px solid rgba(255,215,64,0.20)"}}>
@@ -3695,7 +3708,7 @@ function App() {
         {/* ── EVIDENCE TAB — merit-evidence harness (does merit predict forward returns?) ── */}
         {tab==="evidence"&&(
           <>
-            {!study&&!momentum&&!forwardPerf&&(
+            {!study&&!momentum&&!reversal&&!lowvol&&!quality&&!forwardPerf&&(
               <div style={card}>
                 <span style={lbl}>🔬 EVIDENCE</span>
                 <div style={{fontSize:11,color:"#90a4ae",lineHeight:1.9}}>
@@ -3732,13 +3745,55 @@ function App() {
                 perPeriodLabel:"PER-PERIOD RANK-IC · "+momentum.primary,
                 sourceLine:"prices "+(momentum.source?.prices||"—") })}
 
+            {/* ── Cross-sectional short-term reversal study (reversal.json) ── */}
+            {reversal&&studyHarness(
+              { H: reversal.windows[reversal.primary]||reversal.windows["1mo"], six: reversal.windows[reversal.primary]||reversal.windows["1mo"],
+                proven: !!reversal.reversalEdgeProven, caveats: reversal.caveats, universe: reversal.universe,
+                generatedAt: reversal.generatedAt, primaryName: reversal.primary+" reversal", altName: "single-window study" },
+              { title:"🔬 REVERSAL EVIDENCE · do recent losers bounce next month?",
+                posPhrase:"a bigger recent loss leaned toward a higher forward return", negPhrase:"no reversal relationship found",
+                provenLabel:"✓ STRONG IN-SAMPLE — NOT YET OOS-PROVEN", notProvenLabel:"⚖ NOT ESTABLISHED",
+                provenNote:"In-sample the 1-month reversal factor is significant and beats the label-shuffle placebo. But in-sample is NEVER the verdict here — the time-split 'OOS' is still within-sample, and all periods sit in one recent regime. Reversal is the orthogonal complement to momentum (which skips this month by design); only the live reversal-on ledger in the scoreboard below, cleared through FDR, makes it tradeable.",
+                notProvenNote:"Not established on this run — INCONCLUSIVE is an acceptable outcome. The reversal-on label keeps accruing in the out-of-sample scoreboard below; nothing is tradeable until it clears the FDR gate there.",
+                perPeriodLabel:"PER-PERIOD RANK-IC · "+reversal.primary,
+                sourceLine:"prices "+(reversal.source?.prices||"—") })}
+
+            {/* ── Cross-sectional low-volatility study (lowvol.json) ── */}
+            {lowvol&&studyHarness(
+              { H: lowvol.windows[lowvol.primary]||lowvol.windows["12mo"], six: lowvol.windows["6mo"]||lowvol.windows[lowvol.primary],
+                proven: !!lowvol.lowVolEdgeProven, caveats: lowvol.caveats, universe: lowvol.universe,
+                generatedAt: lowvol.generatedAt, primaryName: lowvol.primary+" low-vol", altName: "6-month window" },
+              { title:"🔬 LOW-VOLATILITY EVIDENCE · do calmer names earn higher forward returns?",
+                posPhrase:"lower realized volatility leaned toward a higher forward return", negPhrase:"no low-volatility relationship found",
+                provenLabel:"✓ STRONG IN-SAMPLE — NOT YET OOS-PROVEN", notProvenLabel:"⚖ NOT ESTABLISHED",
+                provenNote:"In-sample the low-volatility (low-beta) factor is significant and beats the label-shuffle placebo. But in-sample is NEVER the verdict here — the time-split 'OOS' is still within-sample, and realized vol from monthly bars is a coarse risk proxy. Only the live lowvol-on ledger in the scoreboard below, cleared through FDR, makes it tradeable.",
+                notProvenNote:"Not established on this run — INCONCLUSIVE is an acceptable outcome. The lowvol-on label keeps accruing in the out-of-sample scoreboard below; nothing is tradeable until it clears the FDR gate there.",
+                perPeriodLabel:"PER-PERIOD RANK-IC · "+lowvol.primary,
+                sourceLine:"prices "+(lowvol.source?.prices||"—") })}
+
+            {/* ── Cross-sectional quality / profitability study (quality.json) ── */}
+            {quality&&studyHarness(
+              { H: quality.windows[quality.primary]||quality.windows["roe"], six: quality.windows["npm"]||quality.windows[quality.primary],
+                proven: !!quality.qualityEdgeProven, caveats: quality.caveats, universe: quality.universe,
+                generatedAt: quality.generatedAt, primaryName: quality.primary.toUpperCase()+" quality", altName: "net-margin window" },
+              { title:"🔬 QUALITY EVIDENCE · does higher profitability predict forward returns?",
+                posPhrase:"higher profitability leaned toward a higher forward return", negPhrase:"no quality relationship found",
+                provenLabel:"✓ STRONG IN-SAMPLE — NOT YET OOS-PROVEN", notProvenLabel:"⚖ NOT ESTABLISHED",
+                provenNote:"In-sample the profitability (quality) factor is significant and beats the label-shuffle placebo. But in-sample is NEVER the verdict here — and quality SHARES its inputs with the merit grade, so quality-on and merits-on are correlated; lean on the scoreboard's BY (dependence-robust) FDR column, not BH alone. Only the live quality-on ledger, cleared through FDR, makes it tradeable.",
+                notProvenNote:"Not established on this run — INCONCLUSIVE is an acceptable outcome. The quality-on label keeps accruing in the out-of-sample scoreboard below; nothing is tradeable until it clears the FDR gate there.",
+                perPeriodLabel:"PER-PERIOD RANK-IC · "+quality.primary,
+                sourceLine:"fundamentals "+(quality.source?.fundamentals||"—")+" · prices "+(quality.source?.prices||"—") })}
+
             {/* ── Out-of-sample variant scoreboard (forward-perf.json) — the verdict that counts ── */}
             {forwardPerf&&(()=>{
               const V=forwardPerf.variants||{}, mt=forwardPerf.multipleTesting||{};
               const rows=[
                 ["all","All tactical longs (baseline)"],
                 ["merits-on","Merit grade ≥ B"],
+                ["quality-on","Top-tertile profitability (ROE)"],
                 ["momentum-on","Top-tertile 12-1 momentum"],
+                ["reversal-on","Top-tertile 1-mo reversal (losers)"],
+                ["lowvol-on","Top-tertile low realized vol (calm)"],
                 ["news-pos-on","Fresh positive news (drift)"],
                 ["news-quiet-on","No fresh negative news"],
                 ["earnings-recent-on","10-Q/10-K filed ≤ 30d"],
