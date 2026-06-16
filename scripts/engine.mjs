@@ -683,8 +683,10 @@ export function runBacktest(data, scorer, slMult, tpMult, costs, range, holdMode
       const A=pending.atr;
       openTrade={
         dir:pending.dir, entry, openIndex:i, entryDate:candle.date,
-        sl: pending.dir==="BUY"?entry-A*SLM:entry+A*SLM,
-        tp: pending.dir==="BUY"?entry+A*TPM:entry-A*TPM,
+        // Custom per-trade targets (e.g. the Outlook correction levels) override the ATR
+        // default when the scorer supplies them; otherwise the ATR fallback is unchanged.
+        sl: pending.customSl!=null ? pending.customSl : (pending.dir==="BUY"?entry-A*SLM:entry+A*SLM),
+        tp: pending.customTp!=null ? pending.customTp : (pending.dir==="BUY"?entry+A*TPM:entry-A*TPM),
         score:pending.score, atr:A, highWater:entry,
       };
       pending=null;
@@ -726,13 +728,123 @@ export function runBacktest(data, scorer, slMult, tpMult, costs, range, holdMode
     if (!openTrade && !pending) {
       const r=scoreFn(slice);
       if (r && (r.signal==="BUY"||r.signal==="SELL") && r.atr>0) {
-        pending={dir:r.signal, atr:r.atr, score:r.score};
+        pending={dir:r.signal, atr:r.atr, score:r.score, customSl:r.customSl, customTp:r.customTp};
       }
     }
   }
 
   const {stats,curve}=realizedStats(trades);
   return { trades, openTrade, stats, curve };
+}
+
+// ─── Outlook "market correction period" projection math (pure, app-mirrored) ──
+// The OUTLOOK tab projects a stock's near-term price from the AVERAGE trailing-window
+// gain of the three major indexes, with an error-buffered target/stop. Pure so the app
+// and the tests share one implementation; mirrored byte-for-byte into index.html.
+
+// Average cumulative % move of N index series over a trailing `period`, keyed by date.
+// Point-in-time per index ((close[p]-close[p-period])/close[p-period]); a date is only
+// emitted when EVERY index has a full-window value for it (exact date alignment).
+export function avgIndexGainByDate(idxArrays, period=20){
+  const arrs=(idxArrays||[]).filter(a=>Array.isArray(a)&&a.length>period);
+  if(!arrs.length) return new Map();
+  const perIdx=arrs.map(a=>{
+    const m=new Map();
+    for(let p=period;p<a.length;p++){
+      const c0=a[p-period].close, c1=a[p].close;
+      if(c0>0&&c1!=null) m.set(a[p].date,(c1-c0)/c0*100);
+    }
+    return m;
+  });
+  const out=new Map();
+  for(const [date,v0] of perIdx[0]){
+    let sum=v0, ok=true;
+    for(let k=1;k<perIdx.length;k++){ const v=perIdx[k].get(date); if(v==null){ok=false;break;} sum+=v; }
+    if(ok) out.set(date, sum/perIdx.length);
+  }
+  return out;
+}
+
+// Error-buffered target/stop from a projected gain. mag = |entry·gain%|; the target ADDS
+// the average projection error as a buffer (generous — let it run); the stop SUBTRACTS the
+// LESSER of the projection magnitude and the error (tight — an early red-flag exit level).
+export function correctionLevels({entry, gainsPct, avgErr=0}){
+  const delta=entry*(gainsPct||0)/100;
+  const mag=Math.abs(delta);
+  const err=Math.abs(avgErr||0);
+  return { delta, mag, tp: entry+mag+err, sl: entry-Math.min(mag,err) };
+}
+
+// Full P&L backtest of the correction projection vs matched buy-&-hold (alpha-honest).
+// Long-only (BUY when close≥SMA20); per bar the projected gain (as-of that date) plus an
+// EXPANDING-window avg projection error (PRIOR bars only → no lookahead) set the custom
+// TP/SL fed through runBacktest. Reports realized stats, directional accuracy, and the
+// per-trade alpha vs a price-only buy-&-hold over the identical entry→exit window. The
+// `proven` gate is alpha-honest: never green without ≥20 trades, significance, AND meanAlpha>0.
+export function backtestCorrection(stockData, gainByDate, opts={}){
+  const period=opts.period||20;
+  const costs=opts.costs||{slip:0,comm:0};
+  const data=stockData||[];
+  if(data.length<period+2||!gainByDate) return null;
+  const closes=data.map(d=>d.close);
+
+  // Per-bar projection error (point-in-time): projected = close ± (close·gain%) in the
+  // trend's direction; error vs the NEXT close. Feeds both the accuracy stats and the
+  // expanding avgErr buffer (which only ever reads bars whose outcome is already known).
+  const projErr=new Array(data.length).fill(null);
+  let n=0,hits=0,baseHits=0,errSum=0,pctErrSum=0;
+  for(let i=period;i<data.length-1;i++){
+    const g=gainByDate.get(data[i].date); if(g==null) continue;
+    const sma20=sma(closes.slice(0,i+1),20); if(sma20==null) continue;
+    const trendUp=closes[i]>=sma20;
+    const predMove=(trendUp?1:-1)*closes[i]*g/100;
+    const projected=closes[i]+predMove;
+    const actualMove=closes[i+1]-closes[i];
+    projErr[i]=Math.abs(projected-closes[i+1]);
+    if(predMove!==0&&actualMove!==0){
+      n++;
+      if(Math.sign(predMove)===Math.sign(actualMove)) hits++;
+      if((trendUp?1:-1)===Math.sign(actualMove)) baseHits++;
+      errSum+=projErr[i]; pctErrSum+=projErr[i]/closes[i+1]*100;
+    }
+  }
+  // avgErrBefore[k] = mean projection error over bars strictly before k (no lookahead).
+  const avgErrBefore=new Array(data.length).fill(0);
+  { let s=0,c=0; for(let k=0;k<data.length;k++){ avgErrBefore[k]=c?s/c:0; if(projErr[k]!=null){s+=projErr[k];c++;} } }
+
+  // Long-only correction scorer → custom error-buffered TP/SL via correctionLevels.
+  const scorer=(slice)=>{
+    const i=slice.length-1;
+    const cl=slice.map(d=>d.close);
+    const sma20=sma(cl,20); if(sma20==null) return {signal:"HOLD"};
+    const a=atr(slice,14);
+    const g=gainByDate.get(slice[i].date);
+    if(g==null||g===0||!(cl[i]>=sma20)) return {signal:"HOLD", atr:a};
+    const lv=correctionLevels({entry:cl[i], gainsPct:g, avgErr:avgErrBefore[i]});
+    return {signal:"BUY", atr:a, score:g, customSl:lv.sl, customTp:lv.tp};
+  };
+  const bt=runBacktest(data, scorer, 1.5, 2.0, costs, null, false);
+
+  // Alpha vs matched buy-&-hold: same entry, held to the SAME exit bar's close (price-only;
+  // the forward-perf buyHoldGrossPct pattern, inlined for engine↔app parity).
+  const legs=bt.trades.map(t=>{
+    const exitIdx=t.openIndex+t.barsHeld;
+    const benchClose=data[exitIdx]?data[exitIdx].close:t.exit;
+    const benchPct=(benchClose-t.entry)/t.entry*100;
+    return { stratPct:t.pnlPct, benchPct, alpha:t.pnlPct-benchPct, beat:t.pnlPct>benchPct };
+  });
+  const m=legs.length;
+  const meanAlpha=m?legs.reduce((a,l)=>a+l.alpha,0)/m:null;
+  const beatRate=m?legs.filter(l=>l.beat).length/m*100:null;
+  const sig=bt.stats.significance;
+  const proven=m>=20 && (sig==="SIGNIFICANT"||sig==="SUGGESTIVE") && meanAlpha>0;
+
+  return {
+    n, acc:n?hits/n*100:null, baseline:n?baseHits/n*100:null,
+    edge:n?(hits-baseHits)/n*100:null,
+    avgErr:n?errSum/n:null, avgPctErr:n?pctErrSum/n:null,
+    trades:m, stats:bt.stats, meanAlpha, beatRate, proven,
+  };
 }
 
 // ─── Buffett-style fundamental VALUE score (for the fundamentalGrade tag) ─────
