@@ -2,7 +2,7 @@
 // Run: node --test scripts/
 import { test } from "node:test";
 import assert from "node:assert/strict";
-import { splitSettled, markToMarket, mergeLedger, buildEntry, parseFeed, gradeFor, forwardGates, meritGate, momentumValue, momentumRankGate, reversalValue, reversalRankGate, eventTags, earningsGate, buildPositionEntry, markToMarketPosition } from "./forward-log.mjs";
+import { splitSettled, markToMarket, mergeLedger, buildEntry, parseFeed, gradeFor, forwardGates, meritGate, momentumValue, momentumRankGate, reversalValue, reversalRankGate, lowVolValue, lowVolRankGate, eventTags, earningsGate, buildPositionEntry, markToMarketPosition } from "./forward-log.mjs";
 
 // A long uptrend of `up` rising bars then `dip` declining bars (a pullback inside the trend).
 const _pbar = c => { c=+(+c).toFixed(4); return { date:"2025-01-01", open:c, high:+(c+1).toFixed(4), low:+(c-1).toFixed(4), close:c, volume:1e6 }; };
@@ -307,6 +307,44 @@ test("buildEntry: reversal tag is attached; reversalActivated defaults false and
   assert.ok("reversal" in e.tags && e.tags.reversal != null, "raw reversal score is logged");
   assert.equal(e.tags.reversalActivated, false, "cross-sectional flag is OFF until the run ranks the batch");
   // The label must not change the trade decision: status is driven purely by the gate.
+  const gate = forwardGates({ signal: e.signal, entry: e.entry, tp1: e.tp1,
+    stats: null, suspect: false, costPerTrade: 0.1, longOnly: true });
+  assert.equal(e.status, gate.actionable ? "OPEN" : "OBSERVATION");
+});
+
+// ─── low-vol overlay — propose-only cross-sectional LABEL (no decision change) ──
+// A deterministic daily series whose return volatility scales with `amp`.
+function genVol(n, amp) {
+  const rows = [];
+  for (let i = 0; i < n; i++) {
+    const close = +(100 + amp * Math.sin(i / 3) + 0.01 * i).toFixed(4);
+    rows.push({ date: `2025-01-01`, open: close, high: close + 1, low: close - 1, close, volume: 1e6 });
+  }
+  return rows;
+}
+test("lowVolValue: null without ~12 months of history; negative; CALM series scores higher than WILD", () => {
+  assert.equal(lowVolValue(genVol(250, 1)), null, "250 daily bars ≤ 252 lookback → null");
+  const calm = lowVolValue(genVol(300, 0.5));
+  const wild = lowVolValue(genVol(300, 5));
+  assert.ok(calm != null && wild != null, "enough history → a score");
+  assert.ok(calm < 0 && wild < 0, "negated realized vol is ≤ 0");
+  assert.ok(calm > wild, "the calmer series must have the higher (closer-to-zero) low-vol score");
+});
+
+test("lowVolRankGate: flags the top tertile (calmest); <3 rankable ⇒ none; nulls ignored", () => {
+  // 6 values → top third = 2. Highest two scores: 0.0 (idx 4) and −0.1 (idx 0) are the calmest.
+  assert.deepEqual(lowVolRankGate([-0.1, -0.9, -0.2, -0.5, 0.0, -0.5]),
+    [true, false, false, false, true, false], "the two least-negative (calmest) scores flag");
+  assert.deepEqual(lowVolRankGate([-0.5, -0.4]), [false, false], "too few to rank → no activation");
+  assert.deepEqual(lowVolRankGate([null, -0.3, null, -0.9, -0.1]),
+    [false, false, false, false, true], "nulls ignored; calmest (−0.1) flagged");
+});
+
+test("buildEntry: lowVol tag is attached; lowVolActivated defaults false and never changes status", () => {
+  const e = buildEntry({ sym: "TST", settled: genUp(300), fundaDB: null, loggedAt: "2026-06-11T22:00:00Z" });
+  assert.ok(e);
+  assert.ok("lowVol" in e.tags && e.tags.lowVol != null, "raw low-vol score is logged");
+  assert.equal(e.tags.lowVolActivated, false, "cross-sectional flag is OFF until the run ranks the batch");
   const gate = forwardGates({ signal: e.signal, entry: e.entry, tp1: e.tp1,
     stats: null, suspect: false, costPerTrade: 0.1, longOnly: true });
   assert.equal(e.status, gate.actionable ? "OPEN" : "OBSERVATION");

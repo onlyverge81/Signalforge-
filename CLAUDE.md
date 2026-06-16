@@ -214,9 +214,19 @@ NEVER touching `gate.actionable`. `forward-perf.mjs` adds `reversal-on`/`reversa
 FDR gate. CI: `reversal-study.yml` (weekly Sun 09:23, clear of the sibling slots). Tests +12 (190 green).
 In-sample is NEVER trusted — only the OOS `reversal-on` ledger cleared through FDR counts.
 
-**Factor-expansion roadmap (user-approved, by priority):** Phase 1 reversal DONE ↑; Phase 2 low-volatility;
-Phase 3 quality (profitability/accruals from SEC facts); Phase 4 live forming-bar chart (cosmetic). Each is
-propose-only / FDR-gated / never auto-activated — candidates, not proven edges.
+**Cross-sectional LOW-VOLATILITY factor (DONE) — Phase 2:** risk-based factor, orthogonal to the
+price-trend overlays. `scripts/build-lowvol.mjs` (`buildLowVolObservations`: `merit = −stdev(trailing
+monthly returns)` so a CALM name scores HIGH; `stdev` pure-helper exported & tested; 12-mo + 6-mo windows,
+trials=2; 1-month non-overlapping forward; point-in-time) writes `lowvol.json`, reusing study-lib.mjs
+verbatim. Charter-clean: Polygon monthly bars, survivorship-free roster. **Propose-only OOS wiring:**
+`lowVolValue` (daily negated realized vol over ~252d) + pure `lowVolRankGate` (top-tertile = calmest) in
+`forward-log.mjs` set `tags.lowVolActivated` after ranking the batch, NEVER touching `gate.actionable`.
+`forward-perf.mjs` adds `lowvol-on`/`lowvol-off` under the FDR gate. CI: `lowvol-study.yml` (weekly Sun
+10:23). Tests +10 (200 green). Only the OOS `lowvol-on` ledger cleared through FDR counts.
+
+**Factor-expansion roadmap (user-approved, by priority):** Phase 1 reversal DONE ↑; Phase 2 low-volatility
+DONE ↑; Phase 3 quality (profitability/accruals from SEC facts); Phase 4 live forming-bar chart (cosmetic).
+Each is propose-only / FDR-gated / never auto-activated — candidates, not proven edges.
 
 **Next — Track B:**
 - Mature the `momentum-on` / `merits-on` / `news-*` / `earnings-recent-on` OOS ledgers to n≥10; human-ratify

@@ -164,6 +164,11 @@ export function defaultVariants() {
     // orthogonal complement to momentum, judged under the same FDR gate.
     { label: "reversal-on", where: t => tac(t) && !!(t.tags && t.tags.reversalActivated) },
     { label: "reversal-off", where: t => tac(t) && !(t.tags && t.tags.reversalActivated) },
+    // Cross-sectional LOW-VOLATILITY overlay (propose-only A/B inside the tactical longs): does
+    // conditioning on top-tertile calm (low realized vol) add OOS alpha? A risk-based factor,
+    // orthogonal to the price-trend overlays, judged under the same FDR gate.
+    { label: "lowvol-on", where: t => tac(t) && !!(t.tags && t.tags.lowVolActivated) },
+    { label: "lowvol-off", where: t => tac(t) && !(t.tags && t.tags.lowVolActivated) },
     // Event overlays (propose-only): two opposite news hypotheses, each an A/B inside the
     // tactical longs. news-pos = post-news drift; news-quiet = avoiding fresh negative news.
     { label: "news-pos-on", where: t => tac(t) && !!(t.tags && t.tags.newsPositive) },

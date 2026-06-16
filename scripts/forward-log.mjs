@@ -171,6 +171,40 @@ export function reversalRankGate(values, { topFrac = 1 / 3 } = {}) {
   return flags;
 }
 
+// ─── Cross-sectional LOW-VOLATILITY overlay (propose-only) ────────────────────
+// The lowvol.json study judges this factor with monthly bars; here, on the live DAILY feed,
+// lowVolValue computes the same idea from DAILY returns: the NEGATED realized volatility over a
+// trailing ~12-month window, so a CALM name scores HIGH. It's a risk-based factor, orthogonal to
+// the price-trend overlays (momentum / reversal). lowVolRankGate flags the TOP TERTILE by low-vol
+// score — the calmest names a low-vol bet would favour. Like the others, lowVolActivated is a
+// LABEL: it never enters forwardGates / actionable, so it never changes which trades open.
+const LV_LOOKBACK = 252;                        // ≈ 12 months of daily returns
+export function lowVolValue(candles, { lookback = LV_LOOKBACK } = {}) {
+  const c = candles || [];
+  if (c.length <= lookback) return null;        // not enough history for a 12-month vol window
+  const rets = [];
+  for (let i = c.length - lookback; i < c.length; i++) {
+    const a = c[i - 1] && c[i - 1].close, b = c[i] && c[i].close;
+    if (!(a > 0) || !(b > 0)) return null;
+    rets.push(b / a - 1);
+  }
+  if (rets.length < 2) return null;
+  const mean = rets.reduce((s, v) => s + v, 0) / rets.length;
+  const varc = rets.reduce((s, v) => s + (v - mean) * (v - mean), 0) / rets.length;
+  return -Math.sqrt(varc);                      // negated realized vol: calm ⇒ high score
+}
+// Pure: flag the top `topFrac` by low-vol score (calmest names). Same conservative rule as the
+// other rank gates — fewer than 3 rankable names ⇒ no activation.
+export function lowVolRankGate(values, { topFrac = 1 / 3 } = {}) {
+  const flags = (values || []).map(() => false);
+  const idx = (values || []).map((v, i) => [v, i]).filter(([v]) => v != null && isFinite(v));
+  if (idx.length < 3) return flags;
+  idx.sort((a, b) => b[0] - a[0]);             // highest low-vol score (calmest) first
+  const k = Math.max(1, Math.floor(idx.length * topFrac));
+  for (let i = 0; i < k; i++) flags[idx[i][1]] = true;
+  return flags;
+}
+
 // ─── Event overlay (propose-only) — two news hypotheses as A/B LABELS ─────────
 // Reads ONLY the already-captured point-in-time `events` summary (newsWindow up to the
 // decision bar) — it NEVER re-fetches, so it stays no-lookahead. Like meritGate, these are
@@ -273,7 +307,9 @@ export function buildEntry({ sym, settled, fundaDB, news = [], loggedAt = new Da
       momentum: (m => m == null ? null : parseFloat(m.toFixed(4)))(momentumValue(settled)),
       momentumActivated: false,
       reversal: (r => r == null ? null : parseFloat(r.toFixed(4)))(reversalValue(settled)),
-      reversalActivated: false, ...eventTags(eventsAtSignal),
+      reversalActivated: false,
+      lowVol: (v => v == null ? null : parseFloat(v.toFixed(6)))(lowVolValue(settled)),
+      lowVolActivated: false, ...eventTags(eventsAtSignal),
       earningsRecent: earningsGate(fundaDB && fundaDB[sym], decision.date) },
     status: isObs ? "OBSERVATION" : "OPEN",
     exit: null, exitAt: null, exitDate: null, barsHeld: null,
@@ -507,6 +543,10 @@ async function main() {
   // recent losers). Independent label; touches only e.tags.reversalActivated, never the gate.
   const revFlags = reversalRankGate(tacticalNew.map(e => e.tags.reversal));
   tacticalNew.forEach((e, i) => { e.tags.reversalActivated = revFlags[i]; });
+  // Cross-sectional low-vol overlay: top-tertile ranking on the low-vol score (calmest names).
+  // Independent label; touches only e.tags.lowVolActivated, never the gate.
+  const lvFlags = lowVolRankGate(tacticalNew.map(e => e.tags.lowVol));
+  tacticalNew.forEach((e, i) => { e.tags.lowVolActivated = lvFlags[i]; });
 
   if (args.preview) {
     console.log("── FORWARD-TEST PREVIEW (no writes) ─────────────────────────");
