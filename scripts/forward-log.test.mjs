@@ -2,7 +2,7 @@
 // Run: node --test scripts/
 import { test } from "node:test";
 import assert from "node:assert/strict";
-import { splitSettled, markToMarket, mergeLedger, buildEntry, parseFeed, gradeFor, forwardGates, meritGate, buildPositionEntry, markToMarketPosition } from "./forward-log.mjs";
+import { splitSettled, markToMarket, mergeLedger, buildEntry, parseFeed, gradeFor, forwardGates, meritGate, momentumValue, momentumRankGate, buildPositionEntry, markToMarketPosition } from "./forward-log.mjs";
 
 // A long uptrend of `up` rising bars then `dip` declining bars (a pullback inside the trend).
 const _pbar = c => { c=+(+c).toFixed(4); return { date:"2025-01-01", open:c, high:+(c+1).toFixed(4), low:+(c-1).toFixed(4), close:c, volume:1e6 }; };
@@ -244,4 +244,40 @@ test("gradeFor: returns a letter grade from filed figures + price, null when abs
   assert.ok(["A", "B", "C", "D", "F"].includes(g));
   assert.equal(gradeFor("ZZZ", 100, db), null);
   assert.equal(gradeFor("AAA", 100, null), null);
+});
+
+// ─── momentum overlay — propose-only cross-sectional LABEL (no decision change) ─
+test("momentumValue: null without ~12 months of history; positive on a steady uptrend", () => {
+  assert.equal(momentumValue(genUp(120)), null, "120 daily bars < 252 lookback → null");
+  const mom = momentumValue(genUp(300));
+  assert.ok(mom != null && mom > 0, "a 300-bar uptrend has positive 12-1 momentum, got " + mom);
+  // Skip-month: the signal ignores the most recent ~21 bars (uses close[len-1-21] / close[len-1-252]).
+  const c = genUp(300), last = c.length - 1;
+  assert.ok(Math.abs(mom - (c[last - 21].close / c[last - 252].close - 1)) < 1e-9, "uses the skip-month 12-1 definition");
+});
+
+test("momentumRankGate: flags the top tertile; <3 rankable names ⇒ none; nulls ignored", () => {
+  // 6 values → top third = top 2. Highest two (0.9, 0.5) flagged.
+  assert.deepEqual(momentumRankGate([0.1, 0.9, -0.2, 0.5, 0.0, -0.5]),
+    [false, true, false, true, false, false]);
+  assert.deepEqual(momentumRankGate([0.5, 0.4]), [false, false], "too few to rank → no activation");
+  // nulls are not rankable and never activate; the 3 finite values rank among themselves.
+  assert.deepEqual(momentumRankGate([null, 0.3, null, 0.9, 0.1]),
+    [false, false, false, true, false]);
+});
+
+test("buildEntry: momentum tag is attached; momentumActivated defaults false and never changes status", () => {
+  const settled = genUp(300);                          // enough history for a momentum value
+  const e = buildEntry({ sym: "TST", settled, fundaDB: null, loggedAt: "2026-06-11T22:00:00Z" });
+  assert.ok(e);
+  assert.ok("momentum" in e.tags && e.tags.momentum != null, "raw momentum value is logged");
+  assert.equal(e.tags.momentumActivated, false, "cross-sectional flag is OFF until the run ranks the batch");
+  // The label must not change the trade decision: status is driven purely by the gate.
+  const gate = forwardGates({ signal: e.signal, entry: e.entry, tp1: e.tp1,
+    stats: null, suspect: false, costPerTrade: 0.1, longOnly: true });
+  assert.equal(e.status, gate.actionable ? "OPEN" : "OBSERVATION");
+  // Short history → momentum tag is null but the entry still logs (label-only, never blocks).
+  const short = buildEntry({ sym: "TST", settled: genUp(120), fundaDB: null });
+  assert.equal(short.tags.momentum, null);
+  assert.equal(short.tags.momentumActivated, false);
 });
