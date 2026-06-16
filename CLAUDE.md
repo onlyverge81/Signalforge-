@@ -148,10 +148,25 @@ analysis in the approved plan file; branch `claude/signalforge-profitability-whe
   `avgErr` (no-lookahead); `proven` only when ≥20 trades **AND** significant **AND** meanAlpha>0.
   Mirrored byte-for-byte into `index.html` (parity verified); panel leads with alpha/expectancy/
   significance. Beta-by-construction → honest likely verdict is "no proven edge"; **not** wired
-  into any OOS ledger/registry (display-only). Next bet: **cross-sectional momentum study**
-  reusing the merit tooling (separate research-pipeline task).
+  into any OOS ledger/registry (display-only).
+- **Cross-sectional MOMENTUM study (DONE) — the first cross-sectional PRICE factor:** the engine
+  had only ever scored names in isolation; momentum ranks the universe against itself (the one
+  shape with positive statistical life, like merit IC). `scripts/build-momentum.mjs`
+  (`buildMomentumObservations`: `merit = price(rb−1mo)/price(rb−Lmo)−1`, skip-month 12-1 & 6-1,
+  1-month non-overlapping forward, point-in-time) writes `momentum.json`, **reusing study-lib.mjs
+  verbatim** (it's factor-agnostic — only needs `{period,merit,fwdRet}`). Generic helpers
+  `pack`/`grid`/`addMonths`/`iso` exported from `build-study.mjs` (additive; merit behavior
+  unchanged). Charter-clean: Polygon monthly bars, survivorship-free roster via
+  `selectMeritUniverse`, no Yahoo. **Propose-only OOS wiring:** `momentumValue` (daily 12-1) +
+  pure cross-sectional `momentumRankGate` (top-tertile) in `forward-log.mjs` tag
+  `tags.momentumActivated` — set in `main()` AFTER ranking the run's batch, NEVER touching
+  `gate.actionable` (statuses byte-identical, verified). `forward-perf.mjs` adds
+  `momentum-on`/`momentum-off` variants under the existing FDR gate; nothing auto-activates.
+  CI: `momentum-study.yml` (weekly, Polygon key). Tests +9 (166 green). In-sample is NEVER
+  trusted — only the OOS `momentum-on` ledger cleared through FDR counts.
 
 **Next — Track B 2–5:**
+- Mature the `momentum-on` (and `merits-on`) OOS ledgers to n≥10; human-ratify only if they clear FDR.
 - Total-return benchmark (Polygon corporate actions / dividends) so alpha isn't vs an
   understated price-only hold.
 - Mature the `merits-on` OOS ledger to n≥10, then human-ratify only if it clears FDR.

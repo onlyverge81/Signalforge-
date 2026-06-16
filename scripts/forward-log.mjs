@@ -110,6 +110,37 @@ export function meritGate(grade, { minGrade = "B" } = {}) {
   return g != null && m != null && g >= m;
 }
 
+// ─── Cross-sectional MOMENTUM overlay (propose-only) ──────────────────────────
+// The momentum.json study judges this factor with monthly bars; here, on the live DAILY
+// feed, momentumValue computes the same 12-1 idea: trailing ~12-month return SKIPPING the
+// most recent ~1 month (dodges short-term reversal). Same factor, daily approximation.
+// momentumRankGate then ranks the run's universe and flags the TOP TERTILE — the genuinely
+// cross-sectional step (SignalForge has only ever scored names in isolation). Like meritGate,
+// momentumActivated is a LABEL: it never enters forwardGates / actionable, so it does not
+// change which trades open — it only carves the opened-longs into an A/B the FDR gate judges.
+const MOM_LOOKBACK = 252, MOM_SKIP = 21;       // ≈ 12 months and ≈ 1 month in trading days
+export function momentumValue(candles, { lookback = MOM_LOOKBACK, skip = MOM_SKIP } = {}) {
+  const c = candles || [];
+  if (c.length <= lookback) return null;       // not enough history for a 12-month lookback
+  const last = c.length - 1;
+  const cSig = c[last - skip] && c[last - skip].close;
+  const cBack = c[last - lookback] && c[last - lookback].close;
+  if (!(cSig > 0) || !(cBack > 0)) return null;
+  return cSig / cBack - 1;
+}
+// Pure: given this run's per-name momentum values (nulls allowed), return a boolean[] aligned
+// to the input flagging the top `topFrac` by momentum. Conservative — fewer than 3 rankable
+// names ⇒ no activation (a cross-section that small can't be ranked honestly).
+export function momentumRankGate(values, { topFrac = 1 / 3 } = {}) {
+  const flags = (values || []).map(() => false);
+  const idx = (values || []).map((v, i) => [v, i]).filter(([v]) => v != null && isFinite(v));
+  if (idx.length < 3) return flags;
+  idx.sort((a, b) => b[0] - a[0]);             // highest momentum first
+  const k = Math.max(1, Math.floor(idx.length * topFrac));
+  for (let i = 0; i < k; i++) flags[idx[i][1]] = true;
+  return flags;
+}
+
 // ─── Pure trading-policy gates for the forward record (testable, no network) ──
 // Decide whether a signal opens a paper position and why it is/ isn't muted:
 //   longOnlyMuted — a SELL under the long-only policy (shorts lose; never taken)
@@ -179,7 +210,11 @@ export function buildEntry({ sym, settled, fundaDB, news = [], loggedAt = new Da
     // Event context at signal time: fresh news in the 3 days up to the decision bar. Captured
     // for later analysis (do signals near news behave differently?), not yet a hard gate.
     events: newsWindow(news, decision.date + "T23:59:59Z", 3),
-    tags: { ...gate.tags, fundamentalGrade: grade, meritsActivated: meritGate(grade) },
+    // momentum = raw 12-1 trailing return (per-name); momentumActivated is set CROSS-SECTIONALLY
+    // by the run loop after every name's momentum is known (default false until then).
+    tags: { ...gate.tags, fundamentalGrade: grade, meritsActivated: meritGate(grade),
+      momentum: (m => m == null ? null : parseFloat(m.toFixed(4)))(momentumValue(settled)),
+      momentumActivated: false },
     status: isObs ? "OBSERVATION" : "OPEN",
     exit: null, exitAt: null, exitDate: null, barsHeld: null,
     pnl: null, grossPct: null, pnlPct: null, benchClose: null, benchDiv: null,
@@ -399,6 +434,13 @@ async function main() {
       if (args.preview) console.warn("✗ " + sym + " — " + (e.message || e));
     }
   }
+
+  // Cross-sectional momentum overlay: rank THIS run's new tactical longs by trailing momentum
+  // and flag the top tertile as momentumActivated. Pure ranking on already-built entries; it
+  // mutates only the propose-only label (never gate.actionable / which trades opened).
+  const tacticalNew = previews.filter(e => e.tags && e.tags.mode !== "position");
+  const momFlags = momentumRankGate(tacticalNew.map(e => e.tags.momentum));
+  tacticalNew.forEach((e, i) => { e.tags.momentumActivated = momFlags[i]; });
 
   if (args.preview) {
     console.log("── FORWARD-TEST PREVIEW (no writes) ─────────────────────────");

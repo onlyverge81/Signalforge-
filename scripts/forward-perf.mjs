@@ -155,6 +155,10 @@ export function defaultVariants() {
     { label: "grade-F", where: grade("F") },
     { label: "merits-on", where: t => tac(t) && !!(t.tags && t.tags.meritsActivated) },
     { label: "merits-off", where: t => tac(t) && !(t.tags && t.tags.meritsActivated) },
+    // Cross-sectional MOMENTUM overlay (propose-only A/B inside the tactical longs): does
+    // conditioning on top-tertile trailing momentum add OOS alpha? Judged under the same FDR gate.
+    { label: "momentum-on", where: t => tac(t) && !!(t.tags && t.tags.momentumActivated) },
+    { label: "momentum-off", where: t => tac(t) && !(t.tags && t.tags.momentumActivated) },
     { label: "position", where: t => !!(t.tags && t.tags.mode === "position") },
   ];
 }

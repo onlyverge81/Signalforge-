@@ -40,8 +40,8 @@ async function fetchPrices(sym, key){
 }
 
 // ─── date / lookup helpers ───────────────────────────────────────────────────
-const iso = ms => new Date(ms).toISOString().slice(0,10);
-function addMonths(ms,n){ const d=new Date(ms); d.setUTCMonth(d.getUTCMonth()+n); return d.getTime(); }
+export const iso = ms => new Date(ms).toISOString().slice(0,10);
+export function addMonths(ms,n){ const d=new Date(ms); d.setUTCMonth(d.getUTCMonth()+n); return d.getTime(); }
 export function priceOnOrBefore(prices, targetMs){ // monthly close at-or-before target (never after)
   let best=null;
   for(const p of prices){ if(p.t<=targetMs) best=p; else break; }
@@ -52,8 +52,9 @@ export function priceOnOrBefore(prices, targetMs){ // monthly close at-or-before
 // test, not just a comment (changing the lag is then a deliberate, test-visible decision).
 export const MERIT_FILING_LAG_DAYS = 75;
 export function meritAsOfISO(rbMs){ return iso(rbMs - MERIT_FILING_LAG_DAYS*DAY); }
-// Rebalance grid: every `stepM` months from 2010-06-30 up to now.
-function grid(stepM){
+// Rebalance grid: every `stepM` months from 2010-06-30 up to now. (Generic — reused by the
+// momentum study with stepM=1.)
+export function grid(stepM){
   const out=[]; const until=Date.now();
   let d=Date.UTC(2010,5,30);
   while(d<=until){ out.push(d); d=addMonths(d,stepM); }
@@ -94,7 +95,9 @@ function buildObservations(loaded, horizonM){
   return obs;
 }
 
-function pack(obs){
+// Package a study's observations into the JSON-ready summary. Factor-agnostic — `obs` only
+// needs { period, merit, fwdRet }, so the momentum study reuses it verbatim (no stat drift).
+export function pack(obs){
   const study=runStudy(obs);
   const plac=placebo(obs, 1337);
   return {

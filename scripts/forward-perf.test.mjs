@@ -10,7 +10,7 @@ import {
 import { markToMarket } from "./forward-log.mjs";
 
 // A minimal closed-trade row, mirroring the ledger schema.
-function closed({ id = "T", ticker = "X", signal = "BUY", entry = 100, exit, benchClose, benchDiv, grade = null, merits = false }) {
+function closed({ id = "T", ticker = "X", signal = "BUY", entry = 100, exit, benchClose, benchDiv, grade = null, merits = false, momentum = false }) {
   const grossPct = (exit - entry) / entry * 100;
   return {
     id, ticker, signal, entry, exit,
@@ -18,7 +18,7 @@ function closed({ id = "T", ticker = "X", signal = "BUY", entry = 100, exit, ben
     pnlPct: parseFloat((grossPct - COST_PER_TRADE).toFixed(4)),
     status: grossPct >= 0 ? "WIN" : "LOSS",
     benchClose, benchDiv,
-    tags: { fundamentalGrade: grade, meritsActivated: merits },
+    tags: { fundamentalGrade: grade, meritsActivated: merits, momentumActivated: momentum },
   };
 }
 
@@ -139,6 +139,20 @@ test("scoreLedger: merits-on / merits-off partition the SAME population by the m
   assert.ok(perf.variants["merits-off"].alphaGrowthPct < 0);
 });
 
+test("scoreLedger: momentum-on / momentum-off partition the SAME population by the momentumActivated tag", () => {
+  const ledger = [
+    closed({ id: "A", entry: 100, exit: 107, benchClose: 102, momentum: true }),  // top-tertile, +alpha
+    closed({ id: "B", entry: 100, exit: 101, benchClose: 110, momentum: false }), // rest, -alpha
+    closed({ id: "C", entry: 100, exit: 109, benchClose: 103, momentum: true }),  // top-tertile, +alpha
+  ];
+  const perf = scoreLedger(ledger);
+  assert.equal(perf.variants["momentum-on"].n + perf.variants["momentum-off"].n, perf.variants["all"].n);
+  assert.equal(perf.variants["momentum-on"].n, 2);
+  assert.equal(perf.variants["momentum-off"].n, 1);
+  assert.ok(perf.variants["momentum-on"].alphaGrowthPct > 0);
+  assert.ok(perf.variants["momentum-off"].alphaGrowthPct < 0);
+});
+
 test("scoreLedger: POSITION is its own variant; the tactical family excludes it (no conflation)", () => {
   const ledger = [
     closed({ id:"T1", entry:100, exit:106, benchClose:102, grade:"A", merits:true }),       // tactical
@@ -159,11 +173,13 @@ test("scoreLedger: empty ledger is honest, not a crash", () => {
   assert.equal(perf.variants["all"].alphaGrowthPct, 0);
 });
 
-test("defaultVariants: covers all + grade + merit lenses", () => {
+test("defaultVariants: covers all + grade + merit + momentum lenses", () => {
   const labels = defaultVariants().map(v => v.label);
   assert.ok(labels.includes("all"));
   assert.ok(labels.includes("grade-A"));
   assert.ok(labels.includes("merits-on"));
+  assert.ok(labels.includes("momentum-on"));
+  assert.ok(labels.includes("momentum-off"));
 });
 
 // ─── statistics: incomplete beta, Student-t tail, one-sample t ────────────────
