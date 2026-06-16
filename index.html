@@ -1821,6 +1821,20 @@ function App() {
     return ()=>{ alive=false; };
   },[]);
   const meritEdgeProven = !!(study && study.meritEdgeProven);
+  // Cross-sectional momentum study (momentum.json) — same factor-agnostic harness as merit,
+  // pointed at trailing price momentum. Read-only viewer, same-origin.
+  const [momentum, setMomentum] = useState(null);
+  useEffect(()=>{ let alive=true;
+    fetch("./momentum.json").then(r=>r.ok?r.json():null).then(j=>{ if(alive&&j&&j.windows) setMomentum(j); }).catch(()=>{});
+    return ()=>{ alive=false; };
+  },[]);
+  // Out-of-sample variant scoreboard (forward-perf.json) — the alpha/FDR verdict per
+  // propose-only variant (merits-on, momentum-on, news-*, earnings-recent-on, position).
+  const [forwardPerf, setForwardPerf] = useState(null);
+  useEffect(()=>{ let alive=true;
+    fetch("./forward-perf.json").then(r=>r.ok?r.json():null).then(j=>{ if(alive&&j&&j.variants) setForwardPerf(j); }).catch(()=>{});
+    return ()=>{ alive=false; };
+  },[]);
   // Forward-test paper ledger — the committed, git-versioned track record built by
   // scripts/forward-log.mjs in CI (nightly, on settled EOD bars). Read-only here:
   // the page is a VIEWER of the automated record, never a writer (a static page has
@@ -2195,6 +2209,96 @@ function App() {
   const inp={background:BG,border:"1px solid "+BORD,color:"#dce6f0",padding:"9px 12px",borderRadius:4,fontFamily:"inherit",fontSize:12,width:"100%",outline:"none",boxSizing:"border-box"};
   const runBtn={background:"linear-gradient(135deg,#00e676,#00bcd4)",border:"none",color:"#000",padding:"13px 0",fontFamily:"inherit",fontSize:12,fontWeight:700,letterSpacing:3,cursor:"pointer",borderRadius:4,width:"100%"};
   const tBtn=on=>({background:"none",border:"none",cursor:"pointer",padding:"10px 16px",fontFamily:"inherit",fontSize:11,letterSpacing:2,color:on?"#00e676":DIM,borderBottom:"2px solid "+(on?"#00e676":"transparent")});
+
+  // Shared cross-sectional study harness renderer — merit (study.json) and momentum
+  // (momentum.json) share the SAME pack() shape, so one view renders both honestly.
+  const studyHarness = (s, copy) => {
+    const H=s.H, six=s.six;
+    const vCol=v=>v==="SIGNIFICANT"?"#00e676":v==="SUGGESTIVE"?"#ffd740":"#90a4ae";
+    const placeboOk=H.placebo.verdict==="NOT SIGNIFICANT"||H.placebo.verdict==="TOO FEW PERIODS";
+    const proven=!!s.proven;
+    const pctOrDash=v=>v==null?"—":((v>=0?"+":"")+(v*100).toFixed(1)+"%");
+    const wf=H.walkForward||{}, df=H.deflated||{};
+    return (
+      <>
+        <div style={{...card,background:"linear-gradient(135deg,#0e1320,#0b1025)"}}>
+          <span style={lbl}>{copy.title}</span>
+          <div style={{display:"flex",justifyContent:"space-between",flexWrap:"wrap",gap:10,alignItems:"flex-start"}}>
+            <div>
+              <div style={{display:"flex",alignItems:"center",gap:12,flexWrap:"wrap"}}>
+                <span style={{fontSize:22,fontWeight:700,color:vCol(H.significance)}}>{H.significance}</span>
+                <span style={{fontSize:11,color:DIM}}>{s.primaryName} · {H.periods} periods · {H.observations} obs</span>
+              </div>
+              <div style={{fontSize:11,color:"#90a4ae",marginTop:6}}>
+                mean rank-IC <b style={{color:vCol(H.significance)}}>{H.meanIC>=0?"+":""}{H.meanIC}</b> (t {H.icT}) — {H.meanIC>0?copy.posPhrase:copy.negPhrase}.
+              </div>
+            </div>
+            <span style={{fontSize:9,fontWeight:700,letterSpacing:1,padding:"5px 11px",borderRadius:3,textAlign:"right",
+              color:proven?"#00e676":"#90a4ae",
+              background:(proven?"rgba(0,230,118,0.10)":"rgba(144,164,174,0.10)"),
+              border:"1px solid "+(proven?"#00e67644":"#90a4ae44")}}>
+              {proven?copy.provenLabel:copy.notProvenLabel}
+            </span>
+          </div>
+          <div style={{display:"grid",gridTemplateColumns:"repeat(auto-fit,minmax(150px,1fr))",gap:10,marginTop:14}}>
+            {[
+              {l:"OUT-OF-SAMPLE IC",v:(H.oos.outSample.meanIC>=0?"+":"")+H.oos.outSample.meanIC,s:H.oos.outSample.verdict+" · n="+H.oos.outSample.n,c:vCol(H.oos.outSample.verdict)},
+              {l:"IN-SAMPLE IC",v:(H.oos.inSample.meanIC>=0?"+":"")+H.oos.inSample.meanIC,s:H.oos.inSample.verdict+" · n="+H.oos.inSample.n,c:vCol(H.oos.inSample.verdict)},
+              {l:"PLACEBO (shuffled)",v:(H.placebo.meanIC>=0?"+":"")+H.placebo.meanIC,s:placeboOk?"null — as it should be":"⚠ still fires",c:placeboOk?"#00e676":"#ff5252"},
+              {l:"TOP−BOTTOM SPREAD",v:pctOrDash(H.spread.mean),s:H.spread.verdict,c:vCol(H.spread.verdict)},
+              {l:"WALK-FORWARD HIT",v:wf.hitRate==null?"—":(wf.hitRate*100).toFixed(0)+"%",s:(wf.oofVerdict||"—")+" · "+(wf.folds||0)+" folds",c:wf.hitRate>0.5?"#00e676":"#90a4ae"},
+              {l:"DEFLATED t",v:df.tDeflated==null?"—":df.tDeflated,s:(df.verdict||"—")+(df.trials>1?" · "+df.trials+" trials":""),c:vCol(df.verdict)},
+            ].map(x=>(
+              <div key={x.l} style={{background:"#060810",padding:12,borderRadius:4}}>
+                <div style={{fontSize:9,color:DIM,letterSpacing:1,marginBottom:4}}>{x.l}</div>
+                <div style={{fontSize:16,fontWeight:700,color:x.c}}>{x.v}</div>
+                <div style={{fontSize:9,color:FADE,marginTop:2}}>{x.s}</div>
+              </div>
+            ))}
+          </div>
+          <div style={{marginTop:12,padding:12,background:"#060810",borderRadius:4,fontSize:11,color:"#90a4ae",lineHeight:1.9}}>
+            {proven?copy.provenNote:copy.notProvenNote}
+          </div>
+        </div>
+
+        <div style={card}>
+          <span style={lbl}>{copy.perPeriodLabel}</span>
+          <div style={{overflowX:"auto"}}>
+            <table style={{width:"100%",borderCollapse:"collapse",fontSize:10}}>
+              <thead><tr style={{color:DIM,textAlign:"left"}}>
+                <th style={{padding:"6px 8px"}}>PERIOD</th><th style={{padding:"6px 8px"}}>NAMES</th>
+                <th style={{padding:"6px 8px"}}>RANK-IC</th><th style={{padding:"6px 8px"}}>TOP−BOTTOM</th>
+              </tr></thead>
+              <tbody>
+                {H.perPeriod.map(p=>(
+                  <tr key={p.period} style={{borderTop:"1px solid "+BG2}}>
+                    <td style={{padding:"6px 8px",color:"#90a4ae"}}>{p.period}</td>
+                    <td style={{padding:"6px 8px",color:"#90a4ae"}}>{p.n}</td>
+                    <td style={{padding:"6px 8px",color:p.ic>=0?"#00e676":"#ff5252"}}>{p.ic>=0?"+":""}{p.ic}</td>
+                    <td style={{padding:"6px 8px",color:"#90a4ae"}}>{pctOrDash(p.spread)}</td>
+                  </tr>
+                ))}
+              </tbody>
+            </table>
+          </div>
+          <div style={{marginTop:10,fontSize:10,color:FADE,lineHeight:1.7}}>
+            {s.altName} for comparison: <b style={{color:vCol(six.significance)}}>{six.significance}</b>,
+            mean IC {six.meanIC>=0?"+":""}{six.meanIC} over {six.periods} periods.
+          </div>
+        </div>
+
+        <div style={{...card,border:"1px solid rgba(255,215,64,0.20)"}}>
+          <span style={{...lbl,color:"#ffd740"}}>⚠ READ THIS BEFORE TRUSTING THE VERDICT</span>
+          {(s.caveats||[]).map((c,i)=>(
+            <div key={i} style={{fontSize:10,color:"#90a4ae",lineHeight:1.7,marginBottom:4}}>○ {c}</div>
+          ))}
+          <div style={{fontSize:9,color:FADE,marginTop:6}}>
+            Universe {s.universe?.covered}/{s.universe?.requested} names · {copy.sourceLine} · generated {s.generatedAt?new Date(s.generatedAt).toLocaleDateString():"—"}.
+          </div>
+        </div>
+      </>
+    );
+  };
 
   return (
     <div style={{minHeight:"100vh",background:BG,color:"#dce6f0",fontFamily:"'IBM Plex Mono',monospace",paddingBottom:60}}>
@@ -3553,101 +3657,89 @@ function App() {
         {/* ── EVIDENCE TAB — merit-evidence harness (does merit predict forward returns?) ── */}
         {tab==="evidence"&&(
           <>
-            {!study&&(
+            {!study&&!momentum&&!forwardPerf&&(
               <div style={card}>
-                <span style={lbl}>🔬 MERIT EVIDENCE</span>
+                <span style={lbl}>🔬 EVIDENCE</span>
                 <div style={{fontSize:11,color:"#90a4ae",lineHeight:1.9}}>
-                  No study loaded. <code>study.json</code> is built nightly in CI (<code>scripts/build-study.mjs</code>):
-                  it reconstructs each name's merit <i>point-in-time</i> from SEC filings and tests whether higher
-                  merit actually predicted higher forward returns across the universe. Check back after the next build.
+                  Nothing loaded yet. The evidence artifacts are built nightly/weekly in CI — <code>study.json</code>
+                  (merit), <code>momentum.json</code> (cross-sectional price momentum), and <code>forward-perf.json</code>
+                  (the out-of-sample variant scoreboard). Check back after the next build.
                 </div>
               </div>
             )}
-            {study&&(()=>{
-              const H=study.horizons[study.primary]||study.horizons["12m"];
-              const six=study.horizons["6m"]||H;
-              const vCol=v=>v==="SIGNIFICANT"?"#00e676":v==="SUGGESTIVE"?"#ffd740":"#90a4ae";
-              const placeboOk=H.placebo.verdict==="NOT SIGNIFICANT"||H.placebo.verdict==="TOO FEW PERIODS";
-              const proven=!!study.meritEdgeProven;
-              const pctOrDash=v=>v==null?"—":((v>=0?"+":"")+(v*100).toFixed(1)+"%");
+
+            {/* ── Merit study (study.json) ── */}
+            {study&&studyHarness(
+              { H: study.horizons[study.primary]||study.horizons["12m"], six: study.horizons["6m"]||study.horizons[study.primary],
+                proven: !!study.meritEdgeProven, caveats: study.caveats, universe: study.universe,
+                generatedAt: study.generatedAt, primaryName: study.primary+" horizon", altName: "6-month horizon" },
+              { title:"🔬 MERIT EVIDENCE · does fundamental quality predict forward returns?",
+                posPhrase:"higher merit leaned toward higher forward return", negPhrase:"no positive relationship found",
+                provenLabel:"✓ MERIT EDGE ESTABLISHED", notProvenLabel:"⚖ MERIT EDGE NOT ESTABLISHED",
+                provenNote:"The edge is statistically present, points the same way out-of-sample, and survives the label-shuffle placebo. Merit-fusion is permitted to nudge the signal — still only on fundamentals you've verified.",
+                notProvenNote:"The edge is NOT established on this universe (most likely INCONCLUSIVE by design — see the caveats). Merits therefore do not move the trade signal; the autopsy stays a conviction overlay only. This is the honest gate working, not a failure.",
+                perPeriodLabel:"PER-PERIOD RANK-IC · "+study.primary,
+                sourceLine:"fundamentals "+(study.source?.fundamentals||"—")+" · prices "+(study.source?.prices||"—") })}
+
+            {/* ── Cross-sectional momentum study (momentum.json) ── */}
+            {momentum&&studyHarness(
+              { H: momentum.windows[momentum.primary]||momentum.windows["12-1"], six: momentum.windows["6-1"]||momentum.windows[momentum.primary],
+                proven: !!momentum.momentumEdgeProven, caveats: momentum.caveats, universe: momentum.universe,
+                generatedAt: momentum.generatedAt, primaryName: momentum.primary+" momentum", altName: "6-1 momentum" },
+              { title:"🔬 MOMENTUM EVIDENCE · does trailing price strength predict forward returns?",
+                posPhrase:"higher momentum leaned toward higher forward return", negPhrase:"no positive relationship found",
+                provenLabel:"✓ STRONG IN-SAMPLE — NOT YET OOS-PROVEN", notProvenLabel:"⚖ NOT ESTABLISHED",
+                provenNote:"In-sample the factor is significant, beats the label-shuffle placebo, and survives walk-forward + the trials-deflation. But in-sample is NEVER the verdict here — the time-split 'OOS' is still within-sample, and all periods sit in one recent regime. Only the live momentum-on ledger in the scoreboard below, cleared through FDR, makes it tradeable.",
+                notProvenNote:"Not established on this run — INCONCLUSIVE is an acceptable outcome. The momentum-on label keeps accruing in the out-of-sample scoreboard below; nothing is tradeable until it clears the FDR gate there.",
+                perPeriodLabel:"PER-PERIOD RANK-IC · "+momentum.primary,
+                sourceLine:"prices "+(momentum.source?.prices||"—") })}
+
+            {/* ── Out-of-sample variant scoreboard (forward-perf.json) — the verdict that counts ── */}
+            {forwardPerf&&(()=>{
+              const V=forwardPerf.variants||{}, mt=forwardPerf.multipleTesting||{};
+              const rows=[
+                ["all","All tactical longs (baseline)"],
+                ["merits-on","Merit grade ≥ B"],
+                ["momentum-on","Top-tertile 12-1 momentum"],
+                ["news-pos-on","Fresh positive news (drift)"],
+                ["news-quiet-on","No fresh negative news"],
+                ["earnings-recent-on","10-Q/10-K filed ≤ 30d"],
+                ["position","POSITION (dip-buy, trailing)"],
+              ].filter(([k])=>V[k]);
+              const vCol=v=>v==="SIGNIFICANT"?"#00e676":v==="SUGGESTIVE"?"#ffd740":v==="PROVEN LOSER"?"#ff5252":"#90a4ae";
               return (
-                <>
-                  <div style={{...card,background:"linear-gradient(135deg,#0e1320,#0b1025)"}}>
-                    <span style={lbl}>🔬 MERIT EVIDENCE · does fundamental quality predict forward returns?</span>
-                    <div style={{display:"flex",justifyContent:"space-between",flexWrap:"wrap",gap:10,alignItems:"flex-start"}}>
-                      <div>
-                        <div style={{display:"flex",alignItems:"center",gap:12,flexWrap:"wrap"}}>
-                          <span style={{fontSize:22,fontWeight:700,color:vCol(H.significance)}}>{H.significance}</span>
-                          <span style={{fontSize:11,color:DIM}}>{study.primary} horizon · {H.periods} periods · {H.observations} obs</span>
-                        </div>
-                        <div style={{fontSize:11,color:"#90a4ae",marginTop:6}}>
-                          mean rank-IC <b style={{color:vCol(H.significance)}}>{H.meanIC>=0?"+":""}{H.meanIC}</b> (t {H.icT}) — {H.meanIC>0?"higher merit leaned toward higher forward return":"no positive relationship found"}.
-                        </div>
-                      </div>
-                      <span style={{fontSize:9,fontWeight:700,letterSpacing:1,padding:"5px 11px",borderRadius:3,
-                        color:proven?"#00e676":"#90a4ae",
-                        background:(proven?"rgba(0,230,118,0.10)":"rgba(144,164,174,0.10)"),
-                        border:"1px solid "+(proven?"#00e67644":"#90a4ae44")}}>
-                        {proven?"✓ MERIT EDGE ESTABLISHED":"⚖ MERIT EDGE NOT ESTABLISHED"}
-                      </span>
-                    </div>
-                    <div style={{display:"grid",gridTemplateColumns:"repeat(auto-fit,minmax(150px,1fr))",gap:10,marginTop:14}}>
-                      {[
-                        {l:"OUT-OF-SAMPLE IC",v:(H.oos.outSample.meanIC>=0?"+":"")+H.oos.outSample.meanIC,s:H.oos.outSample.verdict+" · n="+H.oos.outSample.n,c:vCol(H.oos.outSample.verdict)},
-                        {l:"IN-SAMPLE IC",v:(H.oos.inSample.meanIC>=0?"+":"")+H.oos.inSample.meanIC,s:H.oos.inSample.verdict+" · n="+H.oos.inSample.n,c:vCol(H.oos.inSample.verdict)},
-                        {l:"PLACEBO (merit shuffled)",v:(H.placebo.meanIC>=0?"+":"")+H.placebo.meanIC,s:placeboOk?"null — as it should be":"⚠ still fires",c:placeboOk?"#00e676":"#ff5252"},
-                        {l:"TOP−BOTTOM SPREAD",v:pctOrDash(H.spread.mean),s:H.spread.verdict,c:vCol(H.spread.verdict)},
-                      ].map(x=>(
-                        <div key={x.l} style={{background:"#060810",padding:12,borderRadius:4}}>
-                          <div style={{fontSize:9,color:DIM,letterSpacing:1,marginBottom:4}}>{x.l}</div>
-                          <div style={{fontSize:16,fontWeight:700,color:x.c}}>{x.v}</div>
-                          <div style={{fontSize:9,color:FADE,marginTop:2}}>{x.s}</div>
-                        </div>
-                      ))}
-                    </div>
-                    <div style={{marginTop:12,padding:12,background:"#060810",borderRadius:4,fontSize:11,color:"#90a4ae",lineHeight:1.9}}>
-                      {proven
-                        ? "The edge is statistically present, points the same way out-of-sample, and survives the label-shuffle placebo. Merit-fusion is permitted to nudge the signal — still only on fundamentals you've verified."
-                        : "The edge is NOT established on this universe (most likely INCONCLUSIVE by design — see the caveats). Merits therefore do not move the trade signal; the autopsy stays a conviction overlay only. This is the honest gate working, not a failure."}
-                    </div>
+                <div style={card}>
+                  <span style={lbl}>🔬 OUT-OF-SAMPLE VARIANT SCOREBOARD · forward-perf.json</span>
+                  <div style={{fontSize:11,color:"#90a4ae",lineHeight:1.7,marginBottom:10}}>
+                    Every propose-only overlay as an A/B inside the SAME opened-longs population, scored on <b>alpha vs a total-return buy-&amp;-hold</b> and corrected for multiple testing (BH/BY FDR). <b style={{color:"#ffd740"}}>Nothing is tradeable until it clears the gate out-of-sample</b> — an empty or "too few trades" board is the honest current state, not a bug.
                   </div>
-
-                  <div style={card}>
-                    <span style={lbl}>PER-PERIOD RANK-IC · {study.primary}</span>
-                    <div style={{overflowX:"auto"}}>
-                      <table style={{width:"100%",borderCollapse:"collapse",fontSize:10}}>
-                        <thead><tr style={{color:DIM,textAlign:"left"}}>
-                          <th style={{padding:"6px 8px"}}>PERIOD</th><th style={{padding:"6px 8px"}}>NAMES</th>
-                          <th style={{padding:"6px 8px"}}>RANK-IC</th><th style={{padding:"6px 8px"}}>TOP−BOTTOM</th>
-                        </tr></thead>
-                        <tbody>
-                          {H.perPeriod.map(p=>(
-                            <tr key={p.period} style={{borderTop:"1px solid "+BG2}}>
-                              <td style={{padding:"6px 8px",color:"#90a4ae"}}>{p.period}</td>
-                              <td style={{padding:"6px 8px",color:"#90a4ae"}}>{p.n}</td>
-                              <td style={{padding:"6px 8px",color:p.ic>=0?"#00e676":"#ff5252"}}>{p.ic>=0?"+":""}{p.ic}</td>
-                              <td style={{padding:"6px 8px",color:"#90a4ae"}}>{pctOrDash(p.spread)}</td>
+                  <div style={{overflowX:"auto"}}>
+                    <table style={{width:"100%",borderCollapse:"collapse",fontSize:10}}>
+                      <thead><tr style={{color:DIM,textAlign:"left"}}>
+                        <th style={{padding:"6px 8px"}}>VARIANT</th><th style={{padding:"6px 8px"}}>TRADES</th>
+                        <th style={{padding:"6px 8px"}}>MEAN ALPHA</th><th style={{padding:"6px 8px"}}>BEAT B&amp;H</th>
+                        <th style={{padding:"6px 8px"}}>q (BH)</th><th style={{padding:"6px 8px"}}>VERDICT</th>
+                      </tr></thead>
+                      <tbody>
+                        {rows.map(([k,desc])=>{ const v=V[k]||{}, sg=v.significance||{};
+                          return (
+                            <tr key={k} style={{borderTop:"1px solid "+BG2}}>
+                              <td style={{padding:"6px 8px",color:"#cfd8dc"}}>{k}<div style={{fontSize:8,color:FADE}}>{desc}</div></td>
+                              <td style={{padding:"6px 8px",color:"#90a4ae"}}>{sg.n!=null?sg.n:(v.n||0)}</td>
+                              <td style={{padding:"6px 8px",color:sg.meanAlpha>0?"#00e676":sg.meanAlpha<0?"#ff5252":"#90a4ae"}}>{sg.meanAlpha==null?"—":(sg.meanAlpha>=0?"+":"")+sg.meanAlpha+"%"}</td>
+                              <td style={{padding:"6px 8px",color:"#90a4ae"}}>{v.beatBenchRate==null?"—":v.beatBenchRate+"%"}</td>
+                              <td style={{padding:"6px 8px",color:"#90a4ae"}}>{sg.qBH==null?"—":sg.qBH}</td>
+                              <td style={{padding:"6px 8px",fontWeight:700,color:vCol(sg.verdict)}}>{sg.verdict||"TOO FEW TRADES"}{sg.promotable?" ✓":sg.provenLoser?" ✗":""}</td>
                             </tr>
-                          ))}
-                        </tbody>
-                      </table>
-                    </div>
-                    <div style={{marginTop:10,fontSize:10,color:FADE,lineHeight:1.7}}>
-                      6-month horizon for comparison: <b style={{color:vCol(six.significance)}}>{six.significance}</b>,
-                      mean IC {six.meanIC>=0?"+":""}{six.meanIC} over {six.periods} periods.
-                    </div>
+                          );
+                        })}
+                      </tbody>
+                    </table>
                   </div>
-
-                  <div style={{...card,border:"1px solid rgba(255,215,64,0.20)"}}>
-                    <span style={{...lbl,color:"#ffd740"}}>⚠ READ THIS BEFORE TRUSTING THE VERDICT</span>
-                    {(study.caveats||[]).map((c,i)=>(
-                      <div key={i} style={{fontSize:10,color:"#90a4ae",lineHeight:1.7,marginBottom:4}}>○ {c}</div>
-                    ))}
-                    <div style={{fontSize:9,color:FADE,marginTop:6}}>
-                      Universe {study.universe?.covered}/{study.universe?.requested} names · fundamentals {study.source?.fundamentals} · prices {study.source?.prices} · generated {study.generatedAt?new Date(study.generatedAt).toLocaleDateString():"—"}.
-                    </div>
+                  <div style={{marginTop:10,fontSize:9,color:FADE,lineHeight:1.7}}>
+                    FDR family: {mt.familySize!=null?mt.familySize:"—"} powered variants (n ≥ {mt.minTrades!=null?mt.minTrades:"min"}) · {mt.note||"BH for promotion; BY as the arbitrary-dependence cross-check"} · generated {forwardPerf.generatedAt?new Date(forwardPerf.generatedAt).toLocaleDateString():"—"}. A variant needs ≥10 OOS trades at q≤0.05 to promote — propose-only, human-ratified.
                   </div>
-                </>
+                </div>
               );
             })()}
           </>
