@@ -165,10 +165,24 @@ analysis in the approved plan file; branch `claude/signalforge-profitability-whe
   CI: `momentum-study.yml` (weekly, Polygon key). Tests +9 (166 green). In-sample is NEVER
   trusted — only the OOS `momentum-on` ledger cleared through FDR counts.
 
-**Next — Track B 2–5:**
+**First momentum CI run (DONE, in-sample only):** `momentum-study.yml` ran on the survivorship-free
+roster (294/500 covered, 270 de-listed). Both windows read `proven:true` IN-SAMPLE — 12-1: meanIC
+0.0845, t 4.06, 47 periods; 6-1: meanIC 0.0777, t 4.22, 53 periods; placebo null, walk-forward
+hit-rate 0.75/0.76, beta-timing corr −0.27/−0.07 (NOT disguised beta), both time-split halves
+significant. **Honest caveats:** the "OOS split" is an in-sample time-split (not forward OOS); all
+periods sit in the 2022–2026 regime (Polygon Starter monthly history ≈5y); 206 thin/0-bar de-listed
+tickers skipped. Strongest in-sample factor in the repo — still NOT proven. Now hardened with a
+**trials=2 deflation** (`pack(obs,{trials})`): the 2 lookback windows are haircut even in-sample
+(12-1 t→2.89, 6-1 t→3.04, both still SIGNIFICANT). Verdict still rests on the live OOS ledger.
+
+**Total-return benchmark — ALREADY WIRED (not a TODO):** the OOS path is total-return, not price-only.
+`forward-log.mjs` fetches `fetchPolygonDividends` and stamps `benchDiv` on every closed trade (tactical
+`markToMarket` + position `markToMarketPosition`); `forward-perf.mjs` `buyHoldTotalPct`/`tradeAlpha`
+add the dividends the holder collects. So alpha is measured vs a same-name TOTAL-return hold.
+
+**Next — Track B:**
 - Mature the `momentum-on` (and `merits-on`) OOS ledgers to n≥10; human-ratify only if they clear FDR.
-- Total-return benchmark (Polygon corporate actions / dividends) so alpha isn't vs an
-  understated price-only hold.
-- Mature the `merits-on` OOS ledger to n≥10, then human-ratify only if it clears FDR.
-- Event gates (Polygon news / earnings); WebSocket live plumbing (`delayed.socket`).
+  This is PASSIVE — the nightly `forward-log → forward-perf → promote` already partitions both variants.
+- Event gates (Polygon news / earnings — `events` context already captured, not yet a hard gate);
+  WebSocket live plumbing (`delayed.socket`). Both are new subsystems → scope before building.
 - Every candidate clears no-lookahead + OOS t≥2 after FDR before it's ever shown as tradeable.

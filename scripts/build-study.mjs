@@ -97,8 +97,10 @@ function buildObservations(loaded, horizonM){
 
 // Package a study's observations into the JSON-ready summary. Factor-agnostic — `obs` only
 // needs { period, merit, fwdRet }, so the momentum study reuses it verbatim (no stat drift).
-export function pack(obs){
-  const study=runStudy(obs);
+// `trials` deflates the headline t for the number of configurations tried (overfit haircut);
+// it defaults to 1 so the merit caller's output is unchanged.
+export function pack(obs, { trials = 1 } = {}){
+  const study=runStudy(obs, { trials });
   const plac=placebo(obs, 1337);
   return {
     periods: study.periods.length,
