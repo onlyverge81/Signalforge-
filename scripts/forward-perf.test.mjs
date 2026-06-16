@@ -10,7 +10,7 @@ import {
 import { markToMarket } from "./forward-log.mjs";
 
 // A minimal closed-trade row, mirroring the ledger schema.
-function closed({ id = "T", ticker = "X", signal = "BUY", entry = 100, exit, benchClose, benchDiv, grade = null, merits = false, momentum = false, newsPositive = false, newsQuiet = true, earningsRecent = false }) {
+function closed({ id = "T", ticker = "X", signal = "BUY", entry = 100, exit, benchClose, benchDiv, grade = null, merits = false, momentum = false, reversal = false, newsPositive = false, newsQuiet = true, earningsRecent = false }) {
   const grossPct = (exit - entry) / entry * 100;
   return {
     id, ticker, signal, entry, exit,
@@ -18,7 +18,7 @@ function closed({ id = "T", ticker = "X", signal = "BUY", entry = 100, exit, ben
     pnlPct: parseFloat((grossPct - COST_PER_TRADE).toFixed(4)),
     status: grossPct >= 0 ? "WIN" : "LOSS",
     benchClose, benchDiv,
-    tags: { fundamentalGrade: grade, meritsActivated: merits, momentumActivated: momentum, newsPositive, newsQuiet, earningsRecent },
+    tags: { fundamentalGrade: grade, meritsActivated: merits, momentumActivated: momentum, reversalActivated: reversal, newsPositive, newsQuiet, earningsRecent },
   };
 }
 
@@ -151,6 +151,20 @@ test("scoreLedger: momentum-on / momentum-off partition the SAME population by t
   assert.equal(perf.variants["momentum-off"].n, 1);
   assert.ok(perf.variants["momentum-on"].alphaGrowthPct > 0);
   assert.ok(perf.variants["momentum-off"].alphaGrowthPct < 0);
+});
+
+test("scoreLedger: reversal-on / reversal-off partition the SAME population by the reversalActivated tag", () => {
+  const ledger = [
+    closed({ id: "A", entry: 100, exit: 107, benchClose: 102, reversal: true }),  // top-tertile loser, +alpha
+    closed({ id: "B", entry: 100, exit: 101, benchClose: 110, reversal: false }), // rest, -alpha
+    closed({ id: "C", entry: 100, exit: 109, benchClose: 103, reversal: true }),  // top-tertile loser, +alpha
+  ];
+  const perf = scoreLedger(ledger);
+  assert.equal(perf.variants["reversal-on"].n + perf.variants["reversal-off"].n, perf.variants["all"].n);
+  assert.equal(perf.variants["reversal-on"].n, 2);
+  assert.equal(perf.variants["reversal-off"].n, 1);
+  assert.ok(perf.variants["reversal-on"].alphaGrowthPct > 0);
+  assert.ok(perf.variants["reversal-off"].alphaGrowthPct < 0);
 });
 
 test("scoreLedger: event overlays partition the tactical population by the news tags", () => {

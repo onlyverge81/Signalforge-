@@ -202,6 +202,22 @@ hard numbers (complements the news-sentiment label). `forward-perf.mjs` adds `ea
 FDR gate. Propose-only: never touches `gate.actionable` (tested). No-lookahead: filing dates are historical and
 forward-log only logs the current bar. Tests +5 (174 green). `lastFiled` populates on the next fundamentals CI run.
 
+**Cross-sectional SHORT-TERM REVERSAL factor (DONE) — Phase 1 of the factor-expansion roadmap:** the
+orthogonal complement to momentum (which SKIPS the most recent month precisely to dodge reversal).
+`scripts/build-reversal.mjs` (`buildReversalObservations`: `merit = −(price(rb)/price(rb−1mo)−1)` so a
+recent LOSER scores HIGH; 1-month non-overlapping forward; point-in-time) writes `reversal.json`,
+**reusing study-lib.mjs verbatim** (factor-agnostic). Single window (1mo, trials=1). Charter-clean:
+Polygon monthly bars, survivorship-free roster via `selectMeritUniverse`. **Propose-only OOS wiring:**
+`reversalValue` (daily negated 1-month return) + pure `reversalRankGate` (top-tertile = biggest recent
+losers) in `forward-log.mjs` set `tags.reversalActivated` in `main()` AFTER ranking the run's batch,
+NEVER touching `gate.actionable`. `forward-perf.mjs` adds `reversal-on`/`reversal-off` under the existing
+FDR gate. CI: `reversal-study.yml` (weekly Sun 09:23, clear of the sibling slots). Tests +12 (190 green).
+In-sample is NEVER trusted — only the OOS `reversal-on` ledger cleared through FDR counts.
+
+**Factor-expansion roadmap (user-approved, by priority):** Phase 1 reversal DONE ↑; Phase 2 low-volatility;
+Phase 3 quality (profitability/accruals from SEC facts); Phase 4 live forming-bar chart (cosmetic). Each is
+propose-only / FDR-gated / never auto-activated — candidates, not proven edges.
+
 **Next — Track B:**
 - Mature the `momentum-on` / `merits-on` / `news-*` / `earnings-recent-on` OOS ledgers to n≥10; human-ratify
   only if they clear FDR. PASSIVE — the nightly `forward-log → forward-perf → promote` already partitions every

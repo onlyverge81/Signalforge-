@@ -141,6 +141,36 @@ export function momentumRankGate(values, { topFrac = 1 / 3 } = {}) {
   return flags;
 }
 
+// ─── Cross-sectional SHORT-TERM REVERSAL overlay (propose-only) ───────────────
+// The reversal.json study judges this factor with monthly bars; here, on the live DAILY feed,
+// reversalValue computes the same 1-month idea: the NEGATED trailing ~1-month return, so a
+// recent LOSER scores HIGH. It's the orthogonal complement to momentum (which deliberately
+// SKIPS the most recent month). reversalRankGate flags the TOP TERTILE by reversal score — the
+// biggest recent losers, the names a reversal bet would favour. Like momentum, reversalActivated
+// is a LABEL: it never enters forwardGates / actionable, so it never changes which trades open.
+const REV_LOOKBACK = 21;                        // ≈ 1 month in trading days
+export function reversalValue(candles, { lookback = REV_LOOKBACK } = {}) {
+  const c = candles || [];
+  if (c.length <= lookback) return null;        // not enough history for a 1-month window
+  const last = c.length - 1;
+  const cNow = c[last] && c[last].close;
+  const cBack = c[last - lookback] && c[last - lookback].close;
+  if (!(cNow > 0) || !(cBack > 0)) return null;
+  return -(cNow / cBack - 1);                   // negated 1-month return: loser ⇒ high score
+}
+// Pure: flag the top `topFrac` by reversal score (biggest recent losers). Same conservative
+// rule as momentumRankGate — fewer than 3 rankable names ⇒ no activation. Distinct function so
+// the two overlays can diverge later without entangling.
+export function reversalRankGate(values, { topFrac = 1 / 3 } = {}) {
+  const flags = (values || []).map(() => false);
+  const idx = (values || []).map((v, i) => [v, i]).filter(([v]) => v != null && isFinite(v));
+  if (idx.length < 3) return flags;
+  idx.sort((a, b) => b[0] - a[0]);             // highest reversal score (biggest loser) first
+  const k = Math.max(1, Math.floor(idx.length * topFrac));
+  for (let i = 0; i < k; i++) flags[idx[i][1]] = true;
+  return flags;
+}
+
 // ─── Event overlay (propose-only) — two news hypotheses as A/B LABELS ─────────
 // Reads ONLY the already-captured point-in-time `events` summary (newsWindow up to the
 // decision bar) — it NEVER re-fetches, so it stays no-lookahead. Like meritGate, these are
@@ -241,7 +271,9 @@ export function buildEntry({ sym, settled, fundaDB, news = [], loggedAt = new Da
     // labels (newsPositive / newsQuiet) ride the captured events — propose-only, never a gate.
     tags: { ...gate.tags, fundamentalGrade: grade, meritsActivated: meritGate(grade),
       momentum: (m => m == null ? null : parseFloat(m.toFixed(4)))(momentumValue(settled)),
-      momentumActivated: false, ...eventTags(eventsAtSignal),
+      momentumActivated: false,
+      reversal: (r => r == null ? null : parseFloat(r.toFixed(4)))(reversalValue(settled)),
+      reversalActivated: false, ...eventTags(eventsAtSignal),
       earningsRecent: earningsGate(fundaDB && fundaDB[sym], decision.date) },
     status: isObs ? "OBSERVATION" : "OPEN",
     exit: null, exitAt: null, exitDate: null, barsHeld: null,
@@ -471,6 +503,10 @@ async function main() {
   const tacticalNew = previews.filter(e => e.tags && e.tags.mode !== "position");
   const momFlags = momentumRankGate(tacticalNew.map(e => e.tags.momentum));
   tacticalNew.forEach((e, i) => { e.tags.momentumActivated = momFlags[i]; });
+  // Cross-sectional reversal overlay: same top-tertile ranking on the reversal score (biggest
+  // recent losers). Independent label; touches only e.tags.reversalActivated, never the gate.
+  const revFlags = reversalRankGate(tacticalNew.map(e => e.tags.reversal));
+  tacticalNew.forEach((e, i) => { e.tags.reversalActivated = revFlags[i]; });
 
   if (args.preview) {
     console.log("── FORWARD-TEST PREVIEW (no writes) ─────────────────────────");

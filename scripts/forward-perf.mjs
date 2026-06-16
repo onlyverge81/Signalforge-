@@ -159,6 +159,11 @@ export function defaultVariants() {
     // conditioning on top-tertile trailing momentum add OOS alpha? Judged under the same FDR gate.
     { label: "momentum-on", where: t => tac(t) && !!(t.tags && t.tags.momentumActivated) },
     { label: "momentum-off", where: t => tac(t) && !(t.tags && t.tags.momentumActivated) },
+    // Cross-sectional SHORT-TERM REVERSAL overlay (propose-only A/B inside the tactical longs):
+    // does conditioning on top-tertile 1-month reversal (recent losers) add OOS alpha? The
+    // orthogonal complement to momentum, judged under the same FDR gate.
+    { label: "reversal-on", where: t => tac(t) && !!(t.tags && t.tags.reversalActivated) },
+    { label: "reversal-off", where: t => tac(t) && !(t.tags && t.tags.reversalActivated) },
     // Event overlays (propose-only): two opposite news hypotheses, each an A/B inside the
     // tactical longs. news-pos = post-news drift; news-quiet = avoiding fresh negative news.
     { label: "news-pos-on", where: t => tac(t) && !!(t.tags && t.tags.newsPositive) },

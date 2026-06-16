@@ -2,7 +2,7 @@
 // Run: node --test scripts/
 import { test } from "node:test";
 import assert from "node:assert/strict";
-import { splitSettled, markToMarket, mergeLedger, buildEntry, parseFeed, gradeFor, forwardGates, meritGate, momentumValue, momentumRankGate, eventTags, earningsGate, buildPositionEntry, markToMarketPosition } from "./forward-log.mjs";
+import { splitSettled, markToMarket, mergeLedger, buildEntry, parseFeed, gradeFor, forwardGates, meritGate, momentumValue, momentumRankGate, reversalValue, reversalRankGate, eventTags, earningsGate, buildPositionEntry, markToMarketPosition } from "./forward-log.mjs";
 
 // A long uptrend of `up` rising bars then `dip` declining bars (a pullback inside the trend).
 const _pbar = c => { c=+(+c).toFixed(4); return { date:"2025-01-01", open:c, high:+(c+1).toFixed(4), low:+(c-1).toFixed(4), close:c, volume:1e6 }; };
@@ -280,6 +280,36 @@ test("buildEntry: momentum tag is attached; momentumActivated defaults false and
   const short = buildEntry({ sym: "TST", settled: genUp(120), fundaDB: null });
   assert.equal(short.tags.momentum, null);
   assert.equal(short.tags.momentumActivated, false);
+});
+
+// ─── reversal overlay — propose-only cross-sectional LABEL (no decision change) ─
+test("reversalValue: null without ~1 month of history; NEGATIVE on a steady uptrend (winner ⇒ low score)", () => {
+  assert.equal(reversalValue(genUp(20)), null, "20 daily bars ≤ 21 lookback → null");
+  const rev = reversalValue(genUp(300));
+  assert.ok(rev != null && rev < 0, "a 300-bar uptrend rose last month → negative reversal score, got " + rev);
+  // Definition: −(close[len-1] / close[len-1-21] − 1).
+  const c = genUp(300), last = c.length - 1;
+  assert.ok(Math.abs(rev - (-(c[last].close / c[last - 21].close - 1))) < 1e-9, "uses the negated 1-month-return definition");
+});
+
+test("reversalRankGate: flags the top tertile (biggest losers); <3 rankable ⇒ none; nulls ignored", () => {
+  // 6 values → top third = top 2. Highest two reversal scores (0.9, 0.5) flagged.
+  assert.deepEqual(reversalRankGate([0.1, 0.9, -0.2, 0.5, 0.0, -0.5]),
+    [false, true, false, true, false, false]);
+  assert.deepEqual(reversalRankGate([0.5, 0.4]), [false, false], "too few to rank → no activation");
+  assert.deepEqual(reversalRankGate([null, 0.3, null, 0.9, 0.1]),
+    [false, false, false, true, false]);
+});
+
+test("buildEntry: reversal tag is attached; reversalActivated defaults false and never changes status", () => {
+  const e = buildEntry({ sym: "TST", settled: genUp(300), fundaDB: null, loggedAt: "2026-06-11T22:00:00Z" });
+  assert.ok(e);
+  assert.ok("reversal" in e.tags && e.tags.reversal != null, "raw reversal score is logged");
+  assert.equal(e.tags.reversalActivated, false, "cross-sectional flag is OFF until the run ranks the batch");
+  // The label must not change the trade decision: status is driven purely by the gate.
+  const gate = forwardGates({ signal: e.signal, entry: e.entry, tp1: e.tp1,
+    stats: null, suspect: false, costPerTrade: 0.1, longOnly: true });
+  assert.equal(e.status, gate.actionable ? "OPEN" : "OBSERVATION");
 });
 
 // ─── event overlay — propose-only news LABELS (two hypotheses, no decision change) ─

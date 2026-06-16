@@ -1,0 +1,85 @@
+name: Build reversal study
+
+# Cross-sectional SHORT-TERM REVERSAL evidence harness. Ranks the survivorship-free universe by
+# the negated trailing 1-month return on Polygon adjusted MONTHLY closes (the only vendor, no
+# fallback), reusing the merit study's statistics (study-lib.mjs) verbatim, and writes
+# reversal.json. The orthogonal complement to the momentum study (which skips this month by design).
+# Commits it and deploys Pages so the app can read it same-origin if/when wired. Self-contained
+# like fundamentals.yml / pattern-study.yml / momentum-study.yml.
+#
+# Requires the repo secret POLYGON_API_KEY (the REST key). Prefers roster.json (the
+# survivorship-free universe from universe-build.yml); falls back to tickers.txt until it exists.
+#
+# Weekly cron + manual dispatch only — deliberately NOT on push. The data-builder workflows share
+# the 'pages' concurrency group, so a merge that triggers several at once cancels all but the
+# latest pending run. Its slot (Sun 09:23) is clear of fundamentals' 06:17, pattern's 07:23 and
+# momentum's 08:23.
+
+on:
+  schedule:
+    - cron: "23 9 * * 0"   # weekly, Sunday 09:23 UTC (clear of fundamentals + pattern + momentum)
+  workflow_dispatch:
+
+permissions:
+  contents: write   # to commit reversal.json
+  pages: write
+  id-token: write
+
+# Share the 'pages' group with the other deploy workflows so they never clash.
+concurrency:
+  group: pages
+  cancel-in-progress: false
+
+jobs:
+  build-and-deploy:
+    runs-on: ubuntu-latest
+    environment:
+      name: github-pages
+      url: ${{ steps.deploy.outputs.page_url }}
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Set up Node
+        uses: actions/setup-node@v4
+        with:
+          node-version: 20
+
+      - name: Run offline unit tests
+        run: node --test scripts/*.test.mjs
+
+      - name: Build reversal.json (Polygon monthly, cross-sectional)
+        env:
+          POLYGON_API_KEY: ${{ secrets.POLYGON_API_KEY }}
+        run: node scripts/build-reversal.mjs || echo "reversal build skipped (non-fatal)"
+
+      - name: Commit reversal.json if it changed
+        run: |
+          git config user.name "github-actions[bot]"
+          git config user.email "github-actions[bot]@users.noreply.github.com"
+          # Stage first, THEN check the staged diff — `git diff --quiet` alone ignores
+          # untracked files, so a never-before-committed file would never persist.
+          [ -f reversal.json ] && git add reversal.json || true
+          if git diff --cached --quiet; then
+            echo "reversal.json unchanged — nothing to commit."
+          else
+            git commit -m "chore: refresh reversal.json"
+            # Land on main, rebasing onto any concurrent bot push (the sibling
+            # data workflows can push between our checkout and this step).
+            for i in 1 2 3; do
+              git pull --rebase origin main && git push && break
+              echo "push race (attempt $i) — retrying"; sleep 3
+            done
+          fi
+
+      - name: Configure Pages
+        uses: actions/configure-pages@v5
+
+      - name: Upload artifact (repo root, incl. fresh reversal.json)
+        uses: actions/upload-pages-artifact@v3
+        with:
+          path: '.'
+
+      - name: Deploy to GitHub Pages
+        id: deploy
+        uses: actions/deploy-pages@v4
