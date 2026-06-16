@@ -10,7 +10,7 @@ import {
 import { markToMarket } from "./forward-log.mjs";
 
 // A minimal closed-trade row, mirroring the ledger schema.
-function closed({ id = "T", ticker = "X", signal = "BUY", entry = 100, exit, benchClose, benchDiv, grade = null, merits = false, momentum = false, reversal = false, lowVol = false, newsPositive = false, newsQuiet = true, earningsRecent = false }) {
+function closed({ id = "T", ticker = "X", signal = "BUY", entry = 100, exit, benchClose, benchDiv, grade = null, merits = false, momentum = false, reversal = false, lowVol = false, quality = false, newsPositive = false, newsQuiet = true, earningsRecent = false }) {
   const grossPct = (exit - entry) / entry * 100;
   return {
     id, ticker, signal, entry, exit,
@@ -18,7 +18,7 @@ function closed({ id = "T", ticker = "X", signal = "BUY", entry = 100, exit, ben
     pnlPct: parseFloat((grossPct - COST_PER_TRADE).toFixed(4)),
     status: grossPct >= 0 ? "WIN" : "LOSS",
     benchClose, benchDiv,
-    tags: { fundamentalGrade: grade, meritsActivated: merits, momentumActivated: momentum, reversalActivated: reversal, lowVolActivated: lowVol, newsPositive, newsQuiet, earningsRecent },
+    tags: { fundamentalGrade: grade, meritsActivated: merits, momentumActivated: momentum, reversalActivated: reversal, lowVolActivated: lowVol, qualityActivated: quality, newsPositive, newsQuiet, earningsRecent },
   };
 }
 
@@ -179,6 +179,20 @@ test("scoreLedger: lowvol-on / lowvol-off partition the SAME population by the l
   assert.equal(perf.variants["lowvol-off"].n, 1);
   assert.ok(perf.variants["lowvol-on"].alphaGrowthPct > 0);
   assert.ok(perf.variants["lowvol-off"].alphaGrowthPct < 0);
+});
+
+test("scoreLedger: quality-on / quality-off partition the SAME population by the qualityActivated tag", () => {
+  const ledger = [
+    closed({ id: "A", entry: 100, exit: 107, benchClose: 102, quality: true }),  // profitable, +alpha
+    closed({ id: "B", entry: 100, exit: 101, benchClose: 110, quality: false }), // unprofitable, -alpha
+    closed({ id: "C", entry: 100, exit: 109, benchClose: 103, quality: true }),  // profitable, +alpha
+  ];
+  const perf = scoreLedger(ledger);
+  assert.equal(perf.variants["quality-on"].n + perf.variants["quality-off"].n, perf.variants["all"].n);
+  assert.equal(perf.variants["quality-on"].n, 2);
+  assert.equal(perf.variants["quality-off"].n, 1);
+  assert.ok(perf.variants["quality-on"].alphaGrowthPct > 0);
+  assert.ok(perf.variants["quality-off"].alphaGrowthPct < 0);
 });
 
 test("scoreLedger: event overlays partition the tactical population by the news tags", () => {

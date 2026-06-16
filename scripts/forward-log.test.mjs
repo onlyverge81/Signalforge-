@@ -2,7 +2,7 @@
 // Run: node --test scripts/
 import { test } from "node:test";
 import assert from "node:assert/strict";
-import { splitSettled, markToMarket, mergeLedger, buildEntry, parseFeed, gradeFor, forwardGates, meritGate, momentumValue, momentumRankGate, reversalValue, reversalRankGate, lowVolValue, lowVolRankGate, eventTags, earningsGate, buildPositionEntry, markToMarketPosition } from "./forward-log.mjs";
+import { splitSettled, markToMarket, mergeLedger, buildEntry, parseFeed, gradeFor, forwardGates, meritGate, momentumValue, momentumRankGate, reversalValue, reversalRankGate, lowVolValue, lowVolRankGate, qualityValue, qualityRankGate, eventTags, earningsGate, buildPositionEntry, markToMarketPosition } from "./forward-log.mjs";
 
 // A long uptrend of `up` rising bars then `dip` declining bars (a pullback inside the trend).
 const _pbar = c => { c=+(+c).toFixed(4); return { date:"2025-01-01", open:c, high:+(c+1).toFixed(4), low:+(c-1).toFixed(4), close:c, volume:1e6 }; };
@@ -348,6 +348,34 @@ test("buildEntry: lowVol tag is attached; lowVolActivated defaults false and nev
   const gate = forwardGates({ signal: e.signal, entry: e.entry, tp1: e.tp1,
     stats: null, suspect: false, costPerTrade: 0.1, longOnly: true });
   assert.equal(e.status, gate.actionable ? "OPEN" : "OBSERVATION");
+});
+
+// ─── quality overlay — propose-only cross-sectional LABEL (no decision change) ──
+test("qualityValue: reads ROE off the fundamentals rec; null when missing/non-finite", () => {
+  assert.equal(qualityValue({ roe: 0.18, npm: 0.10 }), 0.18, "returns ROE");
+  assert.equal(qualityValue({ roe: null }), null);
+  assert.equal(qualityValue({}), null, "no ROE → null");
+  assert.equal(qualityValue(null), null, "no rec → null");
+});
+
+test("qualityRankGate: flags the top tertile (most profitable); <3 rankable ⇒ none; nulls ignored", () => {
+  assert.deepEqual(qualityRankGate([0.05, 0.25, -0.10, 0.18, 0.02, -0.30]),
+    [false, true, false, true, false, false], "top two ROEs (0.25, 0.18) flag");
+  assert.deepEqual(qualityRankGate([0.2, 0.1]), [false, false], "too few to rank → no activation");
+  assert.deepEqual(qualityRankGate([null, 0.1, null, 0.3, 0.05]),
+    [false, false, false, true, false], "nulls ignored; highest (0.3) flagged");
+});
+
+test("buildEntry: quality tag rides fundaDB ROE; qualityActivated defaults false; null without fundamentals", () => {
+  const fundaDB = { TST: { roe: 0.22, npm: 0.12, epsTTM: 5, bvps: 20 } };
+  const e = buildEntry({ sym: "TST", settled: genUp(300), fundaDB, loggedAt: "2026-06-11T22:00:00Z" });
+  assert.ok(e);
+  assert.equal(e.tags.quality, 0.22, "raw profitability (ROE) is logged from fundaDB");
+  assert.equal(e.tags.qualityActivated, false, "cross-sectional flag is OFF until the run ranks the batch");
+  // No fundamentals → quality tag is null but the entry still logs (label-only, never blocks).
+  const noFunda = buildEntry({ sym: "TST", settled: genUp(300), fundaDB: null });
+  assert.equal(noFunda.tags.quality, null);
+  assert.equal(noFunda.tags.qualityActivated, false);
 });
 
 // ─── event overlay — propose-only news LABELS (two hypotheses, no decision change) ─

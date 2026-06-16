@@ -169,6 +169,11 @@ export function defaultVariants() {
     // orthogonal to the price-trend overlays, judged under the same FDR gate.
     { label: "lowvol-on", where: t => tac(t) && !!(t.tags && t.tags.lowVolActivated) },
     { label: "lowvol-off", where: t => tac(t) && !(t.tags && t.tags.lowVolActivated) },
+    // Cross-sectional QUALITY (profitability) overlay (propose-only A/B inside the tactical longs):
+    // does conditioning on top-tertile profitability (ROE) add OOS alpha? A non-price fundamental
+    // factor (correlated with merits-on — see the BY cross-check), judged under the same FDR gate.
+    { label: "quality-on", where: t => tac(t) && !!(t.tags && t.tags.qualityActivated) },
+    { label: "quality-off", where: t => tac(t) && !(t.tags && t.tags.qualityActivated) },
     // Event overlays (propose-only): two opposite news hypotheses, each an A/B inside the
     // tactical longs. news-pos = post-news drift; news-quiet = avoiding fresh negative news.
     { label: "news-pos-on", where: t => tac(t) && !!(t.tags && t.tags.newsPositive) },

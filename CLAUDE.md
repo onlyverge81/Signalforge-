@@ -224,8 +224,20 @@ verbatim. Charter-clean: Polygon monthly bars, survivorship-free roster. **Propo
 `forward-perf.mjs` adds `lowvol-on`/`lowvol-off` under the FDR gate. CI: `lowvol-study.yml` (weekly Sun
 10:23). Tests +10 (200 green). Only the OOS `lowvol-on` ledger cleared through FDR counts.
 
+**Cross-sectional QUALITY (profitability) factor (DONE) — Phase 3, first NON-PRICE expansion factor:**
+distinct from the merit COMPOSITE (valuation+health+growth) — quality reads pure profitability. Exported
+`loadTicker` + `resolveMeritUniverse` from `build-study.mjs` (additive) so `scripts/build-quality.mjs`
+reuses the merit SEC+price loading + point-in-time `distill` (75-day lag). `buildQualityObservations(loaded,
+metric, {distill})` sets `merit = rec[metric]` (ROE primary, NPM secondary → trials=2; `distill` injected so
+the no-lookahead/sign contract is unit-tested without raw XBRL). Charter-clean: SEC XBRL + Polygon monthly,
+survivorship-free roster. **Propose-only OOS wiring:** `qualityValue(rec)` (reads ROE off `fundaDB`) + pure
+`qualityRankGate` (top-tertile = most profitable) in `forward-log.mjs` set `tags.qualityActivated` after
+ranking the batch, NEVER touching `gate.actionable`. `forward-perf.mjs` adds `quality-on`/`quality-off`.
+Quality shares inputs with the merit grade → correlated variants; lean on the FDR family's BY (dependence-
+robust) cross-check. CI: `quality-study.yml` (weekly Sun 11:23). Tests +9 (209 green).
+
 **Factor-expansion roadmap (user-approved, by priority):** Phase 1 reversal DONE ↑; Phase 2 low-volatility
-DONE ↑; Phase 3 quality (profitability/accruals from SEC facts); Phase 4 live forming-bar chart (cosmetic).
+DONE ↑; Phase 3 quality (profitability) DONE ↑; Phase 4 live forming-bar chart (cosmetic) — REMAINING.
 Each is propose-only / FDR-gated / never auto-activated — candidates, not proven edges.
 
 **Next — Track B:**

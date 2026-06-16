@@ -205,6 +205,30 @@ export function lowVolRankGate(values, { topFrac = 1 / 3 } = {}) {
   return flags;
 }
 
+// ─── Cross-sectional QUALITY (profitability) overlay (propose-only) ───────────
+// The quality.json study judges this NON-PRICE factor with point-in-time SEC profitability; here,
+// qualityValue reads the same idea straight off the distilled fundamentals record already on
+// fundaDB (the ROE the merit grade also uses), so a MORE-PROFITABLE name scores HIGH. It's a
+// fundamental factor, distinct from the merit COMPOSITE (which blends valuation + growth too).
+// qualityRankGate flags the TOP TERTILE by profitability. Like the others, qualityActivated is a
+// LABEL: it never enters forwardGates / actionable, so it never changes which trades open.
+export function qualityValue(rec) {
+  if (!rec) return null;
+  const v = rec.roe;                            // return on equity — the canonical profitability proxy
+  return (v == null || !isFinite(v)) ? null : Number(v);
+}
+// Pure: flag the top `topFrac` by profitability. Same conservative rule as the other rank gates —
+// fewer than 3 rankable names ⇒ no activation.
+export function qualityRankGate(values, { topFrac = 1 / 3 } = {}) {
+  const flags = (values || []).map(() => false);
+  const idx = (values || []).map((v, i) => [v, i]).filter(([v]) => v != null && isFinite(v));
+  if (idx.length < 3) return flags;
+  idx.sort((a, b) => b[0] - a[0]);             // highest profitability first
+  const k = Math.max(1, Math.floor(idx.length * topFrac));
+  for (let i = 0; i < k; i++) flags[idx[i][1]] = true;
+  return flags;
+}
+
 // ─── Event overlay (propose-only) — two news hypotheses as A/B LABELS ─────────
 // Reads ONLY the already-captured point-in-time `events` summary (newsWindow up to the
 // decision bar) — it NEVER re-fetches, so it stays no-lookahead. Like meritGate, these are
@@ -309,7 +333,9 @@ export function buildEntry({ sym, settled, fundaDB, news = [], loggedAt = new Da
       reversal: (r => r == null ? null : parseFloat(r.toFixed(4)))(reversalValue(settled)),
       reversalActivated: false,
       lowVol: (v => v == null ? null : parseFloat(v.toFixed(6)))(lowVolValue(settled)),
-      lowVolActivated: false, ...eventTags(eventsAtSignal),
+      lowVolActivated: false,
+      quality: (q => q == null ? null : parseFloat(q.toFixed(4)))(qualityValue(fundaDB && fundaDB[sym])),
+      qualityActivated: false, ...eventTags(eventsAtSignal),
       earningsRecent: earningsGate(fundaDB && fundaDB[sym], decision.date) },
     status: isObs ? "OBSERVATION" : "OPEN",
     exit: null, exitAt: null, exitDate: null, barsHeld: null,
@@ -547,6 +573,10 @@ async function main() {
   // Independent label; touches only e.tags.lowVolActivated, never the gate.
   const lvFlags = lowVolRankGate(tacticalNew.map(e => e.tags.lowVol));
   tacticalNew.forEach((e, i) => { e.tags.lowVolActivated = lvFlags[i]; });
+  // Cross-sectional quality overlay: top-tertile ranking on profitability (highest ROE).
+  // Independent label; touches only e.tags.qualityActivated, never the gate.
+  const qFlags = qualityRankGate(tacticalNew.map(e => e.tags.quality));
+  tacticalNew.forEach((e, i) => { e.tags.qualityActivated = qFlags[i]; });
 
   if (args.preview) {
     console.log("── FORWARD-TEST PREVIEW (no writes) ─────────────────────────");

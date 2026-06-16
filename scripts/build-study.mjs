@@ -64,7 +64,7 @@ export function grid(stepM){
 // ─── per-ticker raw data (one SEC + one price fetch each) ─────────────────────
 // A pre-resolved CIK (from the survivorship-free roster) bypasses secCik's symbol map,
 // which only knows CURRENT filers — that's how de-listed names get reached at all.
-async function loadTicker(sym, key, cik=null){
+export async function loadTicker(sym, key, cik=null){
   const resolved = cik || await secCik(sym);
   if(!resolved) throw new Error("not in SEC EDGAR");
   const r=await secFetch("https://data.sec.gov/api/xbrl/companyfacts/CIK"+resolved+".json");
@@ -166,7 +166,8 @@ export function selectMeritUniverse(companies, cap){
 
 // Prefer the survivorship-free roster.json; fall back to the legacy survivor set
 // (readTickers + secCik). Returns { entries:[{sym,cik}], source, survivorshipFree }.
-function resolveMeritUniverse(){
+// Exported so sibling FUNDAMENTAL studies (e.g. build-quality.mjs) share one universe resolver.
+export function resolveMeritUniverse(){
   try{
     const r = JSON.parse(fs.readFileSync(path.join(ROOT, "roster.json"), "utf8"));
     if(Array.isArray(r.companies) && r.companies.length){
