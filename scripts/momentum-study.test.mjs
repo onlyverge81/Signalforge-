@@ -65,6 +65,10 @@ test("pack(): a momentum-predictive panel yields positive mean IC; the label-shu
   assert.equal(typeof packed.proven, "boolean");
   // Placebo shuffles merit labels within each period → the relationship must wash out.
   assert.ok(Math.abs(packed.placebo.meanIC) < packed.meanIC, "placebo IC must collapse relative to the real signal");
+  // trials threads through to the overfit haircut (the momentum driver passes trials=2 for its
+  // two lookback windows); default stays 1 so the merit caller is unchanged.
+  assert.equal(pack(obs, { trials: 2 }).deflated.trials, 2);
+  assert.equal(packed.deflated.trials, 1, "default trials is 1");
 });
 
 test("buildMomentumObservations: empty/short panels yield no observations (never throws)", () => {

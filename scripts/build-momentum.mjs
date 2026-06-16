@@ -116,8 +116,11 @@ async function main(){
     // Polygon Starter is unthrottled (POLYGON_PACE_MS=0) — no sleep, no SEC politeness needed.
   }
 
-  const mom12 = pack(buildMomentumObservations(loaded, 12));
-  const mom6  = pack(buildMomentumObservations(loaded, 6));
+  // trials=2 — two lookback windows (12-1 and 6-1) are tested, so the deflated-t is haircut for
+  // the configuration search even in-sample (an honest overfit control, not just a comment).
+  const TRIALS = 2;
+  const mom12 = pack(buildMomentumObservations(loaded, 12), { trials: TRIALS });
+  const mom6  = pack(buildMomentumObservations(loaded, 6),  { trials: TRIALS });
 
   const out = {
     generatedAt: new Date().toISOString(),

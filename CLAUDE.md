@@ -165,10 +165,50 @@ analysis in the approved plan file; branch `claude/signalforge-profitability-whe
   CI: `momentum-study.yml` (weekly, Polygon key). Tests +9 (166 green). In-sample is NEVER
   trusted — only the OOS `momentum-on` ledger cleared through FDR counts.
 
-**Next — Track B 2–5:**
-- Mature the `momentum-on` (and `merits-on`) OOS ledgers to n≥10; human-ratify only if they clear FDR.
-- Total-return benchmark (Polygon corporate actions / dividends) so alpha isn't vs an
-  understated price-only hold.
-- Mature the `merits-on` OOS ledger to n≥10, then human-ratify only if it clears FDR.
-- Event gates (Polygon news / earnings); WebSocket live plumbing (`delayed.socket`).
+**First momentum CI run (DONE, in-sample only):** `momentum-study.yml` ran on the survivorship-free
+roster (294/500 covered, 270 de-listed). Both windows read `proven:true` IN-SAMPLE — 12-1: meanIC
+0.0845, t 4.06, 47 periods; 6-1: meanIC 0.0777, t 4.22, 53 periods; placebo null, walk-forward
+hit-rate 0.75/0.76, beta-timing corr −0.27/−0.07 (NOT disguised beta), both time-split halves
+significant. **Honest caveats:** the "OOS split" is an in-sample time-split (not forward OOS); all
+periods sit in the 2022–2026 regime (Polygon Starter monthly history ≈5y); 206 thin/0-bar de-listed
+tickers skipped. Strongest in-sample factor in the repo — still NOT proven. Now hardened with a
+**trials=2 deflation** (`pack(obs,{trials})`): the 2 lookback windows are haircut even in-sample
+(12-1 t→2.89, 6-1 t→3.04, both still SIGNIFICANT). Verdict still rests on the live OOS ledger.
+
+**Total-return benchmark — ALREADY WIRED (not a TODO):** the OOS path is total-return, not price-only.
+`forward-log.mjs` fetches `fetchPolygonDividends` and stamps `benchDiv` on every closed trade (tactical
+`markToMarket` + position `markToMarketPosition`); `forward-perf.mjs` `buyHoldTotalPct`/`tradeAlpha`
+add the dividends the holder collects. So alpha is measured vs a same-name TOTAL-return hold.
+
+**Event gates — propose-only labels (DONE), hard gate deferred:** the `events` summary
+(`newsWindow`: count/freshest/sentiment, point-in-time ≤ decision bar) was already captured on every
+ledger row; now `eventTags(events)` (pure, `forward-log.mjs`) turns it into TWO opposite A/B hypotheses,
+tagged on tactical + position rows: `newsPositive` (count>0 && sentiment positive → post-news drift /
+PEAD) and `newsQuiet` (sentiment≠negative → event-risk avoidance). `forward-perf.mjs` adds
+`news-pos-on/off` + `news-quiet-on/off` under the existing FDR gate. Reads ONLY the captured events
+(never re-fetches → no-lookahead); NEVER touches `gate.actionable` (statuses byte-identical, tested).
+A HARD event gate is deferred until a label earns it OOS. Tests +3 (169 green).
+
+**Earnings-proximity gate — propose-only label (DONE), solved via SEC, not Polygon:** the Polygon-Starter
+earnings-calendar entitlement question is moot — the earnings-announcement date is reachable from the SEC
+EDGAR data already fetched. `secLastFiled(facts,names,asOf)` (pure, `sec-lib.mjs`) returns the latest 10-Q/
+10-K `filed` date (≈ the earnings release), point-in-time (never a filing dated after asOf). `distill`
+surfaces it as `lastFiled` on every `fundamentals.json` record. `earningsGate(rec,decisionDate,{recentDays:30})`
+(`forward-log.mjs`) tags `earningsRecent` on tactical + position rows — the post-earnings-DRIFT hypothesis on
+hard numbers (complements the news-sentiment label). `forward-perf.mjs` adds `earnings-recent-on/off` under the
+FDR gate. Propose-only: never touches `gate.actionable` (tested). No-lookahead: filing dates are historical and
+forward-log only logs the current bar. Tests +5 (174 green). `lastFiled` populates on the next fundamentals CI run.
+
+**Next — Track B:**
+- Mature the `momentum-on` / `merits-on` / `news-*` / `earnings-recent-on` OOS ledgers to n≥10; human-ratify
+  only if they clear FDR. PASSIVE — the nightly `forward-log → forward-perf → promote` already partitions every
+  variant, and the BH+BY FDR family auto-grows to include each new label once it has ≥ MIN_TRADES_SIG trades.
+- **WebSocket live plumbing is ~built, not greenfield:** `scripts/poly-ws.mjs` (unit-tested protocol:
+  auth/subscribe/parse/`wsFreshness`) + `PolyLiveSocket` in `index.html` (auth→subscribe→onBar, auto-reconnect,
+  cleanup) + a "GO LIVE" UI toggle + honest DELAYED badge (never fakes REALTIME on Starter; cluster is a one-word
+  `mode` flip on upgrade). Confirmed entitled: the user's Stocks-Starter plan **includes WebSockets** (delayed).
+  Added a **staleness watchdog** (15s `setInterval` re-ages the badge from the last bar's end via `wsBand`, so a
+  stalled stream decays to STALE instead of freezing). Remaining = OPTIONAL: fold the live forming bar into the
+  chart (cosmetic on a delayed/swing feed — NOT a real-time signal) + a PolyLiveSocket↔poly-ws.mjs parity test.
+  Live end-to-end needs a key in a real browser (the delayed socket is egress-blocked in CI).
 - Every candidate clears no-lookahead + OOS t≥2 after FDR before it's ever shown as tradeable.

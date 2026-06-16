@@ -2,7 +2,7 @@
 // Run: node --test scripts/
 import { test } from "node:test";
 import assert from "node:assert/strict";
-import { splitSettled, markToMarket, mergeLedger, buildEntry, parseFeed, gradeFor, forwardGates, meritGate, momentumValue, momentumRankGate, buildPositionEntry, markToMarketPosition } from "./forward-log.mjs";
+import { splitSettled, markToMarket, mergeLedger, buildEntry, parseFeed, gradeFor, forwardGates, meritGate, momentumValue, momentumRankGate, eventTags, earningsGate, buildPositionEntry, markToMarketPosition } from "./forward-log.mjs";
 
 // A long uptrend of `up` rising bars then `dip` declining bars (a pullback inside the trend).
 const _pbar = c => { c=+(+c).toFixed(4); return { date:"2025-01-01", open:c, high:+(c+1).toFixed(4), low:+(c-1).toFixed(4), close:c, volume:1e6 }; };
@@ -280,4 +280,60 @@ test("buildEntry: momentum tag is attached; momentumActivated defaults false and
   const short = buildEntry({ sym: "TST", settled: genUp(120), fundaDB: null });
   assert.equal(short.tags.momentum, null);
   assert.equal(short.tags.momentumActivated, false);
+});
+
+// ─── event overlay — propose-only news LABELS (two hypotheses, no decision change) ─
+test("eventTags: newsPositive needs fresh positive news; newsQuiet means no fresh negative news", () => {
+  assert.deepEqual(eventTags({ count: 2, sentiment: "positive" }), { newsPositive: true,  newsQuiet: true });
+  assert.deepEqual(eventTags({ count: 3, sentiment: "negative" }), { newsPositive: false, newsQuiet: false });
+  assert.deepEqual(eventTags({ count: 1, sentiment: "neutral"  }), { newsPositive: false, newsQuiet: true });
+  // No news in the window (count 0, sentiment null) → not positive, but quiet (no bad news).
+  assert.deepEqual(eventTags({ count: 0, sentiment: null }), { newsPositive: false, newsQuiet: true });
+  assert.deepEqual(eventTags(undefined), { newsPositive: false, newsQuiet: true });
+});
+
+test("buildEntry: news labels ride the captured events and never change the OPEN/OBSERVATION decision", () => {
+  const settled = genUp(120);
+  const decisionDate = settled[settled.length - 1].date;
+  // Fresh POSITIVE news on the decision bar → newsPositive true, newsQuiet true.
+  const news = [{ publishedUtc: decisionDate + "T12:00:00Z", sentiment: "positive" }];
+  const e = buildEntry({ sym: "TST", settled, fundaDB: null, news, loggedAt: "2026-06-11T22:00:00Z" });
+  assert.equal(e.tags.newsPositive, true);
+  assert.equal(e.tags.newsQuiet, true);
+  assert.deepEqual(eventTags(e.events), { newsPositive: e.tags.newsPositive, newsQuiet: e.tags.newsQuiet });
+  // Same series, fresh NEGATIVE news → flips both labels, but the status is unchanged (label-only).
+  const neg = buildEntry({ sym: "TST", settled, fundaDB: null, news: [{ publishedUtc: decisionDate + "T12:00:00Z", sentiment: "negative" }] });
+  assert.equal(neg.tags.newsPositive, false);
+  assert.equal(neg.tags.newsQuiet, false);
+  assert.equal(neg.status, e.status, "news sentiment must not change which trades open");
+  // No news at all → quiet (no bad news), not positive.
+  const none = buildEntry({ sym: "TST", settled, fundaDB: null, news: [] });
+  assert.equal(none.tags.newsPositive, false);
+  assert.equal(none.tags.newsQuiet, true);
+});
+
+// ─── earnings-proximity overlay — propose-only LABEL from the SEC filing date ──
+test("earningsGate: true only when the last 10-Q/10-K was filed within recentDays before the bar", () => {
+  const decision = "2026-06-11";
+  assert.equal(earningsGate({ lastFiled: "2026-06-01" }, decision), true);   // 10 days ago → recent
+  assert.equal(earningsGate({ lastFiled: "2026-04-01" }, decision), false);  // ~71 days ago → stale
+  assert.equal(earningsGate({ lastFiled: "2026-06-25" }, decision), false);  // filed AFTER the bar → no lookahead
+  assert.equal(earningsGate({ lastFiled: null }, decision), false);          // no filing date → off
+  assert.equal(earningsGate(null, decision), false);                         // no record → off
+  assert.equal(earningsGate({ lastFiled: "2026-05-20" }, decision, { recentDays: 10 }), false); // window tightened
+});
+
+test("buildEntry: earningsRecent rides fundamentals.lastFiled and never changes the trade decision", () => {
+  const settled = genUp(120);
+  const decisionDate = settled[settled.length - 1].date;
+  const recent = { TST: { lastFiled: decisionDate } };                       // filed on the decision bar
+  const e = buildEntry({ sym: "TST", settled, fundaDB: recent, loggedAt: "2026-06-11T22:00:00Z" });
+  assert.equal(e.tags.earningsRecent, true);
+  // Stale filing → label off, but status (OPEN/OBSERVATION) is identical (label-only).
+  const stale = buildEntry({ sym: "TST", settled, fundaDB: { TST: { lastFiled: "2000-01-01" } } });
+  assert.equal(stale.tags.earningsRecent, false);
+  assert.equal(stale.status, e.status, "earnings proximity must not change which trades open");
+  // No fundamentals at all → off, still logs.
+  const none = buildEntry({ sym: "TST", settled, fundaDB: null });
+  assert.equal(none.tags.earningsRecent, false);
 });
