@@ -187,12 +187,21 @@ tagged on tactical + position rows: `newsPositive` (count>0 && sentiment positiv
 PEAD) and `newsQuiet` (sentiment≠negative → event-risk avoidance). `forward-perf.mjs` adds
 `news-pos-on/off` + `news-quiet-on/off` under the existing FDR gate. Reads ONLY the captured events
 (never re-fetches → no-lookahead); NEVER touches `gate.actionable` (statuses byte-identical, tested).
-A HARD event gate is deferred until a label earns it OOS. Tests +3 (169 green). Earnings-proximity gate
-still open — needs verifying Polygon Stocks Starter exposes an earnings calendar before scoping.
+A HARD event gate is deferred until a label earns it OOS. Tests +3 (169 green).
+
+**Earnings-proximity gate — propose-only label (DONE), solved via SEC, not Polygon:** the Polygon-Starter
+earnings-calendar entitlement question is moot — the earnings-announcement date is reachable from the SEC
+EDGAR data already fetched. `secLastFiled(facts,names,asOf)` (pure, `sec-lib.mjs`) returns the latest 10-Q/
+10-K `filed` date (≈ the earnings release), point-in-time (never a filing dated after asOf). `distill`
+surfaces it as `lastFiled` on every `fundamentals.json` record. `earningsGate(rec,decisionDate,{recentDays:30})`
+(`forward-log.mjs`) tags `earningsRecent` on tactical + position rows — the post-earnings-DRIFT hypothesis on
+hard numbers (complements the news-sentiment label). `forward-perf.mjs` adds `earnings-recent-on/off` under the
+FDR gate. Propose-only: never touches `gate.actionable` (tested). No-lookahead: filing dates are historical and
+forward-log only logs the current bar. Tests +5 (174 green). `lastFiled` populates on the next fundamentals CI run.
 
 **Next — Track B:**
-- Mature the `momentum-on` / `merits-on` / `news-*` OOS ledgers to n≥10; human-ratify only if they clear
-  FDR. PASSIVE — the nightly `forward-log → forward-perf → promote` already partitions every variant.
-- WebSocket live plumbing (`delayed.socket`); earnings-proximity gate (verify Starter entitlement first).
-  Both are new subsystems → scope before building.
+- Mature the `momentum-on` / `merits-on` / `news-*` / `earnings-recent-on` OOS ledgers to n≥10; human-ratify
+  only if they clear FDR. PASSIVE — the nightly `forward-log → forward-perf → promote` already partitions every
+  variant, and the BH+BY FDR family auto-grows to include each new label once it has ≥ MIN_TRADES_SIG trades.
+- WebSocket live plumbing (`delayed.socket`) — the last new subsystem; scope before building.
 - Every candidate clears no-lookahead + OOS t≥2 after FDR before it's ever shown as tradeable.

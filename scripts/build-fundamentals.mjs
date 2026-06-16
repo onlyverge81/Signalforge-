@@ -9,7 +9,7 @@
 import fs from "node:fs";
 import path from "node:path";
 import { fileURLToPath } from "node:url";
-import { secCik, secFetch, secTTM, secQYoY, secInstant, secFirst } from "./sec-lib.mjs";
+import { secCik, secFetch, secTTM, secQYoY, secInstant, secFirst, secLastFiled } from "./sec-lib.mjs";
 
 const __dirname = path.dirname(fileURLToPath(import.meta.url));
 const ROOT = path.resolve(__dirname, "..");
@@ -56,7 +56,10 @@ export function distill(j, asOf){
 
   const asof=(niT||revT||epsT||{}).end||null;
   const basis=(niT&&niT.basis)||(revT&&revT.basis)||"TTM"; // TTM unless only an annual was available
-  return { rec, asof, basis };
+  // Latest filing date across the income-statement tags — the earnings-announcement proxy (a
+  // 10-Q/10-K's `filed` date ≈ the earnings release). Point-in-time via the same asOf cutoff.
+  const lastFiled=secLastFiled(G, ["EarningsPerShareDiluted","EarningsPerShareBasic","NetIncomeLoss","ProfitLoss","RevenueFromContractWithCustomerExcludingAssessedTax","Revenues","SalesRevenueNet","RevenueFromContractWithCustomerIncludingAssessedTax"], asOf);
+  return { rec, asof, basis, lastFiled };
 }
 
 async function buildOne(sym){
@@ -64,9 +67,9 @@ async function buildOne(sym){
   if(!cik) return { sym, error:"not in SEC EDGAR" };
   const r=await secFetch("https://data.sec.gov/api/xbrl/companyfacts/CIK"+cik+".json");
   const j=await r.json();
-  const { rec, asof, basis }=distill(j);
+  const { rec, asof, basis, lastFiled }=distill(j);
   if(Object.keys(rec).length===0) return { sym, error:"no usable figures" };
-  return { sym, data:{ entity:j.entityName||sym, cik, asof, basis, ...rec } };
+  return { sym, data:{ entity:j.entityName||sym, cik, asof, basis, lastFiled, ...rec } };
 }
 
 const sleep=ms=>new Promise(r=>setTimeout(r,ms));

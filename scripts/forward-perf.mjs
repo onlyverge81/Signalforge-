@@ -165,6 +165,10 @@ export function defaultVariants() {
     { label: "news-pos-off", where: t => tac(t) && !(t.tags && t.tags.newsPositive) },
     { label: "news-quiet-on", where: t => tac(t) && !!(t.tags && t.tags.newsQuiet) },
     { label: "news-quiet-off", where: t => tac(t) && !(t.tags && t.tags.newsQuiet) },
+    // Earnings-proximity overlay (propose-only): the post-earnings-DRIFT hypothesis on hard
+    // numbers — does a recently-filed 10-Q/10-K (SEC `lastFiled`) carry forward alpha?
+    { label: "earnings-recent-on", where: t => tac(t) && !!(t.tags && t.tags.earningsRecent) },
+    { label: "earnings-recent-off", where: t => tac(t) && !(t.tags && t.tags.earningsRecent) },
     { label: "position", where: t => !!(t.tags && t.tags.mode === "position") },
   ];
 }

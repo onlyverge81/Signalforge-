@@ -1,7 +1,7 @@
 // Offline unit tests for the SEC math — no network. Run: node --test scripts/
 import { test } from "node:test";
 import assert from "node:assert/strict";
-import { secTTM, secQYoY, secInstant, secFirst, meritScore, meritMetrics } from "./sec-lib.mjs";
+import { secTTM, secQYoY, secInstant, secFirst, secLastFiled, meritScore, meritMetrics } from "./sec-lib.mjs";
 import { distill, readTickers } from "./build-fundamentals.mjs";
 
 // Helper: wrap a flat array of XBRL entries as a unit node (USD by default).
@@ -59,6 +59,30 @@ test("secFirst returns the first present tag", () => {
   const facts = { Revenues: { units:{} } };
   assert.equal(secFirst(facts, ["SalesRevenueNet","Revenues"]), facts.Revenues);
   assert.equal(secFirst(facts, ["Nope"]), null);
+});
+
+test("secLastFiled: latest filing date across tags, point-in-time (never one filed after asOf)", () => {
+  const facts = {
+    EarningsPerShareDiluted: node([
+      { end:"2024-06-30", val:1, filed:"2024-07-25" },
+      { end:"2024-09-30", val:1, filed:"2024-10-31" },   // newest filing
+    ], "USD/shares"),
+    Revenues: node([{ end:"2024-09-30", val:100, filed:"2024-10-30" }]),
+  };
+  assert.equal(secLastFiled(facts, ["EarningsPerShareDiluted","Revenues"]), "2024-10-31");
+  // Point-in-time: a decision asOf 2024-10-15 can't see the 10-31 filing → falls back to 07-25.
+  assert.equal(secLastFiled(facts, ["EarningsPerShareDiluted","Revenues"], "2024-10-15"), "2024-07-25");
+  // Missing tags / no filed dates → null.
+  assert.equal(secLastFiled(facts, ["Nope"]), null);
+  assert.equal(secLastFiled({ X: node([{ end:"2024-09-30", val:1 }]) }, ["X"]), null);
+});
+
+test("distill: surfaces lastFiled (the earnings-announcement proxy)", () => {
+  const j = { facts: { "us-gaap": {
+    NetIncomeLoss: node([{ start:"2024-07-01", end:"2024-09-30", val:10, filed:"2024-10-31" }]),
+    Revenues:      node([{ start:"2024-07-01", end:"2024-09-30", val:100, filed:"2024-10-30" }]),
+  } } };
+  assert.equal(distill(j).lastFiled, "2024-10-31");
 });
 
 test("distill emits price-independent fields the app expects", () => {

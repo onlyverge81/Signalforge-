@@ -156,6 +156,17 @@ export function eventTags(events){
   };
 }
 
+// Earnings-proximity overlay (propose-only): was the most recent 10-Q/10-K filed within
+// `recentDays` before the decision bar? `lastFiled` (the earnings-announcement proxy from SEC
+// EDGAR) rides on the fundamentals record, so this needs no Polygon earnings entitlement. A
+// just-filed name sits in the post-earnings-announcement-DRIFT window (the PEAD hypothesis on
+// hard numbers, complementing the news-sentiment label). Pure; another label, never a gate.
+export function earningsGate(fundaRec, decisionDate, { recentDays = 30 } = {}) {
+  if (!fundaRec || !fundaRec.lastFiled || !decisionDate) return false;
+  const days = (new Date(decisionDate).getTime() - new Date(fundaRec.lastFiled).getTime()) / 864e5;
+  return days >= 0 && days <= recentDays;
+}
+
 // ─── Pure trading-policy gates for the forward record (testable, no network) ──
 // Decide whether a signal opens a paper position and why it is/ isn't muted:
 //   longOnlyMuted — a SELL under the long-only policy (shorts lose; never taken)
@@ -230,7 +241,8 @@ export function buildEntry({ sym, settled, fundaDB, news = [], loggedAt = new Da
     // labels (newsPositive / newsQuiet) ride the captured events — propose-only, never a gate.
     tags: { ...gate.tags, fundamentalGrade: grade, meritsActivated: meritGate(grade),
       momentum: (m => m == null ? null : parseFloat(m.toFixed(4)))(momentumValue(settled)),
-      momentumActivated: false, ...eventTags(eventsAtSignal) },
+      momentumActivated: false, ...eventTags(eventsAtSignal),
+      earningsRecent: earningsGate(fundaDB && fundaDB[sym], decision.date) },
     status: isObs ? "OBSERVATION" : "OPEN",
     exit: null, exitAt: null, exitDate: null, barsHeld: null,
     pnl: null, grossPct: null, pnlPct: null, benchClose: null, benchDiv: null,
@@ -304,7 +316,8 @@ export function buildPositionEntry({ sym, settled, fundaDB, news = [], loggedAt 
     events: eventsAtSignal,
     tags: { mode: "position", engaged: true, fundamentalGrade: grade,
       trendStrength: parseFloat((ps.trendStrength || 0).toFixed(4)),
-      dipDepth: parseFloat((ps.dipDepth || 0).toFixed(4)), ...eventTags(eventsAtSignal) },
+      dipDepth: parseFloat((ps.dipDepth || 0).toFixed(4)), ...eventTags(eventsAtSignal),
+      earningsRecent: earningsGate(fundaDB && fundaDB[sym], decision.date) },
     status: actionable ? "OPEN" : "OBSERVATION",
     exit: null, exitAt: null, exitDate: null, barsHeld: null,
     pnl: null, grossPct: null, pnlPct: null, benchClose: null, benchDiv: null,

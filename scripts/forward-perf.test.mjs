@@ -10,7 +10,7 @@ import {
 import { markToMarket } from "./forward-log.mjs";
 
 // A minimal closed-trade row, mirroring the ledger schema.
-function closed({ id = "T", ticker = "X", signal = "BUY", entry = 100, exit, benchClose, benchDiv, grade = null, merits = false, momentum = false, newsPositive = false, newsQuiet = true }) {
+function closed({ id = "T", ticker = "X", signal = "BUY", entry = 100, exit, benchClose, benchDiv, grade = null, merits = false, momentum = false, newsPositive = false, newsQuiet = true, earningsRecent = false }) {
   const grossPct = (exit - entry) / entry * 100;
   return {
     id, ticker, signal, entry, exit,
@@ -18,7 +18,7 @@ function closed({ id = "T", ticker = "X", signal = "BUY", entry = 100, exit, ben
     pnlPct: parseFloat((grossPct - COST_PER_TRADE).toFixed(4)),
     status: grossPct >= 0 ? "WIN" : "LOSS",
     benchClose, benchDiv,
-    tags: { fundamentalGrade: grade, meritsActivated: merits, momentumActivated: momentum, newsPositive, newsQuiet },
+    tags: { fundamentalGrade: grade, meritsActivated: merits, momentumActivated: momentum, newsPositive, newsQuiet, earningsRecent },
   };
 }
 
@@ -168,6 +168,17 @@ test("scoreLedger: event overlays partition the tactical population by the news 
   assert.equal(perf.variants["news-quiet-on"].n + perf.variants["news-quiet-off"].n, perf.variants["all"].n);
 });
 
+test("scoreLedger: earnings-recent partitions the tactical population by the SEC filing-proximity tag", () => {
+  const ledger = [
+    closed({ id: "A", entry: 100, exit: 107, benchClose: 102, earningsRecent: true }),
+    closed({ id: "B", entry: 100, exit: 101, benchClose: 110, earningsRecent: false }),
+    closed({ id: "C", entry: 100, exit: 109, benchClose: 103, earningsRecent: true }),
+  ];
+  const perf = scoreLedger(ledger);
+  assert.equal(perf.variants["earnings-recent-on"].n, 2);
+  assert.equal(perf.variants["earnings-recent-on"].n + perf.variants["earnings-recent-off"].n, perf.variants["all"].n);
+});
+
 test("scoreLedger: POSITION is its own variant; the tactical family excludes it (no conflation)", () => {
   const ledger = [
     closed({ id:"T1", entry:100, exit:106, benchClose:102, grade:"A", merits:true }),       // tactical
@@ -197,6 +208,7 @@ test("defaultVariants: covers all + grade + merit + momentum lenses", () => {
   assert.ok(labels.includes("momentum-off"));
   assert.ok(labels.includes("news-pos-on"));
   assert.ok(labels.includes("news-quiet-on"));
+  assert.ok(labels.includes("earnings-recent-on"));
 });
 
 // ─── statistics: incomplete beta, Student-t tail, one-sample t ────────────────
