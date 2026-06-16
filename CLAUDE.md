@@ -82,6 +82,9 @@ code enforces "no fallback by design"). Exhaust Polygon before reaching elsewher
 - **`index.html` ↔ `scripts/engine.mjs` parity.** The app and the study engine must compute
   identical signals/backtests. Mirror every engine change into both; keep them byte-for-byte.
 - `POLYGON_API_KEY` is the only secret; scripts no-op gracefully without it in CI.
+- **Review before merge — never auto-merge to `main`.** Push the branch, open/update the PR,
+  and STOP. The user reviews and merges (or explicitly says "merge it") themselves. Keep PRs
+  single-feature so review stays tractable.
 
 ## Commands
 
