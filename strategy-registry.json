@@ -1,6 +1,6 @@
 {
   "version": 1,
-  "updatedAt": "2026-06-13T09:46:51.260Z",
+  "updatedAt": "2026-06-16T16:11:59.506Z",
   "policy": {
     "promote": {
       "minTrades": 10,
@@ -106,6 +106,114 @@
       "history": [
         {
           "at": "2026-06-13T01:53:51.644Z",
+          "from": null,
+          "to": "candidate",
+          "reason": "registered"
+        }
+      ]
+    },
+    "momentum-on": {
+      "state": "candidate",
+      "since": "2026-06-16T16:11:59.506Z",
+      "history": [
+        {
+          "at": "2026-06-16T16:11:59.506Z",
+          "from": null,
+          "to": "candidate",
+          "reason": "registered"
+        }
+      ]
+    },
+    "momentum-off": {
+      "state": "candidate",
+      "since": "2026-06-16T16:11:59.506Z",
+      "history": [
+        {
+          "at": "2026-06-16T16:11:59.506Z",
+          "from": null,
+          "to": "candidate",
+          "reason": "registered"
+        }
+      ]
+    },
+    "news-pos-on": {
+      "state": "candidate",
+      "since": "2026-06-16T16:11:59.506Z",
+      "history": [
+        {
+          "at": "2026-06-16T16:11:59.506Z",
+          "from": null,
+          "to": "candidate",
+          "reason": "registered"
+        }
+      ]
+    },
+    "news-pos-off": {
+      "state": "candidate",
+      "since": "2026-06-16T16:11:59.506Z",
+      "history": [
+        {
+          "at": "2026-06-16T16:11:59.506Z",
+          "from": null,
+          "to": "candidate",
+          "reason": "registered"
+        }
+      ]
+    },
+    "news-quiet-on": {
+      "state": "candidate",
+      "since": "2026-06-16T16:11:59.506Z",
+      "history": [
+        {
+          "at": "2026-06-16T16:11:59.506Z",
+          "from": null,
+          "to": "candidate",
+          "reason": "registered"
+        }
+      ]
+    },
+    "news-quiet-off": {
+      "state": "candidate",
+      "since": "2026-06-16T16:11:59.506Z",
+      "history": [
+        {
+          "at": "2026-06-16T16:11:59.506Z",
+          "from": null,
+          "to": "candidate",
+          "reason": "registered"
+        }
+      ]
+    },
+    "earnings-recent-on": {
+      "state": "candidate",
+      "since": "2026-06-16T16:11:59.506Z",
+      "history": [
+        {
+          "at": "2026-06-16T16:11:59.506Z",
+          "from": null,
+          "to": "candidate",
+          "reason": "registered"
+        }
+      ]
+    },
+    "earnings-recent-off": {
+      "state": "candidate",
+      "since": "2026-06-16T16:11:59.506Z",
+      "history": [
+        {
+          "at": "2026-06-16T16:11:59.506Z",
+          "from": null,
+          "to": "candidate",
+          "reason": "registered"
+        }
+      ]
+    },
+    "position": {
+      "state": "candidate",
+      "since": "2026-06-16T16:11:59.506Z",
+      "history": [
+        {
+          "at": "2026-06-16T16:11:59.506Z",
           "from": null,
           "to": "candidate",
           "reason": "registered"
