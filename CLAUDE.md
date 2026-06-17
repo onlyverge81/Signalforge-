@@ -277,6 +277,19 @@ red SECTOR-DRIVEN) when available. Tests +5 (214 green): the diagnostic SURVIVES
 COLLAPSES a pure sector bet, and is a no-op without sector tags; SIC mapping unit-tested. NOT wired into any
 gate (`meritEdgeProven` untouched) — diagnostic only, for now. Populates once the weekly CI resolves SICs.
 
+**Blank-screen reliability fix (DONE) — self-hosted libs + boot watchdog:** the deployed Pages app could
+render a SILENT BLACK SCREEN — it pulled React/ReactDOM + a 3 MB `@babel/standalone` from the unpkg CDN and
+transpiled in-browser, with `#root` empty and NO fallback, so any CDN hiccup / slow mobile load blanked it.
+Fix: **self-hosted** the three libs same-origin under `vendor/` (react 18.3.1, react-dom 18.3.1,
+@babel/standalone 7.29.7) — `index.html` now loads `./vendor/*` (unpkg dropped from CSP `script-src`), so a
+third-party outage can't blank the app; still single-file in-browser-transpiled (charter preserved). Added a
+`#boot` loader ("Loading SignalForge…") + a `__sfBootFail` watchdog: each vendored `<script>` has `onerror`,
+plus a 20 s mount timeout; on failure it shows a "couldn't load — ↻ Reload" overlay instead of black. The
+helper is timing-robust (a `<head>` script can fail before `<body>`/#boot exists → it defers to DOMContentLoaded
+and creates the overlay). `createRoot(...).render` replaces `#boot` on success. `pages.yml` uploads `path:'.'`
+so `vendor/` deploys. Verified via the run-signalforge driver: app mounts same-origin; both a network-abort and
+an HTTP-503 on babel show the Reload overlay (no silent black). NO engine/parity impact (head + boot only).
+
 **Next — Track B:**
 - Mature the `momentum-on` / `merits-on` / `news-*` / `earnings-recent-on` OOS ledgers to n≥10; human-ratify
   only if they clear FDR. PASSIVE — the nightly `forward-log → forward-perf → promote` already partitions every

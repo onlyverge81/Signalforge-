@@ -2,7 +2,7 @@
 <html lang="en">
 <head>
 <meta charset="UTF-8"/>
-<meta http-equiv="Content-Security-Policy" content="default-src 'self'; script-src 'self' 'unsafe-inline' 'unsafe-eval' https://unpkg.com; style-src 'self' 'unsafe-inline' https://fonts.googleapis.com; font-src 'self' https://fonts.gstatic.com; img-src 'self' data:; connect-src 'self' https://api.twelvedata.com https://api.polygon.io; object-src 'none'; base-uri 'self'; form-action 'self'"/>
+<meta http-equiv="Content-Security-Policy" content="default-src 'self'; script-src 'self' 'unsafe-inline' 'unsafe-eval'; style-src 'self' 'unsafe-inline' https://fonts.googleapis.com; font-src 'self' https://fonts.gstatic.com; img-src 'self' data:; connect-src 'self' https://api.twelvedata.com https://api.polygon.io; object-src 'none'; base-uri 'self'; form-action 'self'"/>
 <meta name="viewport" content="width=device-width,initial-scale=1,maximum-scale=1"/>
 <meta name="theme-color" content="#080b14"/>
 <title>SignalForge — Live Trading Analyzer</title>
@@ -17,13 +17,49 @@ a{text-decoration:none}
 ::-webkit-scrollbar{height:6px;width:6px}
 ::-webkit-scrollbar-thumb{background:#1a2035;border-radius:3px}
 @keyframes spin{to{transform:rotate(360deg)}}
+#boot{position:fixed;inset:0;display:flex;flex-direction:column;align-items:center;justify-content:center;gap:14px;color:#90a4ae;font-size:13px;text-align:center;padding:24px}
+#boot .ring{width:34px;height:34px;border:3px solid #1a2035;border-top-color:#00bcd4;border-radius:50%;animation:spin .9s linear infinite}
+#boot button{margin-top:6px;background:#00bcd4;color:#04222a;border:0;border-radius:6px;padding:9px 18px;font-weight:700;font-size:12px;cursor:pointer}
 </style>
-<script crossorigin src="https://unpkg.com/react@18/umd/react.production.min.js"></script>
-<script crossorigin src="https://unpkg.com/react-dom@18/umd/react-dom.production.min.js"></script>
-<script src="https://unpkg.com/@babel/standalone/babel.min.js"></script>
+<!-- React/ReactDOM/Babel are SELF-HOSTED (same-origin ./vendor) — react 18.3.1, react-dom 18.3.1,
+     @babel/standalone 7.29.7 — so a third-party CDN outage can never blank the app. The app is
+     still transpiled in-browser from the single index.html file (charter-preserved). The boot
+     watchdog below replaces the loader with a visible error if anything fails to load/mount,
+     so a load failure surfaces a Reload prompt instead of a silent black screen. -->
+<script>
+  // Fires on a <script> load error or if the app hasn't mounted within the timeout. Robust to
+  // timing: a <head> script can fail BEFORE <body>/#boot exists, so we stash the reason and render
+  // once the DOM is ready (creating the overlay if #boot isn't there). Idempotent.
+  window.__sfBootFail = function (why) {
+    if (!window.__sfFail) window.__sfFail = why || "load error";
+    var render = function () {
+      if (!document.body) return;
+      var b = document.getElementById("boot");
+      if (!b) { b = document.createElement("div"); b.id = "boot"; document.body.appendChild(b); }
+      if (b.dataset.failed) return;
+      b.dataset.failed = "1";
+      b.innerHTML = '<div style="font-size:30px">📉</div>'
+        + '<div style="color:#ff5252;font-weight:700">SignalForge couldn’t finish loading.</div>'
+        + '<div style="max-width:340px;line-height:1.7">A script failed to load (' + window.__sfFail
+        + '). This is usually a flaky connection — reloading almost always fixes it.</div>'
+        + '<button onclick="location.reload()">↻ Reload</button>';
+    };
+    if (document.readyState === "loading") document.addEventListener("DOMContentLoaded", render);
+    else render();
+  };
+</script>
+<script src="./vendor/react.production.min.js" onerror="__sfBootFail('react')"></script>
+<script src="./vendor/react-dom.production.min.js" onerror="__sfBootFail('react-dom')"></script>
+<script src="./vendor/babel.min.js" onerror="__sfBootFail('babel')"></script>
 </head>
 <body>
-<div id="root"></div>
+<div id="root"><div id="boot"><div class="ring"></div><div>Loading SignalForge…</div></div></div>
+<script>
+  // If the React app hasn't replaced #boot within 20s (slow device, transpile stall, missing
+  // asset), show the failure prompt rather than leaving a black screen. The app removes #boot
+  // on mount (it renders into #root), so a successful mount clears this automatically.
+  setTimeout(function () { if (document.getElementById("boot")) window.__sfBootFail("timed out"); }, 20000);
+</script>
 <script type="text/babel" data-presets="react">
 const { useState, useRef, useEffect, useCallback, useMemo } = React;
 
