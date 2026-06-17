@@ -1,6 +1,6 @@
 {
   "version": 1,
-  "updatedAt": "2026-06-16T16:11:59.506Z",
+  "updatedAt": "2026-06-17T12:57:13.050Z",
   "policy": {
     "promote": {
       "minTrades": 10,
@@ -214,6 +214,78 @@
       "history": [
         {
           "at": "2026-06-16T16:11:59.506Z",
+          "from": null,
+          "to": "candidate",
+          "reason": "registered"
+        }
+      ]
+    },
+    "reversal-on": {
+      "state": "candidate",
+      "since": "2026-06-17T12:57:13.050Z",
+      "history": [
+        {
+          "at": "2026-06-17T12:57:13.050Z",
+          "from": null,
+          "to": "candidate",
+          "reason": "registered"
+        }
+      ]
+    },
+    "reversal-off": {
+      "state": "candidate",
+      "since": "2026-06-17T12:57:13.050Z",
+      "history": [
+        {
+          "at": "2026-06-17T12:57:13.050Z",
+          "from": null,
+          "to": "candidate",
+          "reason": "registered"
+        }
+      ]
+    },
+    "lowvol-on": {
+      "state": "candidate",
+      "since": "2026-06-17T12:57:13.050Z",
+      "history": [
+        {
+          "at": "2026-06-17T12:57:13.050Z",
+          "from": null,
+          "to": "candidate",
+          "reason": "registered"
+        }
+      ]
+    },
+    "lowvol-off": {
+      "state": "candidate",
+      "since": "2026-06-17T12:57:13.050Z",
+      "history": [
+        {
+          "at": "2026-06-17T12:57:13.050Z",
+          "from": null,
+          "to": "candidate",
+          "reason": "registered"
+        }
+      ]
+    },
+    "quality-on": {
+      "state": "candidate",
+      "since": "2026-06-17T12:57:13.050Z",
+      "history": [
+        {
+          "at": "2026-06-17T12:57:13.050Z",
+          "from": null,
+          "to": "candidate",
+          "reason": "registered"
+        }
+      ]
+    },
+    "quality-off": {
+      "state": "candidate",
+      "since": "2026-06-17T12:57:13.050Z",
+      "history": [
+        {
+          "at": "2026-06-17T12:57:13.050Z",
           "from": null,
           "to": "candidate",
           "reason": "registered"
