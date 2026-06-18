@@ -683,6 +683,20 @@ function polyErr(j){
 async function polyGet(url){ const r=await fetch(url); const j=await r.json(); if(j&&(j.status==="ERROR"||j.error)) throw new Error(polyErr(j)); return j; }
 function polyBars(results,span){ return (results||[]).map(b=>({date:polyBarDate(b.t,span),open:+(+b.o).toFixed(4),high:+(+b.h).toFixed(4),low:+(+b.l).toFixed(4),close:+(+b.c).toFixed(4),volume:+b.v||0})).filter(d=>d.close>0); }
 
+// ─── Intraday regular-hours filter (US EQUITIES only) ────────────────────────
+// Mirrors scripts/pattern-study.mjs (the CI uses it for intraday studies). Thin pre/post-market
+// prints distort the intraday signal, the ATR levels, and the "last close" the verdict anchors
+// to — the 1-hour "price-to-signal" discrepancy. Keep only 09:30–16:00 ET. NEVER applied to
+// crypto/forex (24/7 — they have no regular session) or to daily/weekly bars.
+const ET_HM=new Intl.DateTimeFormat("en-US",{timeZone:"America/New_York",hour:"2-digit",minute:"2-digit",hour12:false});
+function etMinutesMs(ms){ let h=0,m=0; for(const p of ET_HM.formatToParts(new Date(ms))){ if(p.type==="hour")h=+p.value; if(p.type==="minute")m=+p.value; } if(h===24)h=0; return h*60+m; }
+function isIntradaySpan(span){ return span==="minute"||span==="hour"; }
+function filterRthResults(results,span,isEquity){ if(!isEquity||!isIntradaySpan(span)) return results||[]; return (results||[]).filter(b=>{ const t=etMinutesMs(b.t); return t>=570 && t<960; }); }
+// Human label for the active timeframe + an "is this intraday?" test, so the verdict announces
+// its timeframe instead of a 1-hour read masquerading as a daily swing call.
+const RES_LABEL={ "1":"1-min","5":"5-min","15":"15-min","30":"30-min","60":"1-hour","D":"Daily","W":"Weekly" };
+const isIntradayRes=r=>r==="1"||r==="5"||r==="15"||r==="30"||r==="60";
+
 // ─── Live streaming (Polygon WebSocket) ──────────────────────────────────────
 // Mirrors scripts/poly-ws.mjs (the unit-tested protocol). On Stocks Starter the cluster is
 // the DELAYED one (~15-min behind); we NEVER fake real-time — wsBand() labels each streamed
@@ -726,7 +740,10 @@ async function polyFetchCandles(sym, resolution, key){
   const to=new Date(), from=new Date(to.getTime()-polyWindowMs(span)), fmt=d=>d.toISOString().slice(0,10);
   const j=await polyGet("https://api.polygon.io/v2/aggs/ticker/"+encodeURIComponent(sym)+"/range/"+mult+"/"+span+"/"+fmt(from)+"/"+fmt(to)+"?adjusted=true&sort=asc&limit=5000&apiKey="+encodeURIComponent(key));
   if(!j.results||!j.results.length) throw new Error('No Polygon data for "'+sym+'". US stocks/ETFs only (e.g. AAPL, SPY).');
-  const candles=polyBars(j.results,span).slice(-1500); // bigger sample for pattern backtests
+  // US equities (no "/" in the symbol) → drop pre/post-market intraday bars so the signal/levels
+  // anchor to a real regular-session price. Crypto/forex (BTC/USD, EUR/USD) are 24/7 → untouched.
+  const isEquity=!sym.includes("/");
+  const candles=polyBars(filterRthResults(j.results,span,isEquity),span).slice(-1500); // bigger sample for pattern backtests
   let quote=null;
   try{
     const sj=await (await fetch("https://api.polygon.io/v2/snapshot/locale/us/markets/stocks/tickers/"+encodeURIComponent(sym)+"?apiKey="+encodeURIComponent(key))).json();
@@ -2126,14 +2143,25 @@ function App() {
         // which silently produced a null Outlook before. So lead with proxies, and only
         // try true indices as an upgrade if the proxy path fails. A null build is treated
         // as a failure so it actually falls through instead of blanking.
+        // OUTLOOK is a multi-day "correction-period" projection — its trailing-20 window means
+        // 20 DAYS, not 20 bars of the chart timeframe. So it ALWAYS runs on DAILY data: on an
+        // intraday chart we fetch the stock's daily series (+ daily trend) and daily index bars,
+        // so "20-day avg" isn't silently 20 hours. Live session % (liveMoves) is a snapshot —
+        // resolution-independent, so it stays correct either way.
+        let dStock=candles, dTrend=result.trend;
+        if(resolution!=="D"){
+          try{ dStock=(await polyFetchCandles(sym,"D",key)).candles;
+               dTrend=analyze(dStock,sym,market,strategy,SL,TP).trend; }
+          catch(_){ dStock=candles; dTrend=result.trend; }
+        }
         try{
-          const {idx, moves}=await polyFetchEtfMoves(resolution, key);
-          o=buildOutlook(candles, result.trend, idx, {proxies:OUTLOOK_PROXIES, liveMoves:moves}); src="etf";
+          const {idx, moves}=await polyFetchEtfMoves("D", key);
+          o=buildOutlook(dStock, dTrend, idx, {proxies:OUTLOOK_PROXIES, liveMoves:moves}); src="etf";
           if(!o) throw new Error("proxy index bars came back empty");
         }catch(e1){ lastErr=e1;
           try{
-            const {idx, moves}=await polyFetchIndexMoves(resolution, key);
-            o=buildOutlook(candles, result.trend, idx, {proxies:OUTLOOK_INDICES, liveMoves:moves}); src="indices";
+            const {idx, moves}=await polyFetchIndexMoves("D", key);
+            o=buildOutlook(dStock, dTrend, idx, {proxies:OUTLOOK_INDICES, liveMoves:moves}); src="indices";
           }catch(e2){ lastErr=e2; }
         }
         if(o){
@@ -2142,15 +2170,24 @@ function App() {
         }else{ setOutlook(null); setOutlookError(lastErr?(lastErr.message||String(lastErr)):"Outlook unavailable — the Dow/S&P/Nasdaq feeds returned no rows on this Polygon plan. Try Daily resolution, or wait a minute if you hit the free-tier rate limit (5 calls/min)."); }
       }else{
         try{
+          // OUTLOOK is a DAILY projection (see the Polygon branch) — always fetch the stock +
+          // proxies at 1day, regardless of the chart interval, so "20-day" is 20 days not 20 bars.
+          let dStock=candles, dTrend=result.trend;
+          if(resolution!=="D"){
+            const su="https://api.twelvedata.com/time_series?symbol="+encodeURIComponent(sym)+"&interval=1day&outputsize=400&apikey="+encodeURIComponent(key);
+            const sd=await (await fetch(su)).json();
+            if(sd.values&&sd.values.length){ dStock=sd.values.slice().reverse().map(v=>({date:v.datetime,open:+parseFloat(v.open||v.close).toFixed(4),high:+parseFloat(v.high||v.close).toFixed(4),low:+parseFloat(v.low||v.close).toFixed(4),close:+parseFloat(v.close).toFixed(4),volume:parseFloat(v.volume)||0})).filter(x=>x.close>0);
+              dTrend=analyze(dStock,sym,market,strategy,SL,TP).trend; }
+          }
           const proxies=OUTLOOK_PROXIES.map(p=>p[0]);
           const idxArrs=await Promise.all(proxies.map(async ps=>{
-            const u="https://api.twelvedata.com/time_series?symbol="+encodeURIComponent(ps)+"&interval="+interval+"&outputsize=300&apikey="+encodeURIComponent(key);
+            const u="https://api.twelvedata.com/time_series?symbol="+encodeURIComponent(ps)+"&interval=1day&outputsize=300&apikey="+encodeURIComponent(key);
             const r=await fetch(u); const d=await r.json();
             if(!d.values||!d.values.length) throw new Error("no outlook data for "+ps);
             return d.values.slice().reverse().map(v=>({date:v.datetime,close:+parseFloat(v.close).toFixed(4)})).filter(x=>x.close>0);
           }));
           const idx={}; proxies.forEach((ps,i)=>idx[ps]=idxArrs[i]);
-          const o=buildOutlook(candles, result.trend, idx); if(o) o.source="etf"; setOutlook(o);
+          const o=buildOutlook(dStock, dTrend, idx); if(o) o.source="etf"; setOutlook(o);
         }catch(_){ setOutlook(null); }
       }
       // Verify-first flow: land on LIVE (chart + freshness/quote) after a fetch — NOT the verdict.
@@ -2443,7 +2480,7 @@ function App() {
               </button>
             )}
             {streaming&&<div style={{textAlign:"center",fontSize:10,marginTop:6,color:DIM}}>Streaming Polygon minute bars (delayed cluster) — the badge below shows true freshness; real-time needs a Developer+ tier.</div>}
-            {liveMeta&&<div style={{textAlign:"center",fontSize:10,marginTop:10}}><span style={{color:"#00e676"}}>✓ {liveMeta.sym} · {liveMeta.count} candles · {liveMeta.when} · {liveMeta.provider}</span>{liveFreshness&&liveFreshness.band&&<span style={{color:freshnessColor(liveFreshness.band),marginLeft:6}}>· {freshnessLabel(liveFreshness)}</span>}</div>}
+            {liveMeta&&<div style={{textAlign:"center",fontSize:10,marginTop:10}}><span style={{color:"#00e676"}}>✓ {liveMeta.sym} · {RES_LABEL[liveMeta.resolution]||liveMeta.resolution} · {liveMeta.count} candles · {liveMeta.when} · {liveMeta.provider}</span>{liveFreshness&&liveFreshness.band&&<span style={{color:freshnessColor(liveFreshness.band),marginLeft:6}}>· {freshnessLabel(liveFreshness)}</span>}</div>}
             {liveMeta&&liveFreshness&&liveFreshness.provider==="Polygon"&&liveFreshness.price!=null&&(
               <div style={{textAlign:"center",fontSize:12,marginTop:6}}>
                 <span style={{color:"#fff",fontWeight:800}}>${(+liveFreshness.price).toFixed(2)}</span>
@@ -2553,7 +2590,7 @@ function App() {
             <div style={{...card,background:"linear-gradient(135deg,#0e1320,#0b1025)"}}>
               <div style={{display:"flex",justifyContent:"space-between",alignItems:"flex-start",flexWrap:"wrap",gap:10}}>
                 <div>
-                  <div style={{fontSize:10,color:FADE,letterSpacing:1,marginBottom:6}}>{ticker} · {market} · {strategy} · {rows.length} candles</div>
+                  <div style={{fontSize:10,color:FADE,letterSpacing:1,marginBottom:6}}>{ticker} · {market} · {strategy} · {RES_LABEL[liveMeta?.resolution]||liveMeta?.resolution||"—"} · {rows.length} candles</div>
                   <div style={{display:"flex",alignItems:"center",gap:14,flexWrap:"wrap"}}>
                     <Badge signal={displaySignal} muted={signalMuted}/>
                     {signalMuted&&(
@@ -2567,6 +2604,9 @@ function App() {
                       return <span title={macro.note} style={{fontSize:9,fontWeight:700,letterSpacing:1,padding:"4px 10px",borderRadius:3,color:rc,background:rc+"1a",border:"1px solid "+rc+"44"}}>🌐 {macro.regime}{macro.proven?"":" · CONTEXT"}</span>;
                     })()}
                     <span style={{fontSize:9,fontWeight:700,letterSpacing:1,padding:"4px 10px",borderRadius:3,color:mode==="position"?"#00bcd4":"#00e676",background:(mode==="position"?"#00bcd4":"#00e676")+"15",border:"1px solid "+(mode==="position"?"#00bcd4":"#00e676")+"44"}}>{mode==="position"?"🐢 POSITION":"⚡ TACTICAL"}</span>
+                    {isIntradayRes(liveMeta?.resolution)&&(
+                      <span title={"Intraday timeframe ("+(RES_LABEL[liveMeta?.resolution]||"")+"). This is a short-term read — the signal, ATR levels and indicators are scaled to "+(RES_LABEL[liveMeta?.resolution]||"")+" bars, NOT a daily swing/EOD call. The feed is 15-min delayed, so intraday entries can be stale; treat as context."} style={{fontSize:9,fontWeight:700,letterSpacing:1,padding:"4px 10px",borderRadius:3,color:"#ffb74d",background:"rgba(255,183,77,0.10)",border:"1px solid #ffb74d44"}}>⏱ INTRADAY · {RES_LABEL[liveMeta?.resolution]||liveMeta?.resolution}</span>
+                    )}
                     <span style={{fontSize:11,color:DIM}}>
                       <span style={{color:tCol(analysis.trend)}}>{analysis.trend}</span>{" · "}
                       <span style={{color:"#78909c"}}>{analysis.strength}</span>

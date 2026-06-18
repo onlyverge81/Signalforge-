@@ -88,6 +88,23 @@ button. KEPT the load-bearing `csv`/`parseCSV`/`run` plumbing (fetchLive writes 
 DATA RUN re-analyze it). Empty-state "LOAD DATA" buttons now point to LIVE. NO engine/parity impact (tab
 order + DATA tab chrome only); 214 tests green; driver-verified (new order, no textarea, zero JS errors).
 
+**1-hour resolution honesty fixes (DONE) — app-only, no engine change:** user-found discrepancy where the
+1-hour timeframe gave a "false sense of info" (price↔signal + a wrong OUTLOOK "20-day avg"). Three root causes,
+all fixed: (1) **OUTLOOK was timeframe-leaking** — `buildOutlook`/`avgIndexGainByDate(...,20)`/`backtestCorrection
+(...,period:20)` ran on the CHART-resolution bars, so on 1hr the "average trailing-20-DAY index gain%" (the
+broad-market sentiment that drives the correction projection) was really 20 HOURS. Fix: the OUTLOOK now ALWAYS
+fetches DAILY stock + DAILY index/ETF bars (and a daily trend) regardless of chart resolution — `buildOutlook`/
+`avgIndexGainByDate` logic UNCHANGED (parity-safe; only the inputs changed). Fixed on BOTH the Polygon and the
+Twelve-Data branches. (2) **No regular-hours filter** — the app fed pre/post-market intraday bars to the engine
+(the CI already filters via `filterRegularHours`), so the intraday `last.close` the verdict/ATR levels anchored
+to could be a thin extended-hours print. Fix: ported the tested RTH filter (`etMinutesMs`/`filterRthResults`,
+09:30–16:00 ET) into `polyFetchCandles`, **US-EQUITIES ONLY** (gated on `!sym.includes("/")` so 24/7 crypto/forex
+are untouched) and intraday spans only. (3) **Timeframe was never shown** post-fetch — a 1-hour read looked
+identical to a daily swing call. Fix: `RES_LABEL` echoed on the LIVE meta line + SIGNALS hero, plus an amber
+"⏱ INTRADAY · <tf>" caveat badge for any intraday timeframe. NO engine/parity impact (fetch layer + display +
+OUTLOOK inputs only; `analyze`/`runBacktest`/`scoreAt`/`avgIndexGainByDate` untouched); 214 tests green; RTH ET
+boundaries unit-checked; app mounts clean (live behavior needs a key in a real browser — egress-blocked in CI).
+
 ## Invariants
 
 - **`index.html` ↔ `scripts/engine.mjs` parity.** The app and the study engine must compute
