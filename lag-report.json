@@ -1,14 +1,14 @@
 {
   "latest": {
     "runAgg": {
-      "probedAt": "2026-06-17T21:30:00.953Z",
+      "probedAt": "2026-06-18T21:35:27.722Z",
       "marketOpen": true,
       "nSymbols": 36,
-      "medianStalenessSec": 910.9,
-      "p90StalenessSec": 1511.5,
+      "medianStalenessSec": 939.3,
+      "p90StalenessSec": 1776.3,
       "pctRealtime": 0,
-      "pctDelayed": 80.6,
-      "pctStale": 19.4,
+      "pctDelayed": 66.7,
+      "pctStale": 33.3,
       "planInferred": "delayed ~15min (Free/Starter)"
     },
     "samples": [
@@ -16,361 +16,361 @@
         "symbol": "AAPL",
         "venue": "STOCK",
         "isMarketOpen": true,
-        "lastTs": 1781730901352,
-        "stalenessSec": 900.207,
+        "lastTs": 1781817600000,
+        "stalenessSec": 928.313,
         "freshnessBand": "DELAYED",
-        "value": 295.95,
-        "pct": -0.4879026868065888
+        "value": 298.01,
+        "pct": 0.719716168271666
       },
       {
         "symbol": "TSLA",
         "venue": "STOCK",
         "isMarketOpen": true,
-        "lastTs": 1781730900000,
-        "stalenessSec": 901.883,
+        "lastTs": 1781817617861,
+        "stalenessSec": 910.777,
         "freshnessBand": "DELAYED",
-        "value": 396.38,
-        "pct": -1.8435229575446144
+        "value": 400.49,
+        "pct": 0.9132650486906516
       },
       {
         "symbol": "NVDA",
         "venue": "STOCK",
         "isMarketOpen": true,
-        "lastTs": 1781730900000,
-        "stalenessSec": 902.206,
+        "lastTs": 1781817612754,
+        "stalenessSec": 916.204,
         "freshnessBand": "DELAYED",
-        "value": 204.65,
-        "pct": -1.1619497613422674
+        "value": 210.69,
+        "pct": 2.697288052773018
       },
       {
         "symbol": "CMCSA",
         "venue": "STOCK",
         "isMarketOpen": true,
-        "lastTs": 1781730900000,
-        "stalenessSec": 902.528,
+        "lastTs": 1781817600000,
+        "stalenessSec": 929.28,
         "freshnessBand": "DELAYED",
-        "value": 22.69,
-        "pct": -4.099746407438711
+        "value": 22.43,
+        "pct": -0.9259585720581781
       },
       {
         "symbol": "MSFT",
         "venue": "STOCK",
         "isMarketOpen": true,
-        "lastTs": 1781730901098,
-        "stalenessSec": 901.753,
+        "lastTs": 1781817622404,
+        "stalenessSec": 907.199,
         "freshnessBand": "DELAYED",
-        "value": 378.91,
-        "pct": -3.460884137825965
+        "value": 379.4,
+        "pct": 0.2744715103850422
       },
       {
         "symbol": "GOOGL",
         "venue": "STOCK",
         "isMarketOpen": true,
-        "lastTs": 1781730900000,
-        "stalenessSec": 903.173,
+        "lastTs": 1781817612693,
+        "stalenessSec": 917.232,
         "freshnessBand": "DELAYED",
-        "value": 363.79,
-        "pct": -2.5034695244474214
+        "value": 368.03,
+        "pct": 1.0912889304268865
       },
       {
         "symbol": "AMZN",
         "venue": "STOCK",
         "isMarketOpen": true,
-        "lastTs": 1781730900000,
-        "stalenessSec": 903.493,
+        "lastTs": 1781817612663,
+        "stalenessSec": 917.585,
         "freshnessBand": "DELAYED",
-        "value": 237.5,
-        "pct": -3.1910569105691033
+        "value": 244.39,
+        "pct": 2.753684210526312
       },
       {
         "symbol": "META",
         "venue": "STOCK",
         "isMarketOpen": true,
-        "lastTs": 1781730902664,
-        "stalenessSec": 901.154,
+        "lastTs": 1781817612655,
+        "stalenessSec": 917.915,
         "freshnessBand": "DELAYED",
-        "value": 567.58,
-        "pct": -4.908282101264564
+        "value": 577.22,
+        "pct": 1.8358645477289472
       },
       {
         "symbol": "AMD",
         "venue": "STOCK",
         "isMarketOpen": true,
-        "lastTs": 1781730903167,
-        "stalenessSec": 900.978,
+        "lastTs": 1781817480000,
+        "stalenessSec": 1050.891,
         "freshnessBand": "DELAYED",
-        "value": 512.48,
-        "pct": 2.2196376825878557
+        "value": 537.37,
+        "pct": 4.919216359662823
       },
       {
         "symbol": "INTC",
         "venue": "STOCK",
         "isMarketOpen": true,
-        "lastTs": 1781730900000,
-        "stalenessSec": 904.468,
+        "lastTs": 1781817630631,
+        "stalenessSec": 900.582,
         "freshnessBand": "DELAYED",
-        "value": 121.1,
-        "pct": 3.887227680478426
+        "value": 133.99,
+        "pct": 10.388109000825775
       },
       {
         "symbol": "QCOM",
         "venue": "STOCK",
         "isMarketOpen": true,
-        "lastTs": 1781730720000,
-        "stalenessSec": 1084.788,
+        "lastTs": 1781817600000,
+        "stalenessSec": 931.533,
         "freshnessBand": "DELAYED",
-        "value": 212.97,
-        "pct": 0.42509459522585913
+        "value": 226.11,
+        "pct": 6.846034652768002
       },
       {
         "symbol": "CSCO",
         "venue": "STOCK",
         "isMarketOpen": true,
-        "lastTs": 1781730840000,
-        "stalenessSec": 965.11,
-        "freshnessBand": "DELAYED",
-        "value": 117.33,
-        "pct": -1.4803044241866656
+        "lastTs": 1781817240000,
+        "stalenessSec": 1291.854,
+        "freshnessBand": "STALE",
+        "value": 119.54,
+        "pct": 1.909145146168921
       },
       {
         "symbol": "ORCL",
         "venue": "STOCK",
         "isMarketOpen": true,
-        "lastTs": 1781730900000,
-        "stalenessSec": 905.433,
+        "lastTs": 1781817624619,
+        "stalenessSec": 907.557,
         "freshnessBand": "DELAYED",
-        "value": 183.53,
-        "pct": -2.1026920830457216
+        "value": 184.29,
+        "pct": 0.31057592764125386
       },
       {
         "symbol": "IBM",
         "venue": "STOCK",
         "isMarketOpen": true,
-        "lastTs": 1781730780000,
-        "stalenessSec": 1025.753,
-        "freshnessBand": "DELAYED",
-        "value": 262.35,
-        "pct": -2.810088253757252
+        "lastTs": 1781817060000,
+        "stalenessSec": 1472.498,
+        "freshnessBand": "STALE",
+        "value": 249.1,
+        "pct": -4.646464646464656
       },
       {
         "symbol": "WMT",
         "venue": "STOCK",
         "isMarketOpen": true,
-        "lastTs": 1781730900000,
-        "stalenessSec": 906.075,
-        "freshnessBand": "DELAYED",
-        "value": 118.13,
-        "pct": -2.398578864744283
+        "lastTs": 1781817300000,
+        "stalenessSec": 1232.817,
+        "freshnessBand": "STALE",
+        "value": 117.18,
+        "pct": -0.7872682637771885
       },
       {
         "symbol": "COST",
         "venue": "STOCK",
         "isMarketOpen": true,
-        "lastTs": 1781730840000,
-        "stalenessSec": 966.396,
-        "freshnessBand": "DELAYED",
-        "value": 965.59,
-        "pct": -2.095917622734823
+        "lastTs": 1781817180000,
+        "stalenessSec": 1353.139,
+        "freshnessBand": "STALE",
+        "value": 951.45,
+        "pct": -1.4825132820348237
       },
       {
         "symbol": "KO",
         "venue": "STOCK",
         "isMarketOpen": true,
-        "lastTs": 1781730600000,
-        "stalenessSec": 1206.716,
-        "freshnessBand": "STALE",
-        "value": 79.93,
-        "pct": -0.4235176880916834
+        "lastTs": 1781817420000,
+        "stalenessSec": 1113.46,
+        "freshnessBand": "DELAYED",
+        "value": 79.39,
+        "pct": -0.6486926060302803
       },
       {
         "symbol": "PEP",
         "venue": "STOCK",
         "isMarketOpen": true,
-        "lastTs": 1781730900000,
-        "stalenessSec": 907.037,
+        "lastTs": 1781817420000,
+        "stalenessSec": 1113.782,
         "freshnessBand": "DELAYED",
-        "value": 141.59,
-        "pct": -2.9947987955105426
+        "value": 142.02,
+        "pct": 0.5367610706970767
       },
       {
         "symbol": "PG",
         "venue": "STOCK",
         "isMarketOpen": true,
-        "lastTs": 1781729520000,
-        "stalenessSec": 2287.364,
+        "lastTs": 1781816940000,
+        "stalenessSec": 1594.105,
         "freshnessBand": "STALE",
-        "value": 150.56,
-        "pct": -1.30520034100598
+        "value": 150.38,
+        "pct": -0.15276301806588055
       },
       {
         "symbol": "MCD",
         "venue": "STOCK",
         "isMarketOpen": true,
-        "lastTs": 1781730900000,
-        "stalenessSec": 907.684,
+        "lastTs": 1781817608695,
+        "stalenessSec": 925.73,
         "freshnessBand": "DELAYED",
-        "value": 283.82,
-        "pct": -1.3683881498975436
+        "value": 278.61,
+        "pct": -1.666549221337474
       },
       {
         "symbol": "NKE",
         "venue": "STOCK",
         "isMarketOpen": true,
-        "lastTs": 1781730840000,
-        "stalenessSec": 968.005,
+        "lastTs": 1781817612632,
+        "stalenessSec": 922.114,
         "freshnessBand": "DELAYED",
-        "value": 44.19,
-        "pct": -1.6358792184724742
+        "value": 45.2,
+        "pct": 2.081918986195976
       },
       {
         "symbol": "DIS",
         "venue": "STOCK",
         "isMarketOpen": true,
-        "lastTs": 1781730900000,
-        "stalenessSec": 908.326,
+        "lastTs": 1781817540000,
+        "stalenessSec": 995.066,
         "freshnessBand": "DELAYED",
-        "value": 100.86,
-        "pct": 0
+        "value": 103.89,
+        "pct": 2.9255403529645028
       },
       {
         "symbol": "SBUX",
         "venue": "STOCK",
         "isMarketOpen": true,
-        "lastTs": 1781730720000,
-        "stalenessSec": 1088.646,
-        "freshnessBand": "DELAYED",
-        "value": 99.82,
-        "pct": -1.69944925255705
+        "lastTs": 1781816049032,
+        "stalenessSec": 2486.355,
+        "freshnessBand": "STALE",
+        "value": 100.65,
+        "pct": 0.8314966940493014
       },
       {
         "symbol": "JPM",
         "venue": "STOCK",
         "isMarketOpen": true,
-        "lastTs": 1781730720000,
-        "stalenessSec": 1088.968,
+        "lastTs": 1781817420000,
+        "stalenessSec": 1115.708,
         "freshnessBand": "DELAYED",
-        "value": 333.46,
-        "pct": 0.7414386664250743
+        "value": 325.22,
+        "pct": -2.282132789539962
       },
       {
         "symbol": "BAC",
         "venue": "STOCK",
         "isMarketOpen": true,
-        "lastTs": 1781730780000,
-        "stalenessSec": 1029.29,
+        "lastTs": 1781817612639,
+        "stalenessSec": 923.39,
         "freshnessBand": "DELAYED",
-        "value": 56.53,
-        "pct": -0.3087614356087379
+        "value": 56.2,
+        "pct": -0.5660711126835314
       },
       {
         "symbol": "V",
         "venue": "STOCK",
         "isMarketOpen": true,
-        "lastTs": 1781730120000,
-        "stalenessSec": 1689.611,
+        "lastTs": 1781816760000,
+        "stalenessSec": 1776.349,
         "freshnessBand": "STALE",
-        "value": 330.38,
-        "pct": -0.9365994236311252
+        "value": 327.24,
+        "pct": -0.8081603002603112
       },
       {
         "symbol": "MA",
         "venue": "STOCK",
         "isMarketOpen": true,
-        "lastTs": 1781730901673,
-        "stalenessSec": 908.26,
-        "freshnessBand": "DELAYED",
-        "value": 492.99,
-        "pct": -1.561845490993953
+        "lastTs": 1781817240000,
+        "stalenessSec": 1296.67,
+        "freshnessBand": "STALE",
+        "value": 489.79,
+        "pct": -0.4198868131199402
       },
       {
         "symbol": "JNJ",
         "venue": "STOCK",
         "isMarketOpen": true,
-        "lastTs": 1781729504021,
-        "stalenessSec": 2306.233,
+        "lastTs": 1781814180000,
+        "stalenessSec": 4357.007,
         "freshnessBand": "STALE",
-        "value": 234.2,
-        "pct": -0.41670210051875933
+        "value": 228.39,
+        "pct": -2.3068317677198884
       },
       {
         "symbol": "UNH",
         "venue": "STOCK",
         "isMarketOpen": true,
-        "lastTs": 1781730540000,
-        "stalenessSec": 1270.577,
-        "freshnessBand": "STALE",
-        "value": 399.53,
-        "pct": -2.0949343799828197
+        "lastTs": 1781817606074,
+        "stalenessSec": 931.253,
+        "freshnessBand": "DELAYED",
+        "value": 400.96,
+        "pct": 0.2177558631391897
       },
       {
         "symbol": "PFE",
         "venue": "STOCK",
         "isMarketOpen": true,
-        "lastTs": 1781730900000,
-        "stalenessSec": 910.9,
+        "lastTs": 1781817612658,
+        "stalenessSec": 924.991,
         "freshnessBand": "DELAYED",
-        "value": 25.92,
-        "pct": -0.1962365591397778
+        "value": 25.21,
+        "pct": -2.5270061728395103
       },
       {
         "symbol": "CAT",
         "venue": "STOCK",
         "isMarketOpen": true,
-        "lastTs": 1781730300000,
-        "stalenessSec": 1511.221,
+        "lastTs": 1781817018621,
+        "stalenessSec": 1519.35,
         "freshnessBand": "STALE",
-        "value": 955.92,
-        "pct": 1.4363378672815272
+        "value": 985.82,
+        "pct": 3.1278768097748864
       },
       {
         "symbol": "BA",
         "venue": "STOCK",
         "isMarketOpen": true,
-        "lastTs": 1781730300000,
-        "stalenessSec": 1511.541,
+        "lastTs": 1781816280000,
+        "stalenessSec": 2258.291,
         "freshnessBand": "STALE",
-        "value": 225.63,
-        "pct": -0.5406831069497641
+        "value": 222.72,
+        "pct": -1.2719939724327458
       },
       {
         "symbol": "XOM",
         "venue": "STOCK",
         "isMarketOpen": true,
-        "lastTs": 1781730911580,
-        "stalenessSec": 900.281,
+        "lastTs": 1781817480000,
+        "stalenessSec": 1058.611,
         "freshnessBand": "DELAYED",
-        "value": 140.74,
-        "pct": -0.9586916678415434
+        "value": 137.81,
+        "pct": -2.01790535739662
       },
       {
         "symbol": "CVX",
         "venue": "STOCK",
         "isMarketOpen": true,
-        "lastTs": 1781730900000,
-        "stalenessSec": 912.182,
-        "freshnessBand": "DELAYED",
-        "value": 177.58,
-        "pct": -1.227027927377718
+        "lastTs": 1781817060000,
+        "stalenessSec": 1478.931,
+        "freshnessBand": "STALE",
+        "value": 173.63,
+        "pct": -2.2018245297894046
       },
       {
         "symbol": "T",
         "venue": "STOCK",
         "isMarketOpen": true,
-        "lastTs": 1781730900000,
-        "stalenessSec": 912.502,
+        "lastTs": 1781817600000,
+        "stalenessSec": 939.303,
         "freshnessBand": "DELAYED",
-        "value": 22.44,
-        "pct": -3.0656303972366183
+        "value": 22.01,
+        "pct": -1.648841354723712
       },
       {
         "symbol": "VZ",
         "venue": "STOCK",
         "isMarketOpen": true,
-        "lastTs": 1781730900000,
-        "stalenessSec": 912.822,
+        "lastTs": 1781817615710,
+        "stalenessSec": 923.917,
         "freshnessBand": "DELAYED",
-        "value": 45.84,
-        "pct": -1.9259576289321605
+        "value": 45.37,
+        "pct": -0.807155322862139
       }
     ]
   },
@@ -417,6 +417,17 @@
       "pctRealtime": 0,
       "pctDelayed": 80.6,
       "pctStale": 19.4,
+      "planInferred": "delayed ~15min (Free/Starter)"
+    },
+    {
+      "probedAt": "2026-06-18T21:35:27.722Z",
+      "marketOpen": true,
+      "nSymbols": 36,
+      "medianStalenessSec": 939.3,
+      "p90StalenessSec": 1776.3,
+      "pctRealtime": 0,
+      "pctDelayed": 66.7,
+      "pctStale": 33.3,
       "planInferred": "delayed ~15min (Free/Starter)"
     }
   ]
