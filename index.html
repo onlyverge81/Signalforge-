@@ -63,38 +63,6 @@ a{text-decoration:none}
 <script type="text/babel" data-presets="react">
 const { useState, useRef, useEffect, useCallback, useMemo } = React;
 
-// ─── Sample data ───────────────────────────────────────────────────────────
-const SAMPLE = `Date,Open,High,Low,Close,Volume
-2026-04-01,169.20,171.80,168.50,171.25,52000000
-2026-04-02,171.25,173.40,170.10,172.80,48500000
-2026-04-03,172.80,174.20,170.40,170.40,61200000
-2026-04-04,170.40,171.00,166.80,167.25,78900000
-2026-04-05,167.25,168.50,164.60,165.80,92300000
-2026-04-07,165.80,166.20,162.10,163.70,105100000
-2026-04-08,163.70,165.90,162.50,165.30,81400000
-2026-04-09,165.30,169.10,164.80,168.60,74700000
-2026-04-10,168.60,171.50,168.00,170.90,57200000
-2026-04-11,170.90,173.70,170.40,173.20,49800000
-2026-04-12,173.20,176.40,172.90,175.80,54600000
-2026-04-14,175.80,177.10,174.20,174.20,46900000
-2026-04-15,174.20,175.00,171.80,172.50,51300000
-2026-04-16,172.50,174.20,171.10,173.70,48700000
-2026-04-17,173.70,178.50,173.20,177.80,72100000
-2026-04-18,177.80,180.20,177.10,179.40,63400000
-2026-04-21,179.40,181.80,178.90,181.20,58900000
-2026-04-22,181.20,182.50,179.60,180.10,44200000
-2026-04-23,180.10,182.00,179.40,181.60,41700000
-2026-04-24,181.60,184.30,181.00,183.90,55800000
-2026-04-25,183.90,185.70,182.80,185.20,49300000
-2026-04-28,185.20,187.40,184.90,186.80,43100000
-2026-04-29,186.80,188.10,184.20,184.20,56700000
-2026-04-30,184.20,185.00,181.80,182.50,61400000
-2026-05-01,182.50,185.20,181.10,184.75,52000000
-2026-05-02,184.75,186.80,183.40,185.90,38500000
-2026-05-03,185.90,187.50,183.10,183.10,51200000
-2026-05-04,183.10,184.00,179.80,180.25,68900000
-2026-05-05,180.25,181.50,177.60,178.40,72300000
-2026-05-06,178.40,179.20,175.10,176.80,85100000`;
 
 const STRATEGIES = ["Trend Following","Mean Reversion","Breakout","Momentum","Swing Trading","Scalping"];
 // Natural mode for each strategy: P = POSITION (patient), T = TACTICAL (active)
@@ -2185,7 +2153,9 @@ function App() {
           const o=buildOutlook(candles, result.trend, idx); if(o) o.source="etf"; setOutlook(o);
         }catch(_){ setOutlook(null); }
       }
-      setTab("signals");
+      // Verify-first flow: land on LIVE (chart + freshness/quote) after a fetch — NOT the verdict.
+      // The user walks the verify chain (EVIDENCE → … → SIGNALS) so the signal is seen last, earned.
+      setTab("live");
     }catch(e){setError(e.message||"Live fetch failed.");setTab("live");}
     finally{setFetching(false);}
   }
@@ -2194,7 +2164,7 @@ function App() {
     setError("");
     setOutlook(null);setOutlookError(null); // Outlook needs live market data; not available on the CSV path
     const data = parseCSV(csv);
-    if (data.length < 10) { setError("Need at least 10 rows. Click LOAD SAMPLE to see the expected format."); return; }
+    if (data.length < 10) { setError("No data yet — fetch it on the ⚡ LIVE tab first, then RUN to re-analyze."); return; }
     const isPos = mode==="position";
     const scorer = isPos ? scorePosition : scoreAt;
     const hold = isPos; // position mode holds until thesis break
@@ -2408,7 +2378,7 @@ function App() {
 
       {/* Tabs */}
       <div style={{background:BG3,borderBottom:"1px solid "+BORD,padding:"0 20px",display:"flex"}}>
-        {[["live","⚡ LIVE"],["input","▣ DATA"],["signals","◈ SIGNALS"],["outlook","◎ OUTLOOK"],["backtest","⟲ BACKTEST"],["replay","▶ REPLAY"],["value","✚ AUTOPSY"],["evidence","🔬 EVIDENCE"],["position","⊞ SIZE"],["history","◷ HISTORY"],["paper","📒 FORWARD TEST"]].map(([k,l])=>(
+        {[["input","▣ DATA"],["live","⚡ LIVE"],["evidence","🔬 EVIDENCE"],["paper","📒 FORWARD TEST"],["backtest","⟲ BACKTEST"],["replay","▶ REPLAY"],["value","✚ AUTOPSY"],["outlook","◎ OUTLOOK"],["signals","◈ SIGNALS"],["position","⊞ SIZE"],["history","◷ HISTORY"]].map(([k,l])=>(
           <button key={k} style={tBtn(tab===k)} onClick={()=>setTab(k)}>{l}</button>
         ))}
       </div>
@@ -2555,56 +2525,13 @@ function App() {
                 <button style={{...pill(slMult===2.0&&tpMult===2.0),marginBottom:0}} onClick={()=>{setSlMult(2.0);setTpMult(2.0);}}>Wide 1:1</button>
               </div>
             </div>
-            <div style={card}>
-              <div style={{display:"flex",justifyContent:"space-between",alignItems:"center",marginBottom:8,flexWrap:"wrap",gap:6}}>
-                <span style={{...lbl,marginBottom:0}}>OHLCV DATA (CSV)</span>
-                <div style={{display:"flex",gap:6}}>
-                  <button style={{...pill(false),marginBottom:0,background:"rgba(0,188,212,0.1)",border:"1px solid #00bcd499",color:"#00bcd4",fontWeight:700}} onClick={async()=>{
-                    try{
-                      const text=await navigator.clipboard.readText();
-                      if(!text.trim()){setError("Clipboard is empty. Copy the CSV from TradingView first.");return;}
-                      setCsv(text);
-                      setError("");
-                      // auto-run after a brief render tick
-                      setTimeout(()=>{
-                        const data=parseCSV(text);
-                        if(data.length>=10){
-                          setRows(data);
-                          const result=analyze(data,ticker,market,strategy);
-                          setAnalysis(result);
-                          setHistory(h=>[{time:new Date().toLocaleTimeString(),ticker,signal:result.signal,confidence:result.confidence,price:data[data.length-1].close,trend:result.trend},...h].slice(0,10));
-                          setTab("signals");
-                        } else {
-                          setError("Clipboard data needs at least 10 rows with a Close column.");
-                        }
-                      },100);
-                    }catch(e){
-                      setError("Clipboard access denied. Please allow clipboard access in your browser, or paste manually.");
-                    }
-                  }}>📋 PASTE &amp; RUN</button>
-                  <button style={{...pill(false),marginBottom:0}} onClick={()=>setCsv(SAMPLE)}>LOAD SAMPLE</button>
-                </div>
+            <div style={{...card,background:"rgba(0,188,212,0.04)",border:"1px solid rgba(0,188,212,0.2)"}}>
+              <span style={lbl}>DATA SOURCE</span>
+              <div style={{fontSize:11,color:"#90a4ae",lineHeight:1.8}}>
+                Market data is pulled live from <b style={{color:"#00bcd4"}}>Polygon</b> on the <b style={{color:"#00e676"}}>⚡ LIVE</b> tab.
+                Fetch there, then return here to tune mode / strategy / risk and press <b>RUN</b> to re-analyze.
               </div>
-              <textarea rows={12} value={csv} onChange={e=>setCsv(e.target.value)}
-                placeholder={"Date,Open,High,Low,Close,Volume\n2026-01-01,100,105,98,103,1000000"}
-                style={{background:BG,border:"1px solid "+BORD,color:"#64b5f6",padding:12,borderRadius:4,fontFamily:"inherit",fontSize:11,lineHeight:1.7,resize:"vertical",width:"100%",outline:"none"}}
-              />
-              <div style={{marginTop:10}}>
-                <div style={{fontSize:10,color:"#00e676",fontWeight:700,marginBottom:8,letterSpacing:1}}>📥 GET REAL MARKET DATA — click a source, download CSV, paste above:</div>
-                <div style={{display:"flex",flexWrap:"wrap",gap:8}}>
-                  <a href={"https://finance.yahoo.com/quote/"+ticker+"/history/"} target="_blank" rel="noreferrer"
-                    style={{background:"rgba(0,230,118,0.08)",border:"1px solid #00e67699",color:"#00e676",padding:"7px 14px",borderRadius:3,fontSize:10,fontWeight:700,letterSpacing:1,textDecoration:"none",cursor:"pointer"}}>
-                    ⬇ YAHOO FINANCE — {ticker}
-                  </a>
-                  <a href={"https://www.tradingview.com/chart/?symbol="+ticker} target="_blank" rel="noreferrer"
-                    style={{background:"rgba(0,188,212,0.08)",border:"1px solid #00bcd499",color:"#00bcd4",padding:"7px 14px",borderRadius:3,fontSize:10,fontWeight:700,letterSpacing:1,textDecoration:"none"}}>
-                    ⬇ TRADINGVIEW — {ticker}
-                  </a>
-                </div>
-                <div style={{fontSize:9,color:FADE,marginTop:8,lineHeight:1.8}}>
-                  Yahoo Finance: Historical Data tab → select date range → Download · TradingView: right-click chart → Export chart data → CSV
-                </div>
-              </div>
+              <button style={{...pill(false),marginTop:8,marginBottom:0,background:"rgba(0,230,118,0.08)",border:"1px solid #00e67699",color:"#00e676",fontWeight:700}} onClick={()=>setTab("live")}>⚡ GO TO LIVE — FETCH DATA</button>
             </div>
             {error&&<div style={{background:"rgba(255,82,82,0.07)",border:"1px solid rgba(255,82,82,0.3)",borderRadius:4,padding:12,color:"#ff8a80",fontSize:11,marginBottom:14,lineHeight:1.7}}>⚠ {error}</div>}
             <button style={runBtn} onClick={run}>▶ RUN SIGNAL ANALYSIS</button>
@@ -2616,7 +2543,7 @@ function App() {
           <div style={{textAlign:"center",padding:"60px 0",color:"#1e2a3a"}}>
             <div style={{fontSize:50}}>◇</div>
             <div style={{letterSpacing:3,fontSize:12,marginTop:14}}>NO ANALYSIS YET</div>
-            <button style={{...runBtn,width:"auto",padding:"10px 30px",marginTop:20}} onClick={()=>setTab("input")}>← LOAD DATA</button>
+            <button style={{...runBtn,width:"auto",padding:"10px 30px",marginTop:20}} onClick={()=>setTab("live")}>⚡ FETCH LIVE DATA</button>
           </div>
         )}
 
@@ -2895,7 +2822,7 @@ function App() {
             </div>
 
             <div style={{display:"grid",gridTemplateColumns:"1fr 1fr",gap:14,marginTop:4}}>
-              <button style={runBtn} onClick={()=>setTab("input")}>← LOAD NEW DATA</button>
+              <button style={runBtn} onClick={()=>setTab("live")}>⚡ FETCH NEW DATA</button>
               <button style={{...runBtn,background:"transparent",border:"1px solid "+BORD,color:"#78909c"}} onClick={()=>setTab("position")}>⊞ POSITION CALCULATOR</button>
             </div>
             <div style={{background:"rgba(255,215,64,0.03)",border:"1px solid rgba(255,215,64,0.10)",borderRadius:4,padding:10,fontSize:9,color:FADE,lineHeight:1.8,marginTop:14}}>
@@ -3057,7 +2984,7 @@ function App() {
                 <div style={{fontSize:50}}>⟲</div>
                 <div style={{letterSpacing:3,fontSize:12,marginTop:14}}>NO BACKTEST YET</div>
                 <div style={{fontSize:10,color:FADE,marginTop:8,lineHeight:1.7}}>Run an analysis with at least 40 candles of data.<br/>The backtest replays the signal logic across all history.</div>
-                <button style={{...runBtn,width:"auto",padding:"10px 30px",marginTop:20}} onClick={()=>setTab("input")}>← LOAD DATA</button>
+                <button style={{...runBtn,width:"auto",padding:"10px 30px",marginTop:20}} onClick={()=>setTab("live")}>⚡ FETCH LIVE DATA</button>
               </div>
             )}
             {backtest&&(
@@ -3419,7 +3346,7 @@ function App() {
                 <div style={{fontSize:50}}>▶</div>
                 <div style={{letterSpacing:3,fontSize:12,marginTop:14}}>NOTHING TO REPLAY</div>
                 <div style={{fontSize:10,color:FADE,marginTop:8,lineHeight:1.7}}>Load at least {REPLAY_START+1} candles, then scrub the timeline to<br/>watch every signal fire bar-by-bar against the real candles.</div>
-                <button style={{...runBtn,width:"auto",padding:"10px 30px",marginTop:20}} onClick={()=>setTab("input")}>← LOAD DATA</button>
+                <button style={{...runBtn,width:"auto",padding:"10px 30px",marginTop:20}} onClick={()=>setTab("live")}>⚡ FETCH LIVE DATA</button>
               </div>
             );
           }

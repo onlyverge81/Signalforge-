@@ -77,6 +77,17 @@ code enforces "no fallback by design"). Exhaust Polygon before reaching elsewher
   target multi-day swing/EOD horizons where the delay is immaterial. Never fake "real-time."
 - **Unlimited API calls** — no throttle (`POLYGON_PACE_MS=0`).
 
+**Verify-first tab flow + DATA-tab declutter (DONE) — display-only UX:** reordered the tab bar into a
+decision funnel — `DATA · LIVE · EVIDENCE · FORWARD TEST · BACKTEST · REPLAY · AUTOPSY · OUTLOOK · SIGNALS ·
+SIZE · HISTORY` — so the SIGNALS verdict sits 9th, AFTER the verification tabs ("verify first, signal last").
+`fetchLive` now lands on **LIVE** (chart + freshness/quote) instead of auto-jumping to SIGNALS, so the
+verdict is reached by walking the chain, not shoved first. Removed the stale manual-CSV block from the DATA
+tab (textarea + PASTE&RUN + LOAD SAMPLE + Yahoo/TradingView download links — off-charter, unused since
+Polygon auto-fetch) and the now-dead `SAMPLE` const; replaced with a "DATA SOURCE → ⚡ LIVE" note + jump
+button. KEPT the load-bearing `csv`/`parseCSV`/`run` plumbing (fetchLive writes `csv`; BACKTEST sliders +
+DATA RUN re-analyze it). Empty-state "LOAD DATA" buttons now point to LIVE. NO engine/parity impact (tab
+order + DATA tab chrome only); 214 tests green; driver-verified (new order, no textarea, zero JS errors).
+
 ## Invariants
 
 - **`index.html` ↔ `scripts/engine.mjs` parity.** The app and the study engine must compute
