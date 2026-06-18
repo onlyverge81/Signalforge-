@@ -101,7 +101,7 @@ function parseCSV(raw) {
 // parsed series for the defects real feeds carry and reports them, so the UI can
 // mute a signal built on corrupted inputs — the same principle as edge muting.
 // Pure & defensive: never throws, returns {issues:[{level,code,msg}], suspect}.
-function auditData(rows){
+function auditData(rows, opts){
   const issues=[];
   if(!rows||rows.length<5) return {issues,suspect:false};
   const n=rows.length;
@@ -158,6 +158,21 @@ function auditData(rows){
   for(let i=1;i<n;i++){ if(rows[i].close===rows[i-1].close){ run++; if(run>maxRun)maxRun=run; } else run=1; }
   if(maxRun>=5)      add("SEVERE","frozen","A frozen stretch of "+maxRun+" identical closes — a stale feed; the volatility and signals computed across it are meaningless.");
   else if(maxRun>=3) add("WARN","flat","A flat stretch of "+maxRun+" identical closes — possibly thin or stale data.");
+
+  // 5) Stale SERIES: the NEWEST bar is far older than the timeframe implies. The live quote can be
+  //    current while the chart/signal/ATR levels are anchored to an old bar. Resolution-aware so a
+  //    normal overnight/weekend gap doesn't false-flag. SEVERE → mutes the signal.
+  if(opts && opts.resolution){
+    const lastMs=ts[n-1];
+    if(isFinite(lastMs)){
+      const intraday=["1","5","15","30","60"].includes(opts.resolution);
+      const maxStale=intraday?5*864e5:(opts.resolution==="W"?18*864e5:7*864e5);
+      const age=Date.now()-lastMs;
+      if(age>maxStale){ const d=Math.round(age/864e5);
+        add("SEVERE","stale","Newest bar is ~"+d+" day"+(d>1?"s":"")+" old — the price series is STALE. The live quote may be current, but the chart, signal and ATR levels are anchored to that old bar.");
+      }
+    }
+  }
 
   return {issues, suspect:issues.some(i=>i.level==="SEVERE")};
 }
@@ -738,12 +753,14 @@ class PolyLiveSocket{
 async function polyFetchCandles(sym, resolution, key){
   const [mult,span]=POLY_RES[resolution]||[1,"day"];
   const to=new Date(), from=new Date(to.getTime()-polyWindowMs(span)), fmt=d=>d.toISOString().slice(0,10);
-  const j=await polyGet("https://api.polygon.io/v2/aggs/ticker/"+encodeURIComponent(sym)+"/range/"+mult+"/"+span+"/"+fmt(from)+"/"+fmt(to)+"?adjusted=true&sort=asc&limit=5000&apiKey="+encodeURIComponent(key));
+  const j=await polyGet("https://api.polygon.io/v2/aggs/ticker/"+encodeURIComponent(sym)+"/range/"+mult+"/"+span+"/"+fmt(from)+"/"+fmt(to)+"?adjusted=true&sort=desc&limit=5000&apiKey="+encodeURIComponent(key));
   if(!j.results||!j.results.length) throw new Error('No Polygon data for "'+sym+'". US stocks/ETFs only (e.g. AAPL, SPY).');
   // US equities (no "/" in the symbol) → drop pre/post-market intraday bars so the signal/levels
   // anchor to a real regular-session price. Crypto/forex (BTC/USD, EUR/USD) are 24/7 → untouched.
   const isEquity=!sym.includes("/");
-  const candles=polyBars(filterRthResults(j.results,span,isEquity),span).slice(-1500); // bigger sample for pattern backtests
+  // sort=desc returns the MOST-RECENT bars first (so a large window can't truncate to the oldest
+  // bars and leave the chart ending months in the past); reverse back to chronological for the engine.
+  const candles=polyBars(filterRthResults(j.results,span,isEquity),span).reverse().slice(-1500);
   let quote=null;
   try{
     const sj=await (await fetch("https://api.polygon.io/v2/snapshot/locale/us/markets/stocks/tickers/"+encodeURIComponent(sym)+"?apiKey="+encodeURIComponent(key))).json();
@@ -754,8 +771,8 @@ async function polyFetchCandles(sym, resolution, key){
 // One index's historical daily bars (for the directional backtest alignment).
 async function polyFetchIndexBars(sym, mult, span, key){
   const to=new Date(), from=new Date(to.getTime()-polyWindowMs(span)), fmt=d=>d.toISOString().slice(0,10);
-  const j=await polyGet("https://api.polygon.io/v2/aggs/ticker/"+encodeURIComponent(sym)+"/range/"+mult+"/"+span+"/"+fmt(from)+"/"+fmt(to)+"?sort=asc&limit=5000&apiKey="+encodeURIComponent(key));
-  return polyBars(j.results,span).slice(-300);
+  const j=await polyGet("https://api.polygon.io/v2/aggs/ticker/"+encodeURIComponent(sym)+"/range/"+mult+"/"+span+"/"+fmt(from)+"/"+fmt(to)+"?sort=desc&limit=5000&apiKey="+encodeURIComponent(key));
+  return polyBars(j.results,span).reverse().slice(-300); // desc → most-recent first; reverse to chronological
 }
 // Real-time index session moves + provenance + historical bars for the Outlook.
 async function polyFetchIndexMoves(resolution, key){
@@ -1948,7 +1965,7 @@ function App() {
 
   // Integrity scan of the loaded bars — recomputed whenever the data changes,
   // so it covers every ingest path (CSV, paste, live fetch) without touching them.
-  const dataAudit = useMemo(()=>auditData(rows),[rows]);
+  const dataAudit = useMemo(()=>auditData(rows, {resolution: liveMeta?.resolution}),[rows, liveMeta]);
 
   // When fresh data loads, park the playhead at the latest bar and stop playback.
   useEffect(()=>{
