@@ -47,6 +47,11 @@ async function main() {
   const spy = await spyPrices(key);
   console.log("SPY: " + spy.length + " monthly bars · loading " + STOCKS.length + " names…");
 
+  // Resolve CIK from roster.json (NOT secCik) so loadTicker hits data.sec.gov directly —
+  // www.sec.gov/files/company_tickers.json returns 403 in CI (the merit study does the same).
+  let cikOf = {};
+  try { const r = JSON.parse(fs.readFileSync(path.join(ROOT, "roster.json"), "utf8")); for (const c of (r.companies || [])) if (c.ticker) cikOf[c.ticker] = c.cik; } catch { /* fall through */ }
+
   const dates = grid(1);                                    // monthly rebalance grid
   // buckets[tag][dur] = { rets:[], alphas:[], hits:[], beats:[] }
   const tags = ["HIGH", "MID", "LOW"];
@@ -54,7 +59,8 @@ async function main() {
   const perStock = [];
 
   for (const sym of STOCKS) {
-    let d; try { d = await loadTicker(sym, key); } catch (e) { console.warn("✗ " + sym + " " + (e.message || e)); continue; }
+    const cik = cikOf[sym]; if (!cik) { console.warn("✗ " + sym + " no CIK in roster.json"); continue; }
+    let d; try { d = await loadTicker(sym, key, cik); } catch (e) { console.warn("✗ " + sym + " " + (e.message || e)); continue; }
     const prices = d.prices; if (!prices || prices.length < 13) { console.warn("✗ " + sym + " thin prices"); continue; }
     const lastT = prices[prices.length - 1].t;
     const ps = { sym, roeLatest: null, six: { HIGH: 0, MID: 0, LOW: 0 }, hit6: [], ret6: [], alpha6: [] };
