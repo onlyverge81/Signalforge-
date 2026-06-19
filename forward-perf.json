@@ -1,13 +1,13 @@
 {
-  "generatedAt": "2026-06-18T12:04:07.120Z",
+  "generatedAt": "2026-06-19T12:38:07.175Z",
   "method": "matched-window TOTAL-return buy-&-hold (price + dividends); alpha = strategy net − benchmark net (cost-invariant)",
   "costPerTrade": 0.12000000000000001,
   "ledger": {
-    "rows": 288,
+    "rows": 360,
     "closed": 0,
     "benchmarkable": 0,
-    "suspect": 10,
-    "suspectRate": 3.4722
+    "suspect": 12,
+    "suspectRate": 3.3333
   },
   "variants": {
     "all": {
