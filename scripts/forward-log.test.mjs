@@ -214,6 +214,12 @@ test("buildPositionEntry: skips short history; OPENs a dip-buy in a REAL 200-bar
   assert.equal(e.status, "OPEN");
   assert.ok(e.sl < e.entry && e.highWater === e.entry); // wide stop set, high-water seeded
   assert.match(e.id, /-POS-/);
+  // quality × duration: the POSITION (long-hold) row carries the ROE tag; qualityActivated is
+  // OFF until the run ranks the position batch (cross-sectional), and never changes the decision.
+  const eq = buildPositionEntry({ sym:"X", settled: posUp(206,14), fundaDB:{ X:{ roe:0.22 } } });
+  assert.equal(eq.tags.quality, 0.22, "position row logs ROE from fundaDB");
+  assert.equal(eq.tags.qualityActivated, false, "off until the batch is ranked");
+  assert.equal(e.tags.quality, null, "no fundaDB → null quality, still logs");
 });
 
 test("buildPositionEntry: an engaged uptrend with no pullback is a HOLD observation (no position)", () => {

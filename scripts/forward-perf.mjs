@@ -185,6 +185,12 @@ export function defaultVariants() {
     { label: "earnings-recent-on", where: t => tac(t) && !!(t.tags && t.tags.earningsRecent) },
     { label: "earnings-recent-off", where: t => tac(t) && !(t.tags && t.tags.earningsRecent) },
     { label: "position", where: t => !!(t.tags && t.tags.mode === "position") },
+    // Quality × DURATION (propose-only A/B INSIDE the position/long-hold stream): the
+    // quality-duration study found high-ROE names beat the market with an edge that GROWS over
+    // months. Position trades hold for months (trailing stop), so this asks — out-of-sample —
+    // whether top-tertile-quality position trades add alpha vs the rest. Judged under the same FDR gate.
+    { label: "quality-position-on", where: t => !!(t.tags && t.tags.mode === "position" && t.tags.qualityActivated) },
+    { label: "quality-position-off", where: t => !!(t.tags && t.tags.mode === "position" && !t.tags.qualityActivated) },
   ];
 }
 
