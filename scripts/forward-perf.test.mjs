@@ -4,7 +4,7 @@ import { test } from "node:test";
 import assert from "node:assert/strict";
 import {
   buyHoldGrossPct, buyHoldTotalPct, tradeAlpha, variantAlpha, scoreLedger, isBenchmarkable,
-  defaultVariants, COST_PER_TRADE,
+  defaultVariants, COST_PER_TRADE, gradeAB, bothTac,
   betai, tUpperP, tTest, attachSignificance, MIN_TRADES_SIG,
 } from "./forward-perf.mjs";
 import { markToMarket } from "./forward-log.mjs";
@@ -248,6 +248,51 @@ test("scoreLedger: quality-position-on/off partition the POSITION stream by qual
   assert.ok(perf.variants["quality-position-off"].alphaGrowthPct < 0);
   // never conflated with the tactical quality-on label (T1 is tactical, P1/P2 are position).
   assert.equal(perf.variants["quality-on"].n, 1);
+});
+
+test("scoreLedger: quality-grade-position-on/off partition the POSITION stream by AUTOPSY grade A/B", () => {
+  const ledger = [
+    { ...closed({ id: "P1", entry: 100, exit: 112, benchClose: 104 }), tags: { mode: "position", fundamentalGrade: "A" } }, // grade A, +alpha
+    { ...closed({ id: "P2", entry: 100, exit: 113, benchClose: 105 }), tags: { mode: "position", fundamentalGrade: "B" } }, // grade B, +alpha
+    { ...closed({ id: "P3", entry: 100, exit: 101, benchClose: 108 }), tags: { mode: "position", fundamentalGrade: "C" } }, // grade C, -alpha
+    { ...closed({ id: "P4", entry: 100, exit: 100, benchClose: 109 }), tags: { mode: "position", fundamentalGrade: "D" } }, // grade D, -alpha
+  ];
+  const perf = scoreLedger(ledger);
+  // on/off re-union to the whole POSITION stream; A/B on the on-side, C/D on the off-side.
+  assert.equal(perf.variants["quality-grade-position-on"].n + perf.variants["quality-grade-position-off"].n, perf.variants["position"].n);
+  assert.equal(perf.variants["quality-grade-position-on"].n, 2);
+  assert.equal(perf.variants["quality-grade-position-off"].n, 2);
+  assert.ok(perf.variants["quality-grade-position-on"].alphaGrowthPct > 0);
+  assert.ok(perf.variants["quality-grade-position-off"].alphaGrowthPct < 0);
+});
+
+test("gradeAB: only position-stream rows graded A or B qualify (propose-only label, never a gate)", () => {
+  assert.equal(gradeAB({ tags: { mode: "position", fundamentalGrade: "A" } }), true);
+  assert.equal(gradeAB({ tags: { mode: "position", fundamentalGrade: "B" } }), true);
+  assert.equal(gradeAB({ tags: { mode: "position", fundamentalGrade: "C" } }), false);
+  assert.equal(gradeAB({ tags: { mode: "position", fundamentalGrade: null } }), false);
+  assert.equal(gradeAB({ tags: { fundamentalGrade: "A" } }), false, "tactical A is not a position-grade row");
+});
+
+test("scoreLedger: combined interaction overlays partition the tactical population by BOTH tags", () => {
+  const ledger = [
+    // momentum AND quality → mom-quality-on; +alpha
+    { ...closed({ id: "A1", entry: 100, exit: 110, benchClose: 103 }), tags: { momentumActivated: true, qualityActivated: true } },
+    // momentum but NOT quality → mom-quality-off
+    { ...closed({ id: "A2", entry: 100, exit: 101, benchClose: 107 }), tags: { momentumActivated: true, qualityActivated: false } },
+    // neither → mom-quality-off
+    { ...closed({ id: "A3", entry: 100, exit: 102, benchClose: 106 }), tags: { momentumActivated: false, qualityActivated: false } },
+  ];
+  const perf = scoreLedger(ledger);
+  assert.equal(perf.variants["mom-quality-on"].n, 1, "only the row with BOTH tags is on");
+  assert.equal(perf.variants["mom-quality-on"].n + perf.variants["mom-quality-off"].n, perf.variants["all"].n, "on/off re-union to the tactical population");
+  assert.ok(perf.variants["mom-quality-on"].alphaGrowthPct > 0);
+});
+
+test("bothTac: requires BOTH tactical tags; excludes position rows (interaction label, never a gate)", () => {
+  assert.equal(bothTac({ tags: { momentumActivated: true, qualityActivated: true } }, "momentumActivated", "qualityActivated"), true);
+  assert.equal(bothTac({ tags: { momentumActivated: true, qualityActivated: false } }, "momentumActivated", "qualityActivated"), false);
+  assert.equal(bothTac({ tags: { mode: "position", momentumActivated: true, qualityActivated: true } }, "momentumActivated", "qualityActivated"), false, "position rows excluded");
 });
 
 test("scoreLedger: empty ledger is honest, not a crash", () => {

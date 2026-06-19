@@ -1,0 +1,42 @@
+name: Factor-interaction study (research, on-demand)
+
+# The "pie chart of weighted data value": for each SignalForge tool — the 4 price/risk factors
+# (momentum 12-1 / 6-1, reversal, low-vol) AND the 13 technical SIGNALS votes — measure its
+# forward-return rank-IC on real Polygon history, the redundancy between tools (correlation matrix),
+# the interaction lift (IC of A within B's top vs bottom tertile), and a combined composite vs the
+# best single factor. Manual dispatch only — prints a rollup to the job log + uploads the JSON.
+# IN-SAMPLE measurement, NOT a promotion and NOT wired into any gate. Requires secret POLYGON_API_KEY.
+
+on:
+  workflow_dispatch:
+    inputs:
+      cap:
+        description: "Max universe size (FIS_MAX)"
+        required: false
+        default: "120"
+
+permissions:
+  contents: read
+
+jobs:
+  study:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 20
+      - name: Run offline unit tests
+        run: node --test scripts/*.test.mjs
+      - name: Run factor-interaction study
+        env:
+          POLYGON_API_KEY: ${{ secrets.POLYGON_API_KEY }}
+          FIS_MAX: ${{ github.event.inputs.cap }}
+        run: node scripts/factor-interaction-study.mjs
+      - name: Upload factor-interaction-study.json
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: factor-interaction-study
+          path: factor-interaction-study.json
+          if-no-files-found: warn

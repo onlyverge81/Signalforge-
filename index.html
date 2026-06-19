@@ -1893,6 +1893,14 @@ function App() {
     fetch("./quality.json").then(r=>r.ok?r.json():null).then(j=>{ if(alive&&j&&j.windows) setQuality(j); }).catch(()=>{});
     return ()=>{ alive=false; };
   },[]);
+  // Factor-interaction "pie chart" study (factor-interaction-study.json) — every tool's measured
+  // weighted data value (|rank-IC| share) + the top interaction lifts. Built on-demand in CI;
+  // read-only, same-origin, display-only (never feeds the signal). In-sample only.
+  const [factorPie, setFactorPie] = useState(null);
+  useEffect(()=>{ let alive=true;
+    fetch("./factor-interaction-study.json").then(r=>r.ok?r.json():null).then(j=>{ if(alive&&j&&j.pie) setFactorPie(j); }).catch(()=>{});
+    return ()=>{ alive=false; };
+  },[]);
   // Out-of-sample variant scoreboard (forward-perf.json) — the alpha/FDR verdict per
   // propose-only variant (merits-on, momentum-on, news-*, earnings-recent-on, position).
   const [forwardPerf, setForwardPerf] = useState(null);
@@ -3814,6 +3822,61 @@ function App() {
                 perPeriodLabel:"PER-PERIOD RANK-IC · "+quality.primary,
                 sourceLine:"fundamentals "+(quality.source?.fundamentals||"—")+" · prices "+(quality.source?.prices||"—") })}
 
+            {/* ── Factor-interaction PIE (factor-interaction-study.json) — weighted data value per tool ── */}
+            {factorPie&&(()=>{
+              const pie=(factorPie.pie||[]).filter(p=>p.weightPct>0);
+              const inter=(factorPie.interactions||[]).slice(0,5);
+              const cc=factorPie.composite&&factorPie.composite.equalWeight;
+              const vCol=v=>v==="SIGNIFICANT"?"#00e676":v==="SUGGESTIVE"?"#ffd740":"#90a4ae";
+              const maxW=pie.length?pie[0].weightPct:1;
+              return (
+                <div style={card}>
+                  <span style={lbl}>🥧 FACTOR-INTERACTION PIE · factor-interaction-study.json</span>
+                  <div style={{fontSize:11,color:"#90a4ae",lineHeight:1.7,marginBottom:10}}>
+                    Each tool's <b>weighted data value</b> = its forward-return |rank-IC| as a share of the total, measured on Polygon history. Price/risk <b style={{color:"#26c6da"}}>factors</b>, AUTOPSY <b style={{color:"#ab47bc"}}>fundamentals</b> (cheap/healthy/growing/merit, via the app's own valueScore), and the 13 SIGNALS <b style={{color:"#90a4ae"}}>votes</b> (input as the engine's raw vote direction, so the measured weight sits beside the <i>hand-set</i> one). OUTLOOK is excluded by construction — a market-timing projection can't rank names. <b style={{color:"#ffd740"}}>In-sample only — never the verdict.</b> The technical confluence is a measured in-sample loser (baseline t ≈ −12.6), so thin/negative vote slices are the honest finding, not a bug.
+                  </div>
+                  <div style={{fontSize:10,color:DIM,marginBottom:8}}>
+                    {(factorPie.config&&factorPie.config.rows)||0} panel rows · {(factorPie.universe&&factorPie.universe.covered)||0} names · {(factorPie.config&&factorPie.config.rebalance)||"monthly"} rebalance, {(factorPie.config&&factorPie.config.forwardHorizon)||"1mo"} forward
+                  </div>
+                  {pie.map(p=>{
+                    const C=factorPie.contributors||{};
+                    const isVote=(C.votes||[]).includes(p.name);
+                    const isFunda=(C.fundamentals||[]).includes(p.name);
+                    const kindLbl=isVote?"vote":isFunda?"fundamtl":"factor";
+                    const kindCol=isVote?"#90a4ae":isFunda?"#ab47bc":"#26c6da";
+                    return (
+                      <div key={p.name} style={{display:"flex",alignItems:"center",gap:8,fontSize:10,marginBottom:3}}>
+                        <span style={{width:96,color:"#cfd8dc",fontFamily:"monospace"}}>{p.name}</span>
+                        <span style={{width:54,color:kindCol}}>{kindLbl}</span>
+                        <div style={{flex:1,background:"#11161c",borderRadius:3,height:12,position:"relative",minWidth:60}}>
+                          <div style={{width:(100*p.weightPct/maxW)+"%",background:p.sign==="−"?"#ef5350":"#26c6da",height:12,borderRadius:3,opacity:0.85}}/>
+                        </div>
+                        <span style={{width:46,textAlign:"right",color:"#eceff1"}}>{p.sign}{p.weightPct}%</span>
+                        <span style={{width:108,textAlign:"right",color:vCol(p.verdict)}}>IC {p.meanIC==null?"n/a":p.meanIC} (t {p.t==null?"–":p.t})</span>
+                        <span style={{width:54,textAlign:"right",color:DIM}}>{factorPie.contributors&&factorPie.contributors.voteWeights&&factorPie.contributors.voteWeights[p.name]!=null?("engW "+factorPie.contributors.voteWeights[p.name]):""}</span>
+                      </div>
+                    );
+                  })}
+                  {inter.length>0&&(
+                    <div style={{marginTop:12}}>
+                      <span style={lbl}>TOP INTERACTIONS · IC of A within B's top vs bottom tertile (lift)</span>
+                      {inter.map((x,i)=>(
+                        <div key={i} style={{fontSize:10,color:"#b0bec5",fontFamily:"monospace",marginBottom:2}}>
+                          {x.factor} | {x.conditionedOn} — top {x.topIC} / bottom {x.bottomIC} → <b style={{color:x.lift>0?"#00e676":"#ef5350"}}>lift {x.lift}</b> (n {x.nPeriods})
+                        </div>
+                      ))}
+                    </div>
+                  )}
+                  {cc&&(
+                    <div style={{marginTop:10,fontSize:10,color:"#90a4ae"}}>
+                      <b>Combined composite</b> (z-scored blend of the price/risk factors): meanIC {cc.meanIC} (t {cc.t}, {cc.verdict}); best single {cc.bestSingle?cc.bestSingle.name+" "+cc.bestSingle.meanIC:"–"}, diversification gain {cc.gain}.
+                    </div>
+                  )}
+                  <div style={{fontSize:9,color:DIM,marginTop:8}}>Display-only — never feeds the signal. Only the OOS scoreboard below, cleared through FDR, is tradeable evidence.</div>
+                </div>
+              );
+            })()}
+
             {/* ── Out-of-sample variant scoreboard (forward-perf.json) — the verdict that counts ── */}
             {forwardPerf&&(()=>{
               const V=forwardPerf.variants||{}, mt=forwardPerf.multipleTesting||{};
@@ -3827,7 +3890,12 @@ function App() {
                 ["news-pos-on","Fresh positive news (drift)"],
                 ["news-quiet-on","No fresh negative news"],
                 ["earnings-recent-on","10-Q/10-K filed ≤ 30d"],
+                ["mom-quality-on","Momentum × quality (both top-tertile)"],
+                ["mom-lowvol-on","Momentum × low-vol (both top-tertile)"],
+                ["rev-lowvol-on","Reversal × low-vol (both top-tertile)"],
                 ["position","POSITION (dip-buy, trailing)"],
+                ["quality-position-on","POSITION · top-tertile ROE × duration"],
+                ["quality-grade-position-on","POSITION · AUTOPSY grade A/B × duration"],
               ].filter(([k])=>V[k]);
               const vCol=v=>v==="SIGNIFICANT"?"#00e676":v==="SUGGESTIVE"?"#ffd740":v==="PROVEN LOSER"?"#ff5252":"#90a4ae";
               return (

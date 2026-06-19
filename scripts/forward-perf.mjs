@@ -184,6 +184,21 @@ export function defaultVariants() {
     // numbers — does a recently-filed 10-Q/10-K (SEC `lastFiled`) carry forward alpha?
     { label: "earnings-recent-on", where: t => tac(t) && !!(t.tags && t.tags.earningsRecent) },
     { label: "earnings-recent-off", where: t => tac(t) && !(t.tags && t.tags.earningsRecent) },
+    // ─── COMBINED / INTERACTION overlays (propose-only A/B inside the tactical longs) ──────────
+    // "Does combining two weak-but-real factors beat either alone?" Each is the AND of two existing
+    // top-tertile tags — a true interaction the factor-interaction study is designed to surface.
+    // Read existing tags only (no forward-log change); never touch gate.actionable; judged under the
+    // SAME BH/BY FDR family (which auto-includes them once each clears MIN_TRADES_SIG). Correlated
+    // with their parent single-factor variants → lean on the BY (dependence-robust) column.
+    //   momentum×quality — trending names that are also profitable (the image's direction #1).
+    { label: "mom-quality-on", where: t => bothTac(t, "momentumActivated", "qualityActivated") },
+    { label: "mom-quality-off", where: t => tac(t) && !bothTac(t, "momentumActivated", "qualityActivated") },
+    //   momentum×low-vol — the classic "low-volatility momentum" combination.
+    { label: "mom-lowvol-on", where: t => bothTac(t, "momentumActivated", "lowVolActivated") },
+    { label: "mom-lowvol-off", where: t => tac(t) && !bothTac(t, "momentumActivated", "lowVolActivated") },
+    //   reversal×low-vol — recent losers that are NOT volatile (calm mean-reversion candidates).
+    { label: "rev-lowvol-on", where: t => bothTac(t, "reversalActivated", "lowVolActivated") },
+    { label: "rev-lowvol-off", where: t => tac(t) && !bothTac(t, "reversalActivated", "lowVolActivated") },
     { label: "position", where: t => !!(t.tags && t.tags.mode === "position") },
     // Quality × DURATION (propose-only A/B INSIDE the position/long-hold stream): the
     // quality-duration study found high-ROE names beat the market with an edge that GROWS over
@@ -191,7 +206,23 @@ export function defaultVariants() {
     // whether top-tertile-quality position trades add alpha vs the rest. Judged under the same FDR gate.
     { label: "quality-position-on", where: t => !!(t.tags && t.tags.mode === "position" && t.tags.qualityActivated) },
     { label: "quality-position-off", where: t => !!(t.tags && t.tags.mode === "position" && !t.tags.qualityActivated) },
+    // AUTOPSY grade A/B × DURATION (propose-only A/B INSIDE the position stream): a TIGHTER screen
+    // than top-tertile ROE. The 36-name quality-duration scan found the AUTOPSY grade flips sign at
+    // the B/C boundary — grade A/B carried ~+9pt 12-month alpha while C/D went negative — so the
+    // composite valuation+health+growth grade (not ROE alone) may be the cleaner duration screen.
+    // Reads the fundamentalGrade tag already on every position row; never touches gate.actionable.
+    { label: "quality-grade-position-on", where: t => gradeAB(t) },
+    { label: "quality-grade-position-off", where: t => !!(t.tags && t.tags.mode === "position") && !gradeAB(t) },
   ];
+}
+// Pure: a position-stream row whose AUTOPSY fundamentalGrade is A or B (the durable-edge tier).
+export function gradeAB(t) {
+  return !!(t.tags && t.tags.mode === "position" && (t.tags.fundamentalGrade === "A" || t.tags.fundamentalGrade === "B"));
+}
+// Pure: a TACTICAL row with BOTH named overlay tags active (a factor interaction). Position rows
+// (mode:"position") are excluded so the tactical interaction family is never conflated with POSITION.
+export function bothTac(t, tagA, tagB) {
+  return !!(t.tags && t.tags.mode !== "position" && t.tags[tagA] && t.tags[tagB]);
 }
 
 // ─── Score the whole ledger: every variant's alpha record, keyed by label ─────
