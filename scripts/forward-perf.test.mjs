@@ -4,7 +4,7 @@ import { test } from "node:test";
 import assert from "node:assert/strict";
 import {
   buyHoldGrossPct, buyHoldTotalPct, tradeAlpha, variantAlpha, scoreLedger, isBenchmarkable,
-  defaultVariants, COST_PER_TRADE, gradeAB,
+  defaultVariants, COST_PER_TRADE, gradeAB, bothTac,
   betai, tUpperP, tTest, attachSignificance, MIN_TRADES_SIG,
 } from "./forward-perf.mjs";
 import { markToMarket } from "./forward-log.mjs";
@@ -272,6 +272,27 @@ test("gradeAB: only position-stream rows graded A or B qualify (propose-only lab
   assert.equal(gradeAB({ tags: { mode: "position", fundamentalGrade: "C" } }), false);
   assert.equal(gradeAB({ tags: { mode: "position", fundamentalGrade: null } }), false);
   assert.equal(gradeAB({ tags: { fundamentalGrade: "A" } }), false, "tactical A is not a position-grade row");
+});
+
+test("scoreLedger: combined interaction overlays partition the tactical population by BOTH tags", () => {
+  const ledger = [
+    // momentum AND quality → mom-quality-on; +alpha
+    { ...closed({ id: "A1", entry: 100, exit: 110, benchClose: 103 }), tags: { momentumActivated: true, qualityActivated: true } },
+    // momentum but NOT quality → mom-quality-off
+    { ...closed({ id: "A2", entry: 100, exit: 101, benchClose: 107 }), tags: { momentumActivated: true, qualityActivated: false } },
+    // neither → mom-quality-off
+    { ...closed({ id: "A3", entry: 100, exit: 102, benchClose: 106 }), tags: { momentumActivated: false, qualityActivated: false } },
+  ];
+  const perf = scoreLedger(ledger);
+  assert.equal(perf.variants["mom-quality-on"].n, 1, "only the row with BOTH tags is on");
+  assert.equal(perf.variants["mom-quality-on"].n + perf.variants["mom-quality-off"].n, perf.variants["all"].n, "on/off re-union to the tactical population");
+  assert.ok(perf.variants["mom-quality-on"].alphaGrowthPct > 0);
+});
+
+test("bothTac: requires BOTH tactical tags; excludes position rows (interaction label, never a gate)", () => {
+  assert.equal(bothTac({ tags: { momentumActivated: true, qualityActivated: true } }, "momentumActivated", "qualityActivated"), true);
+  assert.equal(bothTac({ tags: { momentumActivated: true, qualityActivated: false } }, "momentumActivated", "qualityActivated"), false);
+  assert.equal(bothTac({ tags: { mode: "position", momentumActivated: true, qualityActivated: true } }, "momentumActivated", "qualityActivated"), false, "position rows excluded");
 });
 
 test("scoreLedger: empty ledger is honest, not a crash", () => {
