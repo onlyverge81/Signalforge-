@@ -318,6 +318,20 @@ and creates the overlay). `createRoot(...).render` replaces `#boot` on success. 
 so `vendor/` deploys. Verified via the run-signalforge driver: app mounts same-origin; both a network-abort and
 an HTTP-503 on babel show the Reload overlay (no silent black). NO engine/parity impact (head + boot only).
 
+**Quality × Duration research → quality-position OOS variant (DONE):** on-demand research harnesses
+`scripts/sfa-index-study.mjs` + `scripts/quality-duration-study.mjs` (+ `.yml` workflow_dispatch, artifact +
+log only — no commit/deploy) probe ideas with REAL Polygon data. The SFA12 × index-move family was KILLED
+(bull-window mirages: SFA12 align/extension = outliers, dispersion ≈ 0, Sum = 3×Avg degenerate, the monthly
+market-up filter had a NEGATIVE −2.1% edge). The ONE positive: **quality (ROE) × DURATION** — high-ROE names
+held 3/6/12mo beat SPY with an edge that GROWS with the hold (12-mo alpha HIGH +1.9% / MID −5.6% / LOW −12.4%,
+monotonic, n≈1000). ROE comes from **Polygon `/vX/reference/financials`** (net income ÷ equity, by filing_date)
+— charter-pure, and it sidesteps SEC EDGAR's 403 of the CI runner. In-sample/survivor-biased, so wired OOS not
+trusted: the **POSITION (long-hold) stream now carries the `quality` tag** (`buildPositionEntry` + the run loop
+ranks the position batch via `qualityRankGate` → `qualityActivated`), and `forward-perf.mjs` adds
+`quality-position-on`/`quality-position-off` (the "quality × duration" A/B inside the months-long position
+trades, under the same FDR gate; never touches `gate.actionable`). Tests +1 (215 green). It matures like every
+other label — only the OOS ledger through FDR counts.
+
 **Next — Track B:**
 - Mature the `momentum-on` / `merits-on` / `news-*` / `earnings-recent-on` OOS ledgers to n≥10; human-ratify
   only if they clear FDR. PASSIVE — the nightly `forward-log → forward-perf → promote` already partitions every

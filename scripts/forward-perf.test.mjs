@@ -233,6 +233,23 @@ test("scoreLedger: POSITION is its own variant; the tactical family excludes it 
   assert.equal(perf.variants["merits-on"].n, 1);    // and merits (T1), unaffected by the position row
 });
 
+test("scoreLedger: quality-position-on/off partition the POSITION stream by qualityActivated", () => {
+  const ledger = [
+    closed({ id: "T1", entry: 100, exit: 106, benchClose: 102, quality: true }),                          // tactical (excluded)
+    { ...closed({ id: "P1", entry: 100, exit: 112, benchClose: 104 }), tags: { mode: "position", qualityActivated: true } },  // hi-quality long hold, +alpha
+    { ...closed({ id: "P2", entry: 100, exit: 101, benchClose: 108 }), tags: { mode: "position", qualityActivated: false } }, // lo-quality long hold, -alpha
+  ];
+  const perf = scoreLedger(ledger);
+  // the two buckets re-union to the whole POSITION stream (2 rows), tactical excluded.
+  assert.equal(perf.variants["quality-position-on"].n + perf.variants["quality-position-off"].n, perf.variants["position"].n);
+  assert.equal(perf.variants["quality-position-on"].n, 1);
+  assert.equal(perf.variants["quality-position-off"].n, 1);
+  assert.ok(perf.variants["quality-position-on"].alphaGrowthPct > 0);
+  assert.ok(perf.variants["quality-position-off"].alphaGrowthPct < 0);
+  // never conflated with the tactical quality-on label (T1 is tactical, P1/P2 are position).
+  assert.equal(perf.variants["quality-on"].n, 1);
+});
+
 test("scoreLedger: empty ledger is honest, not a crash", () => {
   const perf = scoreLedger([]);
   assert.equal(perf.ledger.rows, 0);

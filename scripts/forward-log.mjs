@@ -410,7 +410,13 @@ export function buildPositionEntry({ sym, settled, fundaDB, news = [], loggedAt 
     events: eventsAtSignal,
     tags: { mode: "position", engaged: true, fundamentalGrade: grade,
       trendStrength: parseFloat((ps.trendStrength || 0).toFixed(4)),
-      dipDepth: parseFloat((ps.dipDepth || 0).toFixed(4)), ...eventTags(eventsAtSignal),
+      dipDepth: parseFloat((ps.dipDepth || 0).toFixed(4)),
+      // Quality (ROE) rides the POSITION (long-hold) stream too: the quality-duration study showed
+      // high-ROE names beat the market with an edge that GROWS over months — position trades hold
+      // for months (trailing stop), so quality-position is the propose-only "quality × duration"
+      // A/B. Set CROSS-SECTIONALLY by the run loop after ranking the position batch; never a gate.
+      quality: (q => q == null ? null : parseFloat(q.toFixed(4)))(qualityValue(fundaDB && fundaDB[sym])),
+      qualityActivated: false, ...eventTags(eventsAtSignal),
       earningsRecent: earningsGate(fundaDB && fundaDB[sym], decision.date) },
     status: actionable ? "OPEN" : "OBSERVATION",
     exit: null, exitAt: null, exitDate: null, barsHeld: null,
@@ -577,6 +583,12 @@ async function main() {
   // Independent label; touches only e.tags.qualityActivated, never the gate.
   const qFlags = qualityRankGate(tacticalNew.map(e => e.tags.quality));
   tacticalNew.forEach((e, i) => { e.tags.qualityActivated = qFlags[i]; });
+  // Quality × DURATION (the quality-duration study's one positive find): rank the POSITION
+  // (long-hold) batch by quality too, so quality-position can be judged on multi-month holds.
+  // Same pure rank gate; touches only e.tags.qualityActivated on position rows, never the gate.
+  const positionNew = previews.filter(e => e.tags && e.tags.mode === "position");
+  const pqFlags = qualityRankGate(positionNew.map(e => e.tags.quality));
+  positionNew.forEach((e, i) => { e.tags.qualityActivated = pqFlags[i]; });
 
   if (args.preview) {
     console.log("── FORWARD-TEST PREVIEW (no writes) ─────────────────────────");
