@@ -687,7 +687,12 @@ function isUsMarketOpen(d){
 const OUTLOOK_INDICES=[["I:DJI","Dow"],["I:SPX","S&P 500"],["I:NDX","Nasdaq"]];
 const POLY_RES={ "1":[1,"minute"],"5":[5,"minute"],"15":[15,"minute"],"30":[30,"minute"],"60":[1,"hour"],"D":[1,"day"],"W":[1,"week"] };
 function polyWindowMs(span){ const D=864e5; return span==="minute"?10*D:span==="hour"?90*D:span==="week"?2500*D:2200*D; }
-function polyBarDate(tMs,span){ const iso=new Date(tMs).toISOString(); return (span==="day"||span==="week")?iso.slice(0,10):iso.slice(0,16).replace("T"," "); }
+// Intraday bar timestamps render in ET (the market's timezone) so the chart x-axis, the SIGNALS
+// hero time, and the LIVE "last trade … ET" line all agree — UTC labels looked ~4-5h "ahead" of
+// the market clock. Daily/weekly stay date-only (the UTC date IS the trading date).
+const ET_DT=new Intl.DateTimeFormat("en-CA",{timeZone:"America/New_York",year:"numeric",month:"2-digit",day:"2-digit",hour:"2-digit",minute:"2-digit",hour12:false});
+function etDateTime(tMs){ const p={}; for(const x of ET_DT.formatToParts(new Date(tMs))) p[x.type]=x.value; const h=p.hour==="24"?"00":p.hour; return p.year+"-"+p.month+"-"+p.day+" "+h+":"+p.minute; }
+function polyBarDate(tMs,span){ return (span==="day"||span==="week") ? new Date(tMs).toISOString().slice(0,10) : etDateTime(tMs); }
 function polyErr(j){
   const m=j&&(j.error||j.message)||"Polygon request failed.";
   if(/not entitled|NOT_AUTHORIZED|isn't included|not included/i.test(m)) return "Your Polygon plan doesn't include this data — real-time/index needs the Developer tier. ("+m+")";
