@@ -72,7 +72,7 @@ function sfaAnalysis(rows) {
     // mean-reversion: does a bigger gap predict the gap CLOSING (fwd move opposite the gap sign)?
     gapMag.push(gapAtr); fwdRevert.push(-Math.sign(gapAtr) * fwd);
   }
-  const stat = a => ({ n: a.length, meanFwd5: round(mean(a)), hitUp: round(a.filter(v => v > 0).length / (a.length || 1) * 100, 1) });
+  const stat = a => ({ n: a.length, meanFwd5: round(mean(a)), medFwd5: round(median(a)), hitUp: round(a.filter(v => v > 0).length / (a.length || 1) * 100, 1) });
   return {
     aligned: stat(buckets.aligned), extended: stat(buckets.extended),
     regimeUp: stat(regime.UP), regimeDown: stat(regime.DOWN),
@@ -179,7 +179,7 @@ async function main() {
   const dates = [...avgGain.keys()].filter(d => sumGain.has(d));
   const combineVsAvgCorr = pearson(dates.map(d => avgGain.get(d)), dates.map(d => sumGain.get(d)));
   // SFA12 reliability rollup
-  const sfaRoll = k => round(mean(perStock.map(p => p.sfa[k] && p.sfa[k].meanFwd5).filter(v => v != null)));
+  const sfaRoll = (k, f = "meanFwd5") => round(mean(perStock.map(p => p.sfa[k] && p.sfa[k][f]).filter(v => v != null)));
   // Q6: monthly market-up. condMean is NET of cost; edge = cond − uncond (does the filter add return
   // beyond just being long?). t is NAIVE (overlapping 21-day windows + pooled names → autocorrelated;
   // treat as a rough magnitude, not a p-value). edge ≤ 0 ⇒ "dressed-up beta", no selection skill.
@@ -199,6 +199,8 @@ async function main() {
     q1_sfa12: {
       meanFwd5_aligned: sfaRoll("aligned"), meanFwd5_extended: sfaRoll("extended"),
       meanFwd5_regimeUp: sfaRoll("regimeUp"), meanFwd5_regimeDown: sfaRoll("regimeDown"),
+      medFwd5_aligned: sfaRoll("aligned", "medFwd5"), medFwd5_extended: sfaRoll("extended", "medFwd5"),
+      medFwd5_regimeUp: sfaRoll("regimeUp", "medFwd5"), medFwd5_regimeDown: sfaRoll("regimeDown", "medFwd5"),
       gapMeanReversionCorr: round(mean(perStock.map(p => p.sfa.gapMeanReversionCorr).filter(v => v != null))),
     },
     q2_avgIndex: rollup(aggAvg),
@@ -215,7 +217,8 @@ async function main() {
   };
   fs.writeFileSync(path.join(ROOT, "sfa-index-study.json"), JSON.stringify(out, null, 1) + "\n");
   console.log("\n── ROLLUP ──");
-  console.log("SFA12 fwd5: aligned=" + out.q1_sfa12.meanFwd5_aligned + " extended=" + out.q1_sfa12.meanFwd5_extended + " | up=" + out.q1_sfa12.meanFwd5_regimeUp + " down=" + out.q1_sfa12.meanFwd5_regimeDown + " | gap→reversion corr=" + out.q1_sfa12.gapMeanReversionCorr);
+  console.log("SFA12 fwd5 MEAN: aligned=" + out.q1_sfa12.meanFwd5_aligned + " extended=" + out.q1_sfa12.meanFwd5_extended + " | up=" + out.q1_sfa12.meanFwd5_regimeUp + " down=" + out.q1_sfa12.meanFwd5_regimeDown);
+  console.log("SFA12 fwd5 MEDIAN: aligned=" + out.q1_sfa12.medFwd5_aligned + " extended=" + out.q1_sfa12.medFwd5_extended + " | up=" + out.q1_sfa12.medFwd5_regimeUp + " down=" + out.q1_sfa12.medFwd5_regimeDown + " | gap→reversion corr=" + out.q1_sfa12.gapMeanReversionCorr);
   for (const h of Object.keys(HORIZONS)) console.log("AVG  " + h.padEnd(5) + " reached%=" + out.q2_avgIndex[h].reachedRate + " dirHit%=" + out.q2_avgIndex[h].dirHitRate + " realizedFrac(med)=" + out.q2_avgIndex[h].medianRealizedFrac);
   console.log("dispersion→dirHit corr=" + out.q4_dispersionRegime.dispVsWeeklyDirHitCorr + " | combine~avg corr=" + out.q5_combineVsAvg.correlation);
   console.log("MONTHLY market-up: cond(net)=" + q6.condMean21Net + " uncond=" + q6.uncondMean21 + " EDGE=" + q6.edge + " t≈" + q6.condTStatNaive + " inMkt%=" + q6.inMarketPct);
