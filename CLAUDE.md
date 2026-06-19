@@ -332,6 +332,44 @@ ranks the position batch via `qualityRankGate` → `qualityActivated`), and `for
 trades, under the same FDR gate; never touches `gate.actionable`). Tests +1 (215 green). It matures like every
 other label — only the OOS ledger through FDR counts.
 
+**Factor-interaction "PIE CHART" study + combined OOS variants + EVIDENCE pie view (DONE) — branch
+`claude/signalforge-profitability-wheel-qbclby`, 5 commits, 233 tests green, pushed (no PR yet):** the user's
+"Wheel of Problem-Solving" arc — *each SignalForge tool sums to a role toward a signal; put them through
+combinatorial correlation analysis to reveal each one's weighted data value (a "pie chart"); use SignalForge
+"in reverse" against Polygon history since the live ledger can't decide (0 closed trades).* Shipped as five
+pieces:
+- **`scripts/factor-interaction-study.mjs` + `.yml`** (workflow_dispatch, artifact + log only — no commit/deploy,
+  never wired to a gate). On-demand harness measuring, per name per monthly rebalance (1-month forward, complete
+  windows only, no-lookahead), every tool's forward-return rank-IC: **THE PIE** = each tool's |meanIC| as a share
+  of the total ("weighted data value"); a per-period Spearman **correlation matrix** (redundancy); a
+  **conditional/interaction scan** (`conditionalIC` = IC of A within B's top vs bottom tertile → the "lift", the
+  "do two weak factors combine?" answer); a z-scored **combined composite** vs best single. Reuses `study-lib.mjs`
+  (factor-agnostic) + `build-study` helpers; Polygon bars only.
+- **Whole-app pie contributors** (user picked "whole-app"): 4 price/risk **FACTORS** (`factorValues` reuses
+  `momentumValue`/`reversalValue`/`lowVolValue` from forward-log VERBATIM) + 13 technical **VOTES**
+  (`voteVector` mirrors `computeSignal`'s vote dirs; input as the RAW direction so the measured IC reveals each
+  vote's *empirically-deserved* weight, shown beside the hand-set `VOTE_WEIGHTS`) + 4 AUTOPSY **FUNDAMENTALS**
+  (`parsePolyFinancials`→`recAsOf`→`autopsyValues` reconstructs point-in-time fundamentals from Polygon
+  `/vX/reference/financials` by filing_date, scored by the app's OWN `valueScore(meritMetrics(...))` — no
+  re-impl). **OUTLOOK is documented-excluded** (market-timing projection = ~0 cross-sectional variance, can't
+  rank names; in `excluded` + caveats). Interactions/composite span the cross-sectional SELECTORS (factors +
+  fundamentals).
+- **Propose-only COMBINED OOS variants** in `forward-perf.mjs` (`bothTac` helper): `mom-quality-on/off`,
+  `mom-lowvol-on/off`, `rev-lowvol-on/off` — AND of two existing tactical tags; read existing tags (no
+  forward-log change); never touch `gate.actionable`; auto-included in the BH/BY FDR family (correlated with
+  parents → lean on BY).
+- **Option B refinement** — `quality-grade-position-on/off` (AUTOPSY grade A/B × duration) ALONGSIDE the
+  top-tertile-ROE `quality-position` variant (pure `gradeAB`, reads the `fundamentalGrade` tag already on
+  position rows; the 36-name scan found grade A/B ≈ +9pt 12-mo alpha vs C/D negative — sign flips at B/C).
+- **EVIDENCE-tab pie view** (`factorPie` state + card; display-only, parity-safe) renders
+  `factor-interaction-study.json` — bars colored by IC sign, kind badges (factor/fundamtl/vote), engine weight,
+  interaction lifts, composite. Verified via run-signalforge driver (renders, zero app JS errors). New
+  scoreboard rows for the combined + position-quality labels (hidden until data lands).
+- **Honesty:** in-sample only, never the verdict; technical core is a measured loser (t −12.6) so thin/negative
+  vote slices are the expected finding. Populates once `factor-interaction-study.yml` is dispatched in CI (the
+  sandbox can't reach Polygon and has no secret — studies run in Actions, where the repo `POLYGON_API_KEY` is
+  injected automatically; the key is correct, it's a sandbox/CI location boundary, not a key problem).
+
 **Next — Track B:**
 - Mature the `momentum-on` / `merits-on` / `news-*` / `earnings-recent-on` OOS ledgers to n≥10; human-ratify
   only if they clear FDR. PASSIVE — the nightly `forward-log → forward-perf → promote` already partitions every
