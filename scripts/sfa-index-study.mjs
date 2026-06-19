@@ -107,6 +107,27 @@ function realisation(rows, gainByDate, scale = 1) {
   return out;
 }
 
+// ── Q6: the one robust thread. Does conditioning a LONG on "market UP (avg-20 index > 0) AND
+//    stock above SMA20", held ~1 month (21d), beat just being long? Compare the CONDITIONAL
+//    21-day forward return (net of a round-trip cost) to the UNCONDITIONAL 21-day return. If
+//    cond ≈ uncond, the filter is dressed-up beta (no selection edge); if cond ≫ uncond, the
+//    market-up condition adds return. No lookahead (signal at i, return i→i+21).
+const COST_RT = 0.1;   // ~10bps round-trip drag on each conditioned trade
+function monthlyMarketUp(rows, gainByDate) {
+  const closes = rows.map(d => d.close);
+  const s20 = smaArr(closes, 20);
+  const H = HORIZONS.month;
+  const cond = [], uncond = [];
+  const start = Math.max(20, rows.length - WINDOW);
+  for (let i = start; i < rows.length - H; i++) {
+    const r = (closes[i + H] - closes[i]) / closes[i] * 100;
+    uncond.push(r);
+    const g = gainByDate.get(rows[i].date);
+    if (g != null && g > 0 && s20[i] != null && closes[i] >= s20[i]) cond.push(r - COST_RT);  // net of cost
+  }
+  return { cond, uncond };
+}
+
 async function main() {
   const key = process.env.POLYGON_API_KEY;
   if (!key) { console.error("Set POLYGON_API_KEY — this study prices off Polygon (the only vendor)."); process.exit(2); }
@@ -125,6 +146,7 @@ async function main() {
   for (const d of avgGain.keys()) { const vs = perIdx.map(m => m.get(d)).filter(v => v != null); if (vs.length === perIdx.length) disp.set(d, stdev(vs)); }
 
   const perStock = [], aggAvg = { day: [], week: [], month: [] }, aggSum = { day: [], week: [], month: [] };
+  const allCond = [], allUncond = [];   // Q6 pooled monthly market-up vs unconditional
   const dispVsAcc = { disp: [], acc: [] };
   for (const sym of STOCKS) {
     let rows; try { rows = await loadDaily(sym, key); } catch (e) { console.warn("✗ " + sym + " " + (e.message || e)); continue; }
@@ -134,6 +156,7 @@ async function main() {
     const rs = realisation(rows, sumGain, 1);
     perStock.push({ sym, bars: rows.length, sfa, avg: ra, sum: rs });
     for (const h of Object.keys(HORIZONS)) { if (ra[h].dirHitRate != null) aggAvg[h].push(ra[h]); if (rs[h].dirHitRate != null) aggSum[h].push(rs[h]); }
+    const mm = monthlyMarketUp(rows, avgGain); allCond.push(...mm.cond); allUncond.push(...mm.uncond);
     // Q4: does dispersion track WEEKLY directional accuracy of the avg projection?
     const closes = rows.map(d => d.close), H = HORIZONS.week, start = Math.max(20, rows.length - WINDOW);
     for (let i = start; i < rows.length - H; i++) {
@@ -157,6 +180,17 @@ async function main() {
   const combineVsAvgCorr = pearson(dates.map(d => avgGain.get(d)), dates.map(d => sumGain.get(d)));
   // SFA12 reliability rollup
   const sfaRoll = k => round(mean(perStock.map(p => p.sfa[k] && p.sfa[k].meanFwd5).filter(v => v != null)));
+  // Q6: monthly market-up. condMean is NET of cost; edge = cond − uncond (does the filter add return
+  // beyond just being long?). t is NAIVE (overlapping 21-day windows + pooled names → autocorrelated;
+  // treat as a rough magnitude, not a p-value). edge ≤ 0 ⇒ "dressed-up beta", no selection skill.
+  const condMean = mean(allCond), uncondMean = mean(allUncond);
+  const condSe = allCond.length ? stdev(allCond) / Math.sqrt(allCond.length) : 0;
+  const q6 = {
+    nCond: allCond.length, inMarketPct: round(allCond.length / (allUncond.length || 1) * 100, 1),
+    condMean21Net: round(condMean), uncondMean21: round(uncondMean),
+    edge: round(condMean - uncondMean), condTStatNaive: round(condSe > 0 ? condMean / condSe : 0, 2),
+    note: "LONG when avg-20 index>0 AND stock≥SMA20, 21-day hold, net of cost vs UNCONDITIONAL 21-day return. edge≤0 ⇒ dressed-up beta.",
+  };
 
   const out = {
     generatedAt: new Date().toISOString(),
@@ -171,6 +205,7 @@ async function main() {
     q3_combinedIndex: rollup(aggSum),
     q4_dispersionRegime: { dispVsWeeklyDirHitCorr: pearson(dispVsAcc.disp, dispVsAcc.acc), note: ">0 ⇒ higher dispersion → MORE directional reliability; <0 ⇒ dispersion = chop" },
     q5_combineVsAvg: { correlation: combineVsAvgCorr, note: "≈1.0 confirms Sum = 3×Avg (degenerate); the real signal is q4 dispersion" },
+    q6_monthlyMarketUp: q6,
     perStock,
     caveats: [
       "In-sample MEASUREMENT over the recent ~6-month window — descriptive, not a promotion. Only the OOS ledger gates any edge.",
@@ -183,6 +218,7 @@ async function main() {
   console.log("SFA12 fwd5: aligned=" + out.q1_sfa12.meanFwd5_aligned + " extended=" + out.q1_sfa12.meanFwd5_extended + " | up=" + out.q1_sfa12.meanFwd5_regimeUp + " down=" + out.q1_sfa12.meanFwd5_regimeDown + " | gap→reversion corr=" + out.q1_sfa12.gapMeanReversionCorr);
   for (const h of Object.keys(HORIZONS)) console.log("AVG  " + h.padEnd(5) + " reached%=" + out.q2_avgIndex[h].reachedRate + " dirHit%=" + out.q2_avgIndex[h].dirHitRate + " realizedFrac(med)=" + out.q2_avgIndex[h].medianRealizedFrac);
   console.log("dispersion→dirHit corr=" + out.q4_dispersionRegime.dispVsWeeklyDirHitCorr + " | combine~avg corr=" + out.q5_combineVsAvg.correlation);
+  console.log("MONTHLY market-up: cond(net)=" + q6.condMean21Net + " uncond=" + q6.uncondMean21 + " EDGE=" + q6.edge + " t≈" + q6.condTStatNaive + " inMkt%=" + q6.inMarketPct);
   console.log("Wrote sfa-index-study.json.");
 }
 
