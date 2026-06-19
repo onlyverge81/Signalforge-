@@ -3828,6 +3828,8 @@ function App() {
                 ["news-quiet-on","No fresh negative news"],
                 ["earnings-recent-on","10-Q/10-K filed ≤ 30d"],
                 ["position","POSITION (dip-buy, trailing)"],
+                ["quality-position-on","POSITION · top-tertile ROE × duration"],
+                ["quality-grade-position-on","POSITION · AUTOPSY grade A/B × duration"],
               ].filter(([k])=>V[k]);
               const vCol=v=>v==="SIGNIFICANT"?"#00e676":v==="SUGGESTIVE"?"#ffd740":v==="PROVEN LOSER"?"#ff5252":"#90a4ae";
               return (

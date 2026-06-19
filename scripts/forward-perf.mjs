@@ -191,7 +191,18 @@ export function defaultVariants() {
     // whether top-tertile-quality position trades add alpha vs the rest. Judged under the same FDR gate.
     { label: "quality-position-on", where: t => !!(t.tags && t.tags.mode === "position" && t.tags.qualityActivated) },
     { label: "quality-position-off", where: t => !!(t.tags && t.tags.mode === "position" && !t.tags.qualityActivated) },
+    // AUTOPSY grade A/B × DURATION (propose-only A/B INSIDE the position stream): a TIGHTER screen
+    // than top-tertile ROE. The 36-name quality-duration scan found the AUTOPSY grade flips sign at
+    // the B/C boundary — grade A/B carried ~+9pt 12-month alpha while C/D went negative — so the
+    // composite valuation+health+growth grade (not ROE alone) may be the cleaner duration screen.
+    // Reads the fundamentalGrade tag already on every position row; never touches gate.actionable.
+    { label: "quality-grade-position-on", where: t => gradeAB(t) },
+    { label: "quality-grade-position-off", where: t => !!(t.tags && t.tags.mode === "position") && !gradeAB(t) },
   ];
+}
+// Pure: a position-stream row whose AUTOPSY fundamentalGrade is A or B (the durable-edge tier).
+export function gradeAB(t) {
+  return !!(t.tags && t.tags.mode === "position" && (t.tags.fundamentalGrade === "A" || t.tags.fundamentalGrade === "B"));
 }
 
 // ─── Score the whole ledger: every variant's alpha record, keyed by label ─────
