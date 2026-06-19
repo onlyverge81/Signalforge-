@@ -39,7 +39,8 @@ import { fetchPolygonAggs } from "./pattern-study.mjs";
 import { selectMeritUniverse, grid, addMonths, iso } from "./build-study.mjs";
 import { momentumValue, reversalValue, lowVolValue } from "./forward-log.mjs";
 import { periodStats, assessSignificance, rankIC } from "./study-lib.mjs";
-import { rsi, macd, bb, stoch, atr, adxCalc, obvCalc, vwapCalc, patterns, divergence, sma } from "./engine.mjs";
+import { rsi, macd, bb, stoch, atr, adxCalc, obvCalc, vwapCalc, patterns, divergence, sma, valueScore } from "./engine.mjs";
+import { meritMetrics } from "./sec-lib.mjs";
 
 const __dirname = path.dirname(fileURLToPath(import.meta.url));
 const ROOT = path.resolve(__dirname, "..");
@@ -109,6 +110,66 @@ export function voteVector(data){
   return v;
 }
 
+// ─── AUTOPSY fundamentals: cheap / healthy / growing + merit composite ────────
+// The whole-app pie weighs the AUTOPSY (✚ VALUE) tab too. We reconstruct each name's point-in-time
+// fundamentals from Polygon's /vX/reference/financials (the SAME charter-pure, CI-reachable source
+// the quality-duration study uses — net income, revenue, equity, debt, current assets/liabilities,
+// EPS, by filing_date) into a `rec`, then reuse the app's AUTOPSY engine VERBATIM —
+// valueScore(meritMetrics(rec, price)) — so cheap/healthy/growing/total are computed by the exact
+// code the app shows, not a re-implementation. Filing_date is already the PUBLIC date, so reading
+// the latest filing with filing_date ≤ rebalance is point-in-time with no extra lag.
+export const FUNDAMENTAL_NAMES = ["AUTOPSY_cheap", "AUTOPSY_healthy", "AUTOPSY_growing", "merit"];
+
+// Pure: Polygon financials `results` → sorted [{t, ni, revenue, eps, equity, liabilities, curAssets, curLiab}].
+export function parsePolyFinancials(results){
+  const out = [];
+  for(const res of (results || [])){
+    const fin = res.financials || {};
+    const is = fin.income_statement || {}, bs = fin.balance_sheet || {};
+    const val = x => (x && x.value != null && isFinite(x.value)) ? x.value : null;
+    const ni = val(is.net_income_loss);
+    const revenue = val(is.revenues);
+    const eps = val(is.basic_earnings_per_share) ?? val(is.diluted_earnings_per_share);
+    const equity = val(bs.equity_attributable_to_parent) ?? val(bs.equity);
+    const liabilities = val(bs.liabilities);
+    const curAssets = val(bs.current_assets);
+    const curLiab = val(bs.current_liabilities);
+    const filing = res.filing_date || res.end_date;
+    if(filing) out.push({ t: Date.parse(filing), ni, revenue, eps, equity, liabilities, curAssets, curLiab });
+  }
+  return out.sort((a, b) => a.t - b.t);
+}
+
+// Pure: build the point-in-time AUTOPSY `rec` from the latest filing ≤ asOfMs (with the prior filing
+// for YoY growth). Returns the {epsTTM,bvps,de,roe,npm,cr,revG,epsG} record meritMetrics consumes, or
+// null when no filing is public yet. No-lookahead: never reads a filing dated after asOfMs.
+export function recAsOf(parsed, asOfMs){
+  const past = (parsed || []).filter(f => f.t <= asOfMs);
+  if(!past.length) return null;
+  const cur = past[past.length - 1], prev = past.length > 1 ? past[past.length - 2] : null;
+  const pos = x => (x != null && isFinite(x) && x > 0) ? x : null;
+  const shares = (cur.ni != null && cur.eps != null && cur.eps !== 0) ? cur.ni / cur.eps : null;  // shares ≈ NI/EPS
+  const rec = {
+    epsTTM: (cur.eps != null && isFinite(cur.eps)) ? cur.eps : null,
+    bvps: (pos(cur.equity) && pos(shares)) ? cur.equity / shares : null,
+    de: (pos(cur.equity) && cur.liabilities != null) ? cur.liabilities / cur.equity : null,
+    roe: pos(cur.equity) && cur.ni != null ? cur.ni / cur.equity : null,
+    npm: pos(cur.revenue) && cur.ni != null ? cur.ni / cur.revenue : null,
+    cr: pos(cur.curLiab) && cur.curAssets != null ? cur.curAssets / cur.curLiab : null,
+    revG: (prev && pos(prev.revenue) && cur.revenue != null) ? cur.revenue / prev.revenue - 1 : null,
+    epsG: (prev && pos(prev.eps) && cur.eps != null) ? cur.eps / prev.eps - 1 : null,
+  };
+  return Object.values(rec).some(v => v != null) ? rec : null;
+}
+
+// Pure: the AUTOPSY sub-scores for one name at one rebalance, via the app's own valueScore engine.
+export function autopsyValues(parsed, asOfMs, price){
+  const rec = recAsOf(parsed, asOfMs);
+  const vs = rec ? valueScore(meritMetrics(rec, price)) : null;
+  if(!vs) return { AUTOPSY_cheap: null, AUTOPSY_healthy: null, AUTOPSY_growing: null, merit: null };
+  return { AUTOPSY_cheap: vs.cheap, AUTOPSY_healthy: vs.healthy, AUTOPSY_growing: vs.growing, merit: vs.total };
+}
+
 // ─── pure rank / correlation primitives (study-lib keeps pearson private) ─────
 function ranksOf(xs){
   const idx = xs.map((v, i) => [v, i]).sort((a, b) => a[0] - b[0]);
@@ -139,11 +200,12 @@ export function spearman(xs, ys){
 // ─── panel: one row per (sym, rebalance) with every contributor's value + the forward return ──
 // No-lookahead: a contributor at rb reads only bars with t ≤ rb; fwdRet needs a bar strictly after
 // rb up to rb+1mo, and the row is dropped unless that forward window is complete.
-export function buildPanel(barsByTicker, dates, { minBars = MIN_BARS } = {}){
+export function buildPanel(barsByTicker, dates, { minBars = MIN_BARS, fundamentals = null } = {}){
   const rows = [];
   for(const [sym, bars] of Object.entries(barsByTicker)){
     if(!bars || bars.length < minBars) continue;
     const series = bars.slice().sort((a, b) => a.t - b.t);
+    const parsed = fundamentals ? fundamentals[sym] : null;       // point-in-time financials, if loaded
     for(const rb of dates){
       // last bar at-or-before the rebalance
       let idx = -1;
@@ -157,6 +219,7 @@ export function buildPanel(barsByTicker, dates, { minBars = MIN_BARS } = {}){
       if(!(entry > 0) || !(exit > 0)) continue;
       const slice = series.slice(0, idx + 1);
       const values = { ...factorValues(slice), ...voteVector(slice) };
+      if(parsed) Object.assign(values, autopsyValues(parsed, rb, entry));   // AUTOPSY cheap/healthy/growing/merit, point-in-time
       rows.push({ sym, period: iso(rb), fwdRet: exit / entry - 1, values });
     }
   }
@@ -293,6 +356,8 @@ function caveats(survivorshipFree){
       : "Universe is the legacy tickers.txt survivor set — survivorship bias inflates any positive result; run universe-build for roster.json.",
     "PRICE/RISK factors are computed by the SAME functions the live OOS labels use (momentumValue / reversalValue / lowVolValue in forward-log.mjs) — daily-bar approximations of the monthly studies.",
     "TECHNICAL votes are input as the engine's RAW vote DIRECTION (−1/0/+1); the measured IC-weight reveals the weight each vote EMPIRICALLY deserves, shown beside the engine's hand-set weight.",
+    "AUTOPSY (cheap/healthy/growing) + merit are reconstructed point-in-time from Polygon /vX/reference/financials (filing_date ≤ rebalance) and scored by the app's OWN valueScore(meritMetrics(...)) — no re-implementation. Names without financials drop from those slices only.",
+    "OUTLOOK is EXCLUDED from the pie by construction, not by oversight: it is a MARKET-TIMING projection (the same 3-index move applied to every name), so it has ~0 cross-sectional name-selection variance and cannot rank names — a slice would be misleading. It is judged on its own alpha-vs-buy-&-hold backtest in the app, not here.",
     "1-month forward windows, monthly rebalance, only COMPLETE windows (no-lookahead). One cross-section per rebalance → modest power; INCONCLUSIVE is an acceptable outcome.",
     "IN-SAMPLE only — an attractive pie is 'looks good in-sample,' NOT proven. The technical confluence is a measured in-sample loser (baseline t ≈ −12.6); thin/negative vote slices are the honest finding. Only the OOS ledger under FDR is tradeable evidence.",
   ];
@@ -319,6 +384,17 @@ async function fetchDaily(sym, key){
     .sort((a, b) => a.t - b.t);
 }
 
+// Polygon /vX/reference/financials (annual, ascending) → parsed point-in-time filings. Best-effort:
+// a name with no financials simply drops out of the AUTOPSY contributors (its bars factors still count).
+async function fetchFinancials(sym, key){
+  const u = "https://api.polygon.io/vX/reference/financials?ticker=" + encodeURIComponent(sym) +
+    "&timeframe=annual&order=asc&limit=20&apiKey=" + encodeURIComponent(key);
+  const r = await fetch(u);
+  if(!r.ok) throw new Error("financials HTTP " + r.status);
+  const j = await r.json();
+  return parsePolyFinancials(j.results || []);
+}
+
 function bar(pct){ const n = Math.round(Math.max(0, Math.min(100, pct || 0)) / 4); return "█".repeat(n) + "·".repeat(25 - n); }
 
 async function main(){
@@ -327,35 +403,45 @@ async function main(){
   const { tickers, source, survivorshipFree } = resolveUniverse();
   console.log("factor-interaction universe: " + source);
 
-  const barsByTicker = {}; const errors = [];
+  const barsByTicker = {}; const fundamentals = {}; const errors = []; let fundCount = 0;
   for(const sym of tickers){
     try{
       const bars = await fetchDaily(sym, key);
       if(bars.length < MIN_BARS) throw new Error(`only ${bars.length} bars (<${MIN_BARS})`);
       barsByTicker[sym] = bars;
-      console.log("✓ " + sym.padEnd(6) + " " + bars.length + " daily bars");
+      // Fundamentals are best-effort — a name with none keeps its bars contributors, just no AUTOPSY slice.
+      try{ const fin = await fetchFinancials(sym, key); if(fin.length){ fundamentals[sym] = fin; fundCount++; } }catch{ /* no financials → skip AUTOPSY for this name */ }
+      console.log("✓ " + sym.padEnd(6) + " " + bars.length + " daily bars" + (fundamentals[sym] ? (" + " + fundamentals[sym].length + " filings") : ""));
     }catch(e){ errors.push(sym + ": " + (e.message || e)); console.warn("✗ " + sym.padEnd(6) + " — " + (e.message || e)); }
   }
 
   const dates = grid(1);
-  const panel = buildPanel(barsByTicker, dates);
-  const ALL = [...FACTOR_NAMES, ...VOTE_NAMES];
+  const haveFunda = fundCount > 0;
+  const panel = buildPanel(barsByTicker, dates, { fundamentals: haveFunda ? fundamentals : null });
+  // Whole-app pie: price/risk FACTORS + 13 technical VOTES + (when financials loaded) the AUTOPSY
+  // fundamentals (cheap/healthy/growing/merit). OUTLOOK is documented-excluded (market-timing, not
+  // cross-sectional — see caveats).
+  const FUNDA = haveFunda ? FUNDAMENTAL_NAMES : [];
+  const ALL = [...FACTOR_NAMES, ...FUNDA, ...VOTE_NAMES];
+  const kindOf = n => FACTOR_NAMES.includes(n) ? "factor" : FUNDAMENTAL_NAMES.includes(n) ? "fundamental" : "vote";
   const ics = standaloneICs(panel, ALL);
   const pie = contributionPie(ics);
-  const corr = correlationMatrix(panel, FACTOR_NAMES);
-  const interactions = interactionScan(panel, FACTOR_NAMES);
-  // Equal-weight and IC-magnitude-weighted composites of the price/risk factors.
-  const icW = FACTOR_NAMES.map(n => { const s = ics.find(x => x.name === n); return s && s.meanIC != null ? Math.abs(s.meanIC) : 0; });
-  const compositeEqual = combinedComposite(panel, FACTOR_NAMES);
-  const compositeICw = combinedComposite(panel, FACTOR_NAMES, { weights: icW });
+  // Interactions + composite span the cross-sectional SELECTORS (price/risk factors + fundamentals).
+  const selectors = [...FACTOR_NAMES, ...FUNDA];
+  const corr = correlationMatrix(panel, selectors);
+  const interactions = interactionScan(panel, selectors);
+  const icW = selectors.map(n => { const s = ics.find(x => x.name === n); return s && s.meanIC != null ? Math.abs(s.meanIC) : 0; });
+  const compositeEqual = combinedComposite(panel, selectors);
+  const compositeICw = combinedComposite(panel, selectors, { weights: icW });
 
   const out = {
     generatedAt: new Date().toISOString(),
-    universe: { requested: tickers.length, covered: Object.keys(barsByTicker).length, source, survivorshipFree, skipped: errors },
-    source: { prices: "Polygon (adjusted daily close)" },
+    universe: { requested: tickers.length, covered: Object.keys(barsByTicker).length, withFinancials: fundCount, source, survivorshipFree, skipped: errors },
+    source: { prices: "Polygon (adjusted daily close)", fundamentals: haveFunda ? "Polygon /vX/reference/financials (point-in-time by filing_date)" : "none loaded" },
     config: { rebalance: "monthly", forwardHorizon: "1 month", minBars: MIN_BARS, rows: panel.length },
-    contributors: { factors: FACTOR_NAMES, votes: VOTE_NAMES, voteWeights: VOTE_WEIGHTS },
-    standaloneIC: ics.map(s => ({ ...s, kind: FACTOR_NAMES.includes(s.name) ? "factor" : "vote", engineWeight: VOTE_WEIGHTS[s.name] || null })),
+    contributors: { factors: FACTOR_NAMES, fundamentals: FUNDA, votes: VOTE_NAMES, voteWeights: VOTE_WEIGHTS },
+    excluded: { OUTLOOK: "market-timing projection (same index move applied to every name) — ~0 cross-sectional name-selection variance by construction; judged on its own alpha-vs-buy-&-hold backtest, not in this pie." },
+    standaloneIC: ics.map(s => ({ ...s, kind: kindOf(s.name), engineWeight: VOTE_WEIGHTS[s.name] || null })),
     pie,
     correlationMatrix: corr,
     interactions,
@@ -368,17 +454,17 @@ async function main(){
   console.log("\n════ FACTOR-INTERACTION PIE (|rank-IC| share of weighted data value) ════");
   console.log("  panel rows: " + panel.length + " over " + Object.keys(barsByTicker).length + " names\n");
   for(const p of pie){
-    const kind = FACTOR_NAMES.includes(p.name) ? "factor" : "vote  ";
+    const kind = (FACTOR_NAMES.includes(p.name) ? "factor" : FUNDAMENTAL_NAMES.includes(p.name) ? "fundamtl" : "vote  ").padEnd(8);
     const ew = VOTE_WEIGHTS[p.name] != null ? ` engW=${VOTE_WEIGHTS[p.name]}` : "";
-    console.log("  " + p.name.padEnd(9) + " " + kind + " " + bar(p.weightPct) + " " +
+    console.log("  " + p.name.padEnd(15) + " " + kind + " " + bar(p.weightPct) + " " +
       String(p.weightPct).padStart(5) + "%  IC=" + (p.meanIC ?? "n/a") + " (t=" + (p.t ?? "n/a") + ", " + p.verdict + ")" + ew);
   }
-  console.log("\n════ TOP FACTOR INTERACTIONS (IC of A within B's top vs bottom tertile) ════");
+  console.log("\n════ TOP SELECTOR INTERACTIONS (IC of A within B's top vs bottom tertile) ════");
   for(const x of interactions.slice(0, 6)){
     console.log("  " + x.factor.padEnd(9) + " | " + x.conditionedOn.padEnd(9) +
       " top=" + x.topIC + " bottom=" + x.bottomIC + " LIFT=" + x.lift + " (n=" + x.nPeriods + ")");
   }
-  console.log("\n════ COMBINED COMPOSITE (z-scored blend of the 4 price/risk factors) ════");
+  console.log("\n════ COMBINED COMPOSITE (z-scored blend of the cross-sectional selectors) ════");
   const cc = compositeEqual;
   console.log("  equal-weight   meanIC=" + cc.meanIC + " t=" + cc.t + " (" + cc.verdict + "), n=" + cc.nPeriods +
     "; best single=" + (cc.bestSingle ? cc.bestSingle.name + " " + cc.bestSingle.meanIC : "n/a") + ", gain=" + cc.gain);

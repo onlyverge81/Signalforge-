@@ -3833,17 +3833,21 @@ function App() {
                 <div style={card}>
                   <span style={lbl}>🥧 FACTOR-INTERACTION PIE · factor-interaction-study.json</span>
                   <div style={{fontSize:11,color:"#90a4ae",lineHeight:1.7,marginBottom:10}}>
-                    Each tool's <b>weighted data value</b> = its forward-return |rank-IC| as a share of the total, measured on Polygon history. Price/risk <b>factors</b> vs the 13 SIGNALS <b>votes</b> (input as the engine's raw vote direction, so the measured weight is shown beside the <i>hand-set</i> one). <b style={{color:"#ffd740"}}>In-sample only — never the verdict.</b> The technical confluence is a measured in-sample loser (baseline t ≈ −12.6), so thin/negative vote slices are the honest finding, not a bug.
+                    Each tool's <b>weighted data value</b> = its forward-return |rank-IC| as a share of the total, measured on Polygon history. Price/risk <b style={{color:"#26c6da"}}>factors</b>, AUTOPSY <b style={{color:"#ab47bc"}}>fundamentals</b> (cheap/healthy/growing/merit, via the app's own valueScore), and the 13 SIGNALS <b style={{color:"#90a4ae"}}>votes</b> (input as the engine's raw vote direction, so the measured weight sits beside the <i>hand-set</i> one). OUTLOOK is excluded by construction — a market-timing projection can't rank names. <b style={{color:"#ffd740"}}>In-sample only — never the verdict.</b> The technical confluence is a measured in-sample loser (baseline t ≈ −12.6), so thin/negative vote slices are the honest finding, not a bug.
                   </div>
                   <div style={{fontSize:10,color:DIM,marginBottom:8}}>
                     {(factorPie.config&&factorPie.config.rows)||0} panel rows · {(factorPie.universe&&factorPie.universe.covered)||0} names · {(factorPie.config&&factorPie.config.rebalance)||"monthly"} rebalance, {(factorPie.config&&factorPie.config.forwardHorizon)||"1mo"} forward
                   </div>
                   {pie.map(p=>{
-                    const isVote=(factorPie.contributors&&factorPie.contributors.votes||[]).includes(p.name);
+                    const C=factorPie.contributors||{};
+                    const isVote=(C.votes||[]).includes(p.name);
+                    const isFunda=(C.fundamentals||[]).includes(p.name);
+                    const kindLbl=isVote?"vote":isFunda?"fundamtl":"factor";
+                    const kindCol=isVote?"#90a4ae":isFunda?"#ab47bc":"#26c6da";
                     return (
                       <div key={p.name} style={{display:"flex",alignItems:"center",gap:8,fontSize:10,marginBottom:3}}>
-                        <span style={{width:78,color:"#cfd8dc",fontFamily:"monospace"}}>{p.name}</span>
-                        <span style={{width:40,color:isVote?"#90a4ae":"#26c6da"}}>{isVote?"vote":"factor"}</span>
+                        <span style={{width:96,color:"#cfd8dc",fontFamily:"monospace"}}>{p.name}</span>
+                        <span style={{width:54,color:kindCol}}>{kindLbl}</span>
                         <div style={{flex:1,background:"#11161c",borderRadius:3,height:12,position:"relative",minWidth:60}}>
                           <div style={{width:(100*p.weightPct/maxW)+"%",background:p.sign==="−"?"#ef5350":"#26c6da",height:12,borderRadius:3,opacity:0.85}}/>
                         </div>

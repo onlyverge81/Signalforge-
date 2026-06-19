@@ -5,9 +5,10 @@
 import { test } from "node:test";
 import assert from "node:assert/strict";
 import {
-  voteVector, VOTE_WEIGHTS, factorValues, FACTOR_NAMES,
+  voteVector, VOTE_WEIGHTS, factorValues, FACTOR_NAMES, FUNDAMENTAL_NAMES,
   buildPanel, obsFor, standaloneICs, contributionPie, spearman,
   correlationMatrix, conditionalIC, interactionScan, combinedComposite,
+  parsePolyFinancials, recAsOf, autopsyValues,
 } from "./factor-interaction-study.mjs";
 import { computeSignal, rsi, macd, bb, stoch, sma, patterns, divergence, adxCalc, obvCalc, vwapCalc } from "./engine.mjs";
 
@@ -174,6 +175,63 @@ test("combinedComposite: two independent positive-IC factors blend to ≥ the be
   assert.ok(cc.meanIC != null && cc.bestSingle != null);
   assert.ok(Math.abs(cc.meanIC) >= Math.abs(cc.bestSingle.meanIC) - 1e-9, "composite ≥ best single (diversification)");
   assert.ok(cc.gain >= -1e-9, "diversification gain is non-negative here");
+});
+
+// A minimal Polygon /vX/reference/financials payload (two annual filings) for the AUTOPSY layer.
+function financialsPayload(){
+  const mk = (filed, ni, rev, eps, eq, liab, ca, cl) => ({
+    filing_date: filed,
+    financials: {
+      income_statement: { net_income_loss: { value: ni }, revenues: { value: rev }, basic_earnings_per_share: { value: eps } },
+      balance_sheet: { equity_attributable_to_parent: { value: eq }, liabilities: { value: liab }, current_assets: { value: ca }, current_liabilities: { value: cl } },
+    },
+  });
+  return [
+    mk("2021-02-15", 80, 1000, 4.0, 400, 120, 300, 150),   // prior year
+    mk("2022-02-15", 100, 1100, 5.0, 500, 100, 360, 150),  // latest: ROE 0.20, NPM ~0.091, D/E 0.2, CR 2.4, revG +10%, epsG +25%
+  ];
+}
+
+test("parsePolyFinancials + recAsOf: point-in-time AUTOPSY rec, no filing read after asOf", () => {
+  const parsed = parsePolyFinancials(financialsPayload());
+  assert.equal(parsed.length, 2);
+  assert.ok(parsed[0].t < parsed[1].t, "sorted ascending by filing date");
+  // As of just before the 2022 filing, only the 2021 filing is public.
+  const early = recAsOf(parsed, Date.parse("2022-01-01"));
+  assert.ok(Math.abs(early.roe - 80 / 400) < 1e-9, "early ROE from the 2021 filing only");
+  assert.equal(early.revG, null, "no prior filing before 2021 ⇒ no YoY growth");
+  // As of after the 2022 filing, the latest numbers + YoY growth apply.
+  const late = recAsOf(parsed, Date.parse("2022-06-01"));
+  assert.ok(Math.abs(late.roe - 100 / 500) < 1e-9, "late ROE = 100/500 = 0.20");
+  assert.ok(Math.abs(late.npm - 100 / 1100) < 1e-9, "NPM = NI/revenue");
+  assert.ok(Math.abs(late.de - 100 / 500) < 1e-9, "D/E = liabilities/equity");
+  assert.ok(Math.abs(late.cr - 360 / 150) < 1e-9, "current ratio = CA/CL");
+  assert.ok(Math.abs(late.revG - (1100 / 1000 - 1)) < 1e-9, "revG = +10%");
+  assert.ok(Math.abs(late.epsG - (5 / 4 - 1)) < 1e-9, "epsG = +25%");
+});
+
+test("autopsyValues reuses the app's valueScore: a strong, cheap, growing name scores positively", () => {
+  const parsed = parsePolyFinancials(financialsPayload());
+  // Low price ⇒ cheap P/E and P/B on top of the healthy/growing fundamentals.
+  const v = autopsyValues(parsed, Date.parse("2022-06-01"), 30);
+  assert.ok(v.AUTOPSY_healthy > 0, "healthy: ROE 20% + low D/E + good current ratio");
+  assert.ok(v.AUTOPSY_growing > 0, "growing: revenue and EPS both up YoY");
+  assert.ok(v.merit > 0, "merit total positive for a cheap, healthy, growing name");
+  // Before any filing is public, AUTOPSY is null (no-lookahead).
+  const none = autopsyValues(parsed, Date.parse("2019-01-01"), 30);
+  assert.equal(none.merit, null);
+});
+
+test("buildPanel merges AUTOPSY fundamentals point-in-time when financials are supplied", () => {
+  const bars = series(320, i => 100 + i * 0.2);
+  const rb = bars[300].t;
+  const parsed = parsePolyFinancials(financialsPayload());
+  const panel = buildPanel({ ZZ: bars }, [rb], { minBars: 260, fundamentals: { ZZ: parsed } });
+  assert.equal(panel.length, 1);
+  for(const n of FUNDAMENTAL_NAMES) assert.ok(n in panel[0].values, "fundamental contributor " + n + " present");
+  // Without fundamentals, the AUTOPSY keys are absent (bars-only pie still works).
+  const bare = buildPanel({ ZZ: bars }, [rb], { minBars: 260 });
+  assert.equal("merit" in bare[0].values, false);
 });
 
 test("obsFor yields the factor-agnostic {sym,period,merit,fwdRet} study-lib expects", () => {
