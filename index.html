@@ -3927,6 +3927,31 @@ function App() {
                       </div>
                     );
                   })()}
+                  {factorPie.termStructure&&factorPie.termStructure.perContributor&&(()=>{
+                    const T=factorPie.termStructure, hs=T.horizons||[];
+                    const ic=x=>x==null?"–":(x>=0?"+":"")+x.toFixed(3);
+                    return (
+                      <div style={{marginTop:12,borderTop:"1px solid "+BORD,paddingTop:10}}>
+                        <span style={lbl}>⏳ IC TERM-STRUCTURE · which holding horizon is the edge strongest at?</span>
+                        <div style={{fontSize:10,color:DIM,marginBottom:6}}>
+                          rank-IC at each forward horizon (monthly rebalanced). Long horizons overlap → naive t inflated; the best-horizon tHAC (Newey–West) deflates it. Momentum should PEAK then DECAY.
+                        </div>
+                        <div style={{display:"flex",gap:8,fontSize:9,color:DIM,fontFamily:"monospace",marginBottom:2}}>
+                          <span style={{width:96}}></span>{hs.map(h=><span key={h.label} style={{width:52,textAlign:"right"}}>{h.label}</span>)}<span style={{width:90,textAlign:"right"}}>best (tHAC)</span>
+                        </div>
+                        {T.perContributor.map(ts=>{
+                          const bc=ts.curve.find(c=>c.horizon===ts.bestHorizon);
+                          return (
+                            <div key={ts.name} style={{display:"flex",gap:8,fontSize:10,marginBottom:2,fontFamily:"monospace",alignItems:"center"}}>
+                              <span style={{width:96,color:"#cfd8dc"}}>{ts.name}</span>
+                              {ts.curve.map(c=>(<span key={c.horizon} style={{width:52,textAlign:"right",color:c.horizon===ts.bestHorizon?"#26c6da":"#90a4ae",fontWeight:c.horizon===ts.bestHorizon?700:400}}>{ic(c.meanIC)}</span>))}
+                              <span style={{width:90,textAlign:"right",color:"#26c6da"}}>{ts.bestHorizon||"–"} ({bc&&bc.tHAC!=null?bc.tHAC:"–"})</span>
+                            </div>
+                          );
+                        })}
+                      </div>
+                    );
+                  })()}
                   {factorPie.regimes&&factorPie.regimes.available&&(()=>{
                     const G=factorPie.regimes;
                     const vcol=v=>/DURABLE/.test(v)?"#00e676":/flips\/dies|REGIME-FLIP/.test(v)?"#ef5350":"#ffd740";

@@ -14,6 +14,7 @@ import {
   solveLinear, olsResidual, uniqueIC, standardizeByPeriod, corrMatrixPearson,
   jacobiEig, effectiveBets, pca,
   marketRegimeByDate, regimeSplitIC,
+  termStructure,
 } from "./factor-interaction-study.mjs";
 import { computeSignal, rsi, macd, bb, stoch, sma, patterns, divergence, adxCalc, obvCalc, vwapCalc } from "./engine.mjs";
 
@@ -461,4 +462,41 @@ test("regimeSplitIC flags a bull-only edge and a durable edge", () => {
   assert.ok(D.bull.meanIC > 0 && D.bear.meanIC > 0 && D.sameSign, "D predicts in both regimes (same sign)");
   // A+D combined predicts strongly in bull, weakly (only D) in bear → A's bull IC ≫ its bear IC.
   assert.ok(A.bull.meanIC > A.bear.meanIC, "A's edge is concentrated in the bull regime");
+});
+
+// ─── IC term-structure (angle E): rank-IC by forward horizon ──────────────────
+
+test("buildPanel adds multi-horizon forward returns when horizons are supplied (no-lookahead at the tail)", () => {
+  const bars = series(340, i => 100 + i * 0.5);          // steady riser
+  const rb = bars[300].t;
+  const H = [{ label: "1wk", days: 5 }, { label: "3mo", days: 63 }];
+  const panel = buildPanel({ ZZ: bars }, [rb], { minBars: 260, horizons: H });
+  assert.equal(panel.length, 1);
+  assert.ok("fwdRets" in panel[0]);
+  // entry is bars[300].close; 5 bars ahead exists, return matches the series.
+  const entry = bars[300].close;
+  assert.ok(Math.abs(panel[0].fwdRets["1wk"] - (bars[305].close / entry - 1)) < 1e-9);
+  // A rebalance near the END: the 3-month-ahead bar may not exist → null (no-lookahead), not a guess.
+  const rbLate = bars[330].t;
+  const late = buildPanel({ ZZ: bars }, [rbLate], { minBars: 260, horizons: H });
+  assert.equal(late[0].fwdRets["3mo"], null, "no 63-bar-ahead bar ⇒ null at the tail");
+});
+
+test("termStructure surfaces the horizon where a factor's IC peaks", () => {
+  // Build a panel where the factor predicts the 3-MONTH return strongly but the 1-week return weakly.
+  const H = [{ label: "1wk", days: 5 }, { label: "3mo", days: 63 }];
+  const panel = [];
+  for(let p = 0; p < 10; p++) for(let s = 0; s < 14; s++){
+    const a = (s / 14) - 0.5;
+    const noise = Math.sin(p * 3 + s * 1.7) * 0.5;
+    panel.push({ sym: "S" + s, period: "P" + p, fwdRet: 0,
+      values: { A: a },
+      fwdRets: { "1wk": 0.05 * a + noise, "3mo": 0.9 * a + 0.05 * noise } });   // strong at 3mo, weak at 1wk
+  }
+  const ts = termStructure(panel, ["A"], H);
+  const A = ts[0];
+  assert.equal(A.bestHorizon, "3mo", "the factor's edge peaks at the 3-month horizon");
+  const c3 = A.curve.find(c => c.horizon === "3mo"), c1 = A.curve.find(c => c.horizon === "1wk");
+  assert.ok(Math.abs(c3.meanIC) > Math.abs(c1.meanIC), "3mo IC exceeds 1wk IC");
+  assert.ok(c3.tHAC != null && "overlap" in c3, "HAC t + overlap reported for the overlapping horizon");
 });

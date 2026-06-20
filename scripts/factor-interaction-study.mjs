@@ -38,7 +38,7 @@ import { readTickers } from "./build-fundamentals.mjs";
 import { fetchPolygonAggs, fetchSectorMap } from "./pattern-study.mjs";
 import { selectMeritUniverse, grid, addMonths, iso } from "./build-study.mjs";
 import { momentumValue, reversalValue, lowVolValue } from "./forward-log.mjs";
-import { periodStats, assessSignificance, rankIC, sectorNeutralIC } from "./study-lib.mjs";
+import { periodStats, assessSignificance, rankIC, sectorNeutralIC, overlapAdjustedT } from "./study-lib.mjs";
 import { rsi, macd, bb, stoch, atr, adxCalc, obvCalc, vwapCalc, patterns, divergence, sma, valueScore } from "./engine.mjs";
 import { meritMetrics } from "./sec-lib.mjs";
 
@@ -53,6 +53,15 @@ const LIQ_MIN_ADV   = +(process.env.LIQ_MIN_ADV   || 2_000_000);  // trailing me
 const LIQ_MIN_PRICE = +(process.env.LIQ_MIN_PRICE || 5);          // price floor ($) — drops sub-$5 junk
 const LIQ_WIN       = +(process.env.LIQ_WIN       || 60);         // trailing bars for the ADV median
 const BETA_WIN      = +(process.env.BETA_WIN      || 120);        // trailing bars for each name's market beta
+// IC term-structure (angle E) — forward horizons in TRADING days, monthly rebalanced. Longer horizons
+// OVERLAP the monthly cross-sections, so their naive t overstates; we HAC-deflate (Newey–West) below.
+const HORIZONS = [
+  { label: "1wk",  days: 5 },
+  { label: "1mo",  days: 21 },
+  { label: "3mo",  days: 63 },
+  { label: "6mo",  days: 126 },
+  { label: "12mo", days: 252 },
+];
 
 // The four PRICE/RISK factors, defined by the SAME functions the live OOS labels use (forward-log).
 export const FACTOR_NAMES = ["mom12_1", "mom6_1", "reversal", "lowvol"];
@@ -293,7 +302,7 @@ export function betaNeutralIC(observations){
     significance: nStat.verdict, rawMeanIC: round(rawMean), retention, verdict };
 }
 
-export function buildPanel(barsByTicker, dates, { minBars = MIN_BARS, fundamentals = null, market = null, sectorOf = null, liquidity = false } = {}){
+export function buildPanel(barsByTicker, dates, { minBars = MIN_BARS, fundamentals = null, market = null, sectorOf = null, liquidity = false, horizons = null } = {}){
   const rows = [];
   const mktRetByT = market ? dailyReturnsByT(market.slice().sort((a, b) => a.t - b.t)) : null;
   for(const [sym, bars] of Object.entries(barsByTicker)){
@@ -319,10 +328,41 @@ export function buildPanel(barsByTicker, dates, { minBars = MIN_BARS, fundamenta
       if(liquidity) row.liquid = liquidAt(series, idx);                       // tradeable at this bar? (point-in-time)
       if(sectorOf) row.sector = sector;                                       // SIC division for sector-neutral IC
       if(mktRetByT) row.beta = trailingBeta(series, mktRetByT, idx);          // trailing market beta for beta-neutral IC
+      if(horizons){                                                           // multi-horizon forward returns (term-structure)
+        const fr = {};
+        for(const h of horizons){ const k = idx + h.days; fr[h.label] = (k < series.length && series[k].close > 0) ? series[k].close / entry - 1 : null; }
+        row.fwdRets = fr;
+      }
       rows.push(row);
     }
   }
   return rows;
+}
+
+// IC TERM-STRUCTURE (angle E): each selector's rank-IC at every forward horizon, so the holding period
+// where the edge is strongest is visible. Longer horizons overlap the monthly rebalances, so alongside
+// the naive t we report a Newey–West HAC t (overlap ≈ horizon/rebalance) that deflates the overlap.
+export function termStructure(panel, names, horizons){
+  return names.map(name => {
+    const curve = horizons.map(h => {
+      const ics = [];
+      const byP = new Map();
+      for(const r of panel){
+        const fwd = r.fwdRets ? r.fwdRets[h.label] : null;
+        if(r.values[name] == null || !isFinite(r.values[name]) || fwd == null || !isFinite(fwd)) continue;
+        if(!byP.has(r.period)) byP.set(r.period, []);
+        byP.get(r.period).push({ merit: r.values[name], fwdRet: fwd });
+      }
+      for(const [, rows] of byP){ const ic = rankIC(rows); if(ic != null) ics.push(ic); }
+      const st = assessSignificance(ics);
+      const overlap = Math.max(0, Math.round(h.days / 21) - 1);     // months of overlap at a monthly rebalance
+      const hac = overlapAdjustedT(ics, overlap);
+      return { horizon: h.label, days: h.days, meanIC: st.mean, t: st.t, nPeriods: st.n, verdict: st.verdict,
+        tHAC: hac.tHAC, overlap, hacVerdict: hac.verdict };
+    });
+    const best = curve.filter(c => c.meanIC != null).sort((a, b) => Math.abs(b.meanIC) - Math.abs(a.meanIC))[0];
+    return { name, curve, bestHorizon: best ? best.horizon : null };
+  });
 }
 
 // Extract the factor-agnostic observation array study-lib consumes, for one contributor.
@@ -694,6 +734,7 @@ function caveats(survivorshipFree){
     "1-month forward windows, monthly rebalance, only COMPLETE windows (no-lookahead). One cross-section per rebalance → modest power; INCONCLUSIVE is an acceptable outcome.",
     "ROBUSTNESS (angle A): every slice is RE-MEASURED on a liquidity-screened subset (price≥$" + LIQ_MIN_PRICE + ", trailing-median $" + (LIQ_MIN_ADV/1e6) + "M ADV) and after BETA- and SECTOR-neutralisation. A slice that collapses on liquid names was a stale-price micro-cap artifact; one that dies sector/beta-neutral was a sector or market bet, not stock selection. This is the charter's 'alpha, not beta' made testable — watch lowvol especially.",
     "DIMENSIONALITY (angle B): UNIQUE IC residualises each selector against all the others (cross-sectional OLS) → its contribution AFTER redundancy; PCA's 'effective bets' (participation ratio of the eigenvalues) counts the truly independent axes. Univariate pie slices OVERSTATE breadth when factors overlap (healthy/merit ≈ 0.84) — this collapses them to the real few.",
+    "TERM-STRUCTURE (angle E): each selector's rank-IC is measured at 1wk/1mo/3mo/6mo/12mo forward horizons (monthly rebalanced) to reveal the holding period where the edge is strongest. Horizons beyond 1mo OVERLAP the monthly cross-sections, inflating the naive t — a Newey–West HAC t (overlap ≈ horizon/month) is reported alongside; trust it over the naive t at 3-12mo.",
     "REGIME SPLIT (angle C): each selector's IC is re-measured in BULL vs BEAR months (SPY vs its 200-DMA, point-in-time). A DURABLE edge holds the same sign in both regimes; a BULL-ONLY edge is a trend artifact that won't survive a market turn. All ~5y of history sits in one macro cycle, so the split has limited power — read it as a direction, not a proof.",
     "IN-SAMPLE only — an attractive pie is 'looks good in-sample,' NOT proven. The technical confluence is a measured in-sample loser (baseline t ≈ −12.6); thin/negative vote slices are the honest finding. Only the OOS ledger under FDR is tradeable evidence.",
   ];
@@ -762,7 +803,7 @@ async function main(){
 
   const dates = grid(1);
   const haveFunda = fundCount > 0;
-  const panel = buildPanel(barsByTicker, dates, { fundamentals: haveFunda ? fundamentals : null, market, sectorOf, liquidity: true });
+  const panel = buildPanel(barsByTicker, dates, { fundamentals: haveFunda ? fundamentals : null, market, sectorOf, liquidity: true, horizons: HORIZONS });
   // Whole-app pie: price/risk FACTORS + 13 technical VOTES + (when financials loaded) the AUTOPSY
   // fundamentals (cheap/healthy/growing/merit). OUTLOOK is documented-excluded (market-timing, not
   // cross-sectional — see caveats).
@@ -804,6 +845,9 @@ async function main(){
     }),
   };
 
+  // ─── IC TERM-STRUCTURE (angle E): at which holding horizon is each selector's edge strongest? ──
+  const termStructureBlock = { horizons: HORIZONS, perContributor: termStructure(panel, [...FACTOR_NAMES, ...FUNDA], HORIZONS) };
+
   // ─── REGIME SPLIT (angle C): is each selector's edge durable across bull/bear markets? ─────────
   let regimes = { available: false };
   if(market){
@@ -829,6 +873,7 @@ async function main(){
     composite: { equalWeight: compositeEqual, icWeighted: compositeICw },
     robustness,
     dimensionality,
+    termStructure: termStructureBlock,
     regimes,
     caveats: caveats(survivorshipFree),
   };
@@ -887,6 +932,15 @@ async function main(){
       " (t=" + (u.t == null ? "–" : u.t.toFixed(1)) + ", keeps " + rs + ") " + u.verdict);
   }
   console.log("  ↳ a selector whose unique IC ≈ 0 is REDUNDANT (its edge is already in the others); one that keeps most of its raw IC is an independent axis.");
+
+  console.log("\n════ IC TERM-STRUCTURE (angle E): rank-IC by forward horizon — where is the edge strongest? ════");
+  console.log("  selector        " + HORIZONS.map(h => h.label.padStart(8)).join("") + "   best  (tHAC at best)");
+  for(const ts of termStructureBlock.perContributor){
+    const cells = ts.curve.map(c => (c.meanIC == null ? "   n/a" : (c.meanIC >= 0 ? "+" : "") + c.meanIC.toFixed(3)).padStart(8)).join("");
+    const bc = ts.curve.find(c => c.horizon === ts.bestHorizon);
+    console.log("  " + ts.name.padEnd(15) + cells + "   " + (ts.bestHorizon || "–").padEnd(5) + " (tHAC " + (bc && bc.tHAC != null ? bc.tHAC : "–") + ")");
+  }
+  console.log("  ↳ momentum should PEAK at its native horizon and DECAY; tHAC deflates the overlap at long horizons. Naive t at 3-12mo is inflated by overlapping windows.");
 
   if(regimes.available){
     console.log("\n════ REGIME SPLIT (angle C): bull vs bear-market IC (SPY vs 200-DMA) ════");
