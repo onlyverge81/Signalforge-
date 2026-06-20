@@ -444,7 +444,27 @@ function computeSignal(ctx, extraVotes=[]) {
   const agreement=total>0?Math.max(bull,bear)/total:0;
   const confidence=Math.min(95,Math.max(35,Math.round(40+Math.abs(net)*3+agreement*15)));
 
-  return {signal, score:parseFloat(net.toFixed(1)), bull, bear, conflict, confidence};
+  // Family-level conflict (research angles C+F): the generic `conflict` above counts ANY disagreement
+  // equally, but the engine's real split is MEAN-REVERSION (RSI/Stoch/BB, oversold→buy) vs TREND
+  // (MACD/MA/MAlong/Trend). When those two camps point opposite ways the engine is fighting itself —
+  // one camp is right for the regime, the other is noise. Measured here, surfaced as a LABEL only.
+  const famDir=names=>{ const s=active.filter(v=>names.includes(v.n)).reduce((a,v)=>a+v.dir,0); return s>0?1:s<0?-1:0; };
+  const trendDir=famDir(["MACD","MA","MAlong","Trend"]);
+  const meanRevDir=famDir(["RSI","Stoch","BB"]);
+  const famConflict=trendDir!==0 && meanRevDir!==0 && trendDir!==meanRevDir;
+
+  // Vote-weight mis-calibration test (factor-interaction pie): the engine's HAND weights over-weight
+  // empirically-dead votes (ADX is weighted 3 but measured IC ≈ 0; RSI/MACD/Pat ≈ 0/negative) and
+  // under-weight proven ones (Vol IC 0.074 at weight 1; Trend significant). icBackedShare = of the
+  // weighted conviction pushing THIS signal's way, the fraction coming from the PROVEN votes. Low share
+  // ⇒ the call rests on the over-weighted dead votes. A LABEL only (tests OOS whether that costs money).
+  const IC_PROVEN_VOTES=["Trend","Vol","BB"];
+  const sd=net>0?1:net<0?-1:0;
+  let drvW=0, provW=0;
+  for(const v of active){ if(sd!==0 && Math.sign(v.dir)===sd){ drvW+=v.w; if(IC_PROVEN_VOTES.includes(v.n)) provW+=v.w; } }
+  const icBackedShare=drvW>0?parseFloat((provW/drvW).toFixed(3)):0;
+
+  return {signal, score:parseFloat(net.toFixed(1)), bull, bear, conflict, confidence, trendDir, meanRevDir, famConflict, icBackedShare};
 }
 
 function analyze(data, ticker, market, strategy, slMult, tpMult) {
@@ -512,7 +532,7 @@ function analyze(data, ticker, market, strategy, slMult, tpMult) {
     support:parseFloat(sup.toFixed(4)),resistance:parseFloat(res.toFixed(4)),
     score,
     sfa12, sfa12Compare, convBreakout, convBreakoutTest,
-    confluence:{bull:sigResult.bull,bear:sigResult.bear,conflict:sigResult.conflict},
+    confluence:{bull:sigResult.bull,bear:sigResult.bear,conflict:sigResult.conflict,trendDir:sigResult.trendDir,meanRevDir:sigResult.meanRevDir,famConflict:sigResult.famConflict,icBackedShare:sigResult.icBackedShare},
     indicators:{
       rsi:{v:R,label:rsiLabel},
       stoch:{v:S,label:S>75?"OVERBOUGHT":S<25?"OVERSOLD":"NEUTRAL"},
@@ -625,7 +645,47 @@ function buildOutlook(stock, trend, idx, opts){
              perIndex:proxies.map(([s,label])=>({sym:s,label,...(liveMoves[s]||{})}))};
     }
   }
-  return {markets,combined,gainsPct,price,delta,mag,up,down,active,trend,correctionPrice,backtest,fresh};
+  // Structural market-regime read (which toolkit fits the room) — from the primary index proxy's
+  // daily bars. Awareness only; it does not touch the projection above or any signal/gate.
+  const regime=marketRegime(idx["SPY"]||idx[syms[0]]);
+  return {markets,combined,gainsPct,price,delta,mag,up,down,active,trend,correctionPrice,backtest,fresh,regime};
+}
+
+// Market-regime notifier — MIRRORS scripts/engine.mjs byte-for-byte (parity). Awareness, NOT a gate:
+// classify the broad market so the human applies the right toolkit (trend-following in TRENDING markets,
+// mean-reversion in RANGING ones — the engine's votes are conditionally valid, per research angles C+F).
+// Kaufman efficiency ratio = |net move| / Σ|bar-to-bar move|: ~1 = clean trend, ~0 = chop. Close-only.
+function efficiencyRatio(closes,n=21){
+  if(!closes||closes.length<n+1) return null;
+  const seg=closes.slice(-(n+1));
+  const net=Math.abs(seg[seg.length-1]-seg[0]);
+  let path=0; for(let i=1;i<seg.length;i++) path+=Math.abs(seg[i]-seg[i-1]);
+  return path>0?net/path:0;
+}
+function marketRegime(bars){
+  const closes=(bars||[]).map(b=>b&&b.close).filter(c=>c>0);
+  if(closes.length<40) return null;                                // need enough for a vol baseline
+  const last=closes[closes.length-1];
+  const win=Math.min(200,closes.length);
+  const ma=closes.slice(-win).reduce((a,b)=>a+b,0)/win;           // proxy 200-DMA (shorter if data is)
+  const approxMA=win<200;
+  const direction=last>ma*1.01?"BULL":last<ma*0.99?"BEAR":"NEUTRAL";
+  const er=efficiencyRatio(closes,21);
+  const trend=er==null?"UNKNOWN":er>=0.45?"TRENDING":er<0.25?"RANGING":"TRANSITIONAL";
+  const rets=[]; for(let i=1;i<closes.length;i++) rets.push(closes[i]/closes[i-1]-1);
+  const stdev=a=>{ if(a.length<2) return null; const m=a.reduce((x,y)=>x+y,0)/a.length; return Math.sqrt(a.reduce((x,y)=>x+(y-m)**2,0)/a.length); };
+  const recentVol=stdev(rets.slice(-21)), baseVol=stdev(rets.slice(-126));
+  const vol=(recentVol==null||baseVol==null||baseVol===0)?"UNKNOWN"
+    :recentVol>baseVol*1.35?"STORMY":recentVol<baseVol*0.75?"CALM":"NORMAL";
+  let favored,cautioned;
+  if(trend==="TRENDING"){ favored="Trend-following — momentum & breakouts (MA / MACD-up) are reliable here"; cautioned="Mean-reversion: 'buy the dip' fights the tape — oversold can keep falling"; }
+  else if(trend==="RANGING"){ favored="Mean-reversion — oversold bounces (RSI / Stoch / BB) are favored"; cautioned="Breakouts: likely bull-traps; trend votes misfire in chop"; }
+  else { favored="Transitional / mixed — demand stronger multi-signal confluence before acting"; cautioned="Single-signal conviction is risky until the regime resolves"; }
+  const risk=(direction==="BEAR"&&vol==="STORMY")?"ELEVATED — bear + high volatility: reduce size. A regime-blind signal fails hardest here."
+    :(vol==="STORMY")?"Volatility is elevated vs its 6-month norm — widen stops or trim size."
+    :(direction==="BEAR")?"Bear trend — long signals face a market headwind.":null;
+  const label=[direction!=="NEUTRAL"?direction:null,trend!=="UNKNOWN"?trend:null].filter(Boolean).join(" · ")||"INDETERMINATE";
+  return { direction, trend, vol, er:er==null?null:+er.toFixed(2), approxMA, favored, cautioned, risk, label };
 }
 
 // ─── Phase-3 macro regime — condition conviction on the market, when earned ───
@@ -2633,6 +2693,13 @@ function App() {
                       const rc=!macro.proven?"#90a4ae":macro.regime==="RISK-ON"?"#00e676":macro.regime==="RISK-OFF"?"#ff8a80":"#ffd740";
                       return <span title={macro.note} style={{fontSize:9,fontWeight:700,letterSpacing:1,padding:"4px 10px",borderRadius:3,color:rc,background:rc+"1a",border:"1px solid "+rc+"44"}}>🌐 {macro.regime}{macro.proven?"":" · CONTEXT"}</span>;
                     })()}
+                    {outlook&&outlook.regime&&(()=>{
+                      const g=outlook.regime, tc=g.trend==="TRENDING"?"#26c6da":g.trend==="RANGING"?"#ffd740":"#90a4ae";
+                      return <span title={"Market regime (read the room): "+g.label+".\n✓ Favored: "+g.favored+"\n⚠ Fights the room: "+g.cautioned+(g.risk?("\n⚑ "+g.risk):"")+"\nAwareness only — never changes the verdict. See OUTLOOK for detail."} style={{fontSize:9,fontWeight:700,letterSpacing:1,padding:"4px 10px",borderRadius:3,color:tc,background:tc+"1a",border:"1px solid "+tc+"44"}}>🧭 {g.label}</span>;
+                    })()}
+                    {analysis.confluence&&analysis.confluence.famConflict&&(
+                      <span title={"The engine is fighting itself: its MEAN-REVERSION votes (RSI/Stoch/BB) and TREND votes (MACD/MA/MAlong/Trend) point opposite ways. They're each valid in a DIFFERENT regime, so one camp is noise right now. Display only — the verdict is unchanged. Measured OOS via the votes-aligned ledger (Headline #2)."} style={{fontSize:9,fontWeight:700,letterSpacing:1,padding:"4px 10px",borderRadius:3,color:"#ffb74d",background:"rgba(255,183,77,0.10)",border:"1px solid #ffb74d55"}}>⚠ ENGINE DIVIDED</span>
+                    )}
                     <span style={{fontSize:9,fontWeight:700,letterSpacing:1,padding:"4px 10px",borderRadius:3,color:mode==="position"?"#00bcd4":"#00e676",background:(mode==="position"?"#00bcd4":"#00e676")+"15",border:"1px solid "+(mode==="position"?"#00bcd4":"#00e676")+"44"}}>{mode==="position"?"🐢 POSITION":"⚡ TACTICAL"}</span>
                     {isIntradayRes(liveMeta?.resolution)&&(
                       <span title={"Intraday timeframe ("+(RES_LABEL[liveMeta?.resolution]||"")+"). This is a short-term read — the signal, ATR levels and indicators are scaled to "+(RES_LABEL[liveMeta?.resolution]||"")+" bars, NOT a daily swing/EOD call. The feed is 15-min delayed, so intraday entries can be stale; treat as context."} style={{fontSize:9,fontWeight:700,letterSpacing:1,padding:"4px 10px",borderRadius:3,color:"#ffb74d",background:"rgba(255,183,77,0.10)",border:"1px solid #ffb74d44"}}>⏱ INTRADAY · {RES_LABEL[liveMeta?.resolution]||liveMeta?.resolution}</span>
@@ -2651,6 +2718,25 @@ function App() {
                   </div>
                 )}
               </div>
+
+              {analysis.confluence&&analysis.confluence.famConflict&&(()=>{
+                const dirWord=d=>d>0?"BUY":d<0?"AVOID":"neutral";
+                const tDir=analysis.confluence.trendDir, mDir=analysis.confluence.meanRevDir;
+                const g=outlook&&outlook.regime;
+                // Regime-aware READ (display only): in a TRENDING market the trend camp is favored; in a
+                // RANGING one the mean-reversion camp is. Never changes the verdict — tells you which camp to weight.
+                const lead=g?(g.trend==="TRENDING"?"trend":g.trend==="RANGING"?"meanrev":null):null;
+                return (
+                  <div style={{marginTop:12,padding:"10px 12px",borderRadius:4,background:"rgba(255,183,77,0.06)",border:"1px solid rgba(255,183,77,0.30)"}}>
+                    <div style={{fontSize:10,fontWeight:700,letterSpacing:1,color:"#ffb74d",marginBottom:6}}>⚠ ENGINE DIVIDED — internal conflict</div>
+                    <div style={{fontSize:11,color:"#cfd8dc",lineHeight:1.7}}>
+                      Mean-reversion votes (RSI/Stoch/BB) say <b style={{color:mDir>0?"#00e676":"#ff8a80"}}>{dirWord(mDir)}</b>, trend votes (MACD/MA/MAlong/Trend) say <b style={{color:tDir>0?"#00e676":"#ff8a80"}}>{dirWord(tDir)}</b> — the confluence is fighting itself. Each camp is valid in a <b>different regime</b>, so one is noise right now.
+                      {lead&&g&&(<><br/><span style={{color:"#26c6da"}}>Room read:</span> the market is <b>{g.trend}</b> → weight the <b>{lead==="trend"?"TREND":"MEAN-REVERSION"}</b> camp; the other is likely chop/trend noise here.</>)}
+                    </div>
+                    <div style={{fontSize:9,color:DIM,marginTop:6}}>Display only — the verdict above is UNCHANGED. Whether resolving this conflict pays is being measured out-of-sample (votes-aligned ledger, EVIDENCE scoreboard). No in-sample re-wire. (Headline #2.)</div>
+                  </div>
+                );
+              })()}
 
               {dataAudit&&dataAudit.issues.length>0&&(
                 <div style={{marginTop:12,padding:"10px 12px",borderRadius:4,
@@ -2926,6 +3012,30 @@ function App() {
               const stale=!!(o.fresh&&(o.fresh.band==="CLOSED"||o.fresh.band==="STALE")), STMUT="#90a4ae";
               return(
                 <>
+                  {o.regime&&(()=>{
+                    const g=o.regime;
+                    const dCol=g.direction==="BULL"?"#00e676":g.direction==="BEAR"?"#ff5252":"#90a4ae";
+                    const tCol=g.trend==="TRENDING"?"#26c6da":g.trend==="RANGING"?"#ffd740":"#90a4ae";
+                    const vCol=g.vol==="STORMY"?"#ff5252":g.vol==="CALM"?"#00e676":"#90a4ae";
+                    return (
+                      <div style={{...card,borderLeft:"3px solid "+tCol}}>
+                        <span style={lbl}>🧭 MARKET REGIME · read the room before you pick the tool</span>
+                        <div style={{display:"flex",gap:8,flexWrap:"wrap",alignItems:"center",marginBottom:10}}>
+                          <span style={{fontSize:20,fontWeight:800,letterSpacing:1,color:tCol}}>{g.label}</span>
+                          <span style={{padding:"2px 8px",borderRadius:4,border:"1px solid "+dCol,color:dCol,fontSize:11,fontWeight:700}}>{g.direction}</span>
+                          <span style={{padding:"2px 8px",borderRadius:4,border:"1px solid "+tCol,color:tCol,fontSize:11,fontWeight:700}}>{g.trend}{g.er!=null?(" · ER "+g.er):""}</span>
+                          <span style={{padding:"2px 8px",borderRadius:4,border:"1px solid "+vCol,color:vCol,fontSize:11,fontWeight:700}}>{g.vol} VOL</span>
+                          {g.approxMA&&<span style={{fontSize:9,color:FADE}}>(trend MA approx — &lt;200 bars)</span>}
+                        </div>
+                        <div style={{fontSize:12,color:"#cfd8dc",lineHeight:1.7}}>
+                          <span style={{color:"#00e676"}}>✓ Favored here:</span> {g.favored}<br/>
+                          <span style={{color:"#ff8a80"}}>⚠ Fights the room:</span> {g.cautioned}
+                        </div>
+                        {g.risk&&<div style={{marginTop:8,fontSize:11,color:g.risk.startsWith("ELEVATED")?"#ff5252":"#ffd740",fontWeight:600}}>⚑ {g.risk}</div>}
+                        <div style={{fontSize:9,color:DIM,marginTop:8}}>Awareness only — this never changes the SIGNALS verdict. It tells you which of the engine's votes to TRUST: the confluence fires trend AND mean-reversion votes at once, so in the wrong regime half of them are noise. (Diagnosis: factor-interaction angles C + F.)</div>
+                      </div>
+                    );
+                  })()}
                   <div style={card}>
                     <span style={lbl}>◎ MARKET CORRECTION PERIOD PRICE</span>
                     <div style={{fontSize:11,color:DIM,lineHeight:1.6,marginBottom:14}}>
@@ -3872,6 +3982,130 @@ function App() {
                       <b>Combined composite</b> (z-scored blend of the price/risk factors): meanIC {cc.meanIC} (t {cc.t}, {cc.verdict}); best single {cc.bestSingle?cc.bestSingle.name+" "+cc.bestSingle.meanIC:"–"}, diversification gain {cc.gain}.
                     </div>
                   )}
+                  {factorPie.robustness&&(()=>{
+                    const R=factorPie.robustness, L=R.liquidity||{};
+                    const sel=(factorPie.contributors&&[...(factorPie.contributors.factors||[]),...(factorPie.contributors.fundamentals||[])])||[];
+                    const vcol=v=>!v?"#90a4ae":/SURVIVES/.test(v)?"#00e676":/PARTLY/.test(v)?"#ffd740":"#ef5350";
+                    const ic=x=>x==null?"–":(x>=0?"+":"")+x.toFixed(3);
+                    return (
+                      <div style={{marginTop:12,borderTop:"1px solid "+BORD,paddingTop:10}}>
+                        <span style={lbl}>🧪 ROBUSTNESS · alpha, not artifact (liquidity screen + sector/beta-neutral)</span>
+                        <div style={{fontSize:10,color:DIM,marginBottom:6}}>
+                          Liquid subset: {L.liquidRows}/{L.totalRows} rows · {L.liquidNames}/{L.totalNames} names (≥${L.minPrice}, ${L.minADV?(L.minADV/1e6):"?"}M ADV) · beta vs {R.market||"—"} · {R.sectorsResolved||0} sectors. A slice that craters on liquid names was stale-price micro-cap noise; one that dies sector/beta-neutral was a sector/market bet.
+                        </div>
+                        {sel.map(n=>{
+                          const r=(R.perContributor||[]).find(x=>x.name===n); if(!r) return null;
+                          const raw=(factorPie.standaloneIC||[]).find(x=>x.name===n);
+                          const sv=r.sectorNeutral&&r.sectorNeutral.available?r.sectorNeutral.verdict:"n/a";
+                          const bv=r.betaNeutral&&r.betaNeutral.available?r.betaNeutral.verdict:"n/a";
+                          return (
+                            <div key={n} style={{display:"flex",alignItems:"center",gap:8,fontSize:10,marginBottom:2,fontFamily:"monospace"}}>
+                              <span style={{width:96,color:"#cfd8dc"}}>{n}</span>
+                              <span style={{width:150,color:"#b0bec5"}}>raw {ic(raw&&raw.meanIC)} → liquid {ic(r.liquidIC)}{r.liquidT!=null?(" (t"+r.liquidT.toFixed(1)+")"):""}</span>
+                              <span style={{flex:1,color:vcol(sv)}}>sector: {sv}</span>
+                              <span style={{flex:1,color:vcol(bv)}}>beta: {bv}</span>
+                            </div>
+                          );
+                        })}
+                      </div>
+                    );
+                  })()}
+                  {factorPie.dimensionality&&factorPie.dimensionality.pca&&factorPie.dimensionality.pca.available&&(()=>{
+                    const D=factorPie.dimensionality, P=D.pca;
+                    return (
+                      <div style={{marginTop:12,borderTop:"1px solid "+BORD,paddingTop:10}}>
+                        <span style={lbl}>🧬 DIMENSIONALITY · how few independent bets remain</span>
+                        <div style={{fontSize:11,color:"#90a4ae",marginBottom:6}}>
+                          <b style={{color:"#26c6da"}}>Effective bets ≈ {P.effectiveBets}</b> of {P.names.length} selectors (Kaiser λ&gt;1: {P.kaiser}). The univariate pie overstates breadth when factors overlap; the real signal lives on a handful of axes.
+                        </div>
+                        {(P.components||[]).map(c=>{
+                          const top=Object.entries(c.loadings).sort((a,b)=>Math.abs(b[1])-Math.abs(a[1])).slice(0,4).map(([n,v])=>n+" "+(v>=0?"+":"")+v).join(", ");
+                          return <div key={c.pc} style={{fontSize:10,color:"#b0bec5",fontFamily:"monospace",marginBottom:2}}>PC{c.pc} ({c.varPct}% var, cum {c.cumVarPct}%): {top}</div>;
+                        })}
+                        <div style={{fontSize:10,color:DIM,marginTop:8,marginBottom:4}}>UNIQUE IC — each selector's edge AFTER removing the others (≈0 ⇒ redundant):</div>
+                        {(D.uniqueIC||[]).map(u=>{
+                          const keep=u.retainedShare==null?"–":Math.round(u.retainedShare*100)+"%";
+                          const col=u.retainedShare==null?"#90a4ae":u.retainedShare>=0.5?"#00e676":u.retainedShare>=0.2?"#ffd740":"#ef5350";
+                          return (
+                            <div key={u.name} style={{display:"flex",alignItems:"center",gap:8,fontSize:10,marginBottom:2,fontFamily:"monospace"}}>
+                              <span style={{width:96,color:"#cfd8dc"}}>{u.name}</span>
+                              <span style={{width:180,color:"#b0bec5"}}>raw {u.rawIC==null?"–":u.rawIC.toFixed(3)} → unique {u.uniqueIC==null?"–":u.uniqueIC.toFixed(3)}{u.t!=null?(" (t"+u.t.toFixed(1)+")"):""}</span>
+                              <span style={{color:col}}>keeps {keep}</span>
+                            </div>
+                          );
+                        })}
+                      </div>
+                    );
+                  })()}
+                  {factorPie.termStructure&&factorPie.termStructure.perContributor&&(()=>{
+                    const T=factorPie.termStructure, hs=T.horizons||[];
+                    const ic=x=>x==null?"–":(x>=0?"+":"")+x.toFixed(3);
+                    return (
+                      <div style={{marginTop:12,borderTop:"1px solid "+BORD,paddingTop:10}}>
+                        <span style={lbl}>⏳ IC TERM-STRUCTURE · which holding horizon is the edge strongest at?</span>
+                        <div style={{fontSize:10,color:DIM,marginBottom:6}}>
+                          rank-IC at each forward horizon (monthly rebalanced). Long horizons overlap → naive t inflated; the best-horizon tHAC (Newey–West) deflates it. Momentum should PEAK then DECAY.
+                        </div>
+                        <div style={{display:"flex",gap:8,fontSize:9,color:DIM,fontFamily:"monospace",marginBottom:2}}>
+                          <span style={{width:96}}></span>{hs.map(h=><span key={h.label} style={{width:52,textAlign:"right"}}>{h.label}</span>)}<span style={{width:90,textAlign:"right"}}>best (tHAC)</span>
+                        </div>
+                        {T.perContributor.map(ts=>{
+                          const bc=ts.curve.find(c=>c.horizon===ts.bestHorizon);
+                          return (
+                            <div key={ts.name} style={{display:"flex",gap:8,fontSize:10,marginBottom:2,fontFamily:"monospace",alignItems:"center"}}>
+                              <span style={{width:96,color:"#cfd8dc"}}>{ts.name}</span>
+                              {ts.curve.map(c=>(<span key={c.horizon} style={{width:52,textAlign:"right",color:c.horizon===ts.bestHorizon?"#26c6da":"#90a4ae",fontWeight:c.horizon===ts.bestHorizon?700:400}}>{ic(c.meanIC)}</span>))}
+                              <span style={{width:90,textAlign:"right",color:"#26c6da"}}>{ts.bestHorizon||"–"} ({bc&&bc.tHAC!=null?bc.tHAC:"–"})</span>
+                            </div>
+                          );
+                        })}
+                      </div>
+                    );
+                  })()}
+                  {factorPie.oscillatorTrial&&(()=>{
+                    const O=factorPie.oscillatorTrial;
+                    const col=b=>!b||b.meanExcessPct==null?"#90a4ae":(/SIGNIFICANT|SUGGESTIVE/.test(b.verdict)?(b.meanExcessPct>0?"#00e676":"#ef5350"):"#90a4ae");
+                    return (
+                      <div style={{marginTop:12,borderTop:"1px solid "+BORD,paddingTop:10}}>
+                        <span style={lbl}>🎯 FAIR OSCILLATOR TRIAL · timing tools judged on TIMING, not selection</span>
+                        <div style={{fontSize:10,color:DIM,marginBottom:6}}>
+                          The pie ranks names cross-sectionally — the wrong exam for RSI/MACD/Stoch/BB (timing tools). Here: {O.horizon}-day forward return after each BUY signal MINUS the name's own buy-&-hold, significance across names. Positive+significant = genuine timing alpha; ≈0 = dead even at its real job.
+                        </div>
+                        {["RSI","MACD","Stoch","BB"].map(o=>{
+                          const b=O[o]&&O[o].bull; if(!b) return null;
+                          return (
+                            <div key={o} style={{display:"flex",alignItems:"center",gap:8,fontSize:10,marginBottom:2,fontFamily:"monospace"}}>
+                              <span style={{width:96,color:"#cfd8dc"}}>{o}</span>
+                              <span style={{width:150,color:col(b)}}>buy-excess {b.meanExcessPct==null?"–":(b.meanExcessPct>=0?"+":"")+b.meanExcessPct+"%"} (t{b.t==null?"–":b.t.toFixed(1)})</span>
+                              <span style={{width:120,color:DIM}}>{b.nNames} names / {b.nEvents} events</span>
+                              <span style={{flex:1,color:col(b)}}>{b.verdict}</span>
+                            </div>
+                          );
+                        })}
+                      </div>
+                    );
+                  })()}
+                  {factorPie.regimes&&factorPie.regimes.available&&(()=>{
+                    const G=factorPie.regimes;
+                    const vcol=v=>/DURABLE/.test(v)?"#00e676":/flips\/dies|REGIME-FLIP/.test(v)?"#ef5350":"#ffd740";
+                    const ic=x=>x==null?"–":(x>=0?"+":"")+x.toFixed(3);
+                    return (
+                      <div style={{marginTop:12,borderTop:"1px solid "+BORD,paddingTop:10}}>
+                        <span style={lbl}>🌗 REGIME SPLIT · durable edge, or just a bull-market trend?</span>
+                        <div style={{fontSize:10,color:DIM,marginBottom:6}}>
+                          {G.bullPeriods} bull months vs {G.bearPeriods} bear months (SPY vs its 200-DMA). DURABLE = same-sign edge in both; BULL-ONLY = a trend artifact. All ~5y sit in one macro cycle → read as direction, not proof.
+                        </div>
+                        {(G.perContributor||[]).map(r=>(
+                          <div key={r.name} style={{display:"flex",alignItems:"center",gap:8,fontSize:10,marginBottom:2,fontFamily:"monospace"}}>
+                            <span style={{width:96,color:"#cfd8dc"}}>{r.name}</span>
+                            <span style={{width:118,color:"#b0bec5"}}>bull {ic(r.bull.meanIC)} (t{r.bull.t==null?"–":r.bull.t.toFixed(1)})</span>
+                            <span style={{width:118,color:"#b0bec5"}}>bear {ic(r.bear.meanIC)} (t{r.bear.t==null?"–":r.bear.t.toFixed(1)})</span>
+                            <span style={{flex:1,color:vcol(r.verdict)}}>{r.verdict}</span>
+                          </div>
+                        ))}
+                      </div>
+                    );
+                  })()}
                   <div style={{fontSize:9,color:DIM,marginTop:8}}>Display-only — never feeds the signal. Only the OOS scoreboard below, cleared through FDR, is tradeable evidence.</div>
                 </div>
               );
@@ -3893,6 +4127,10 @@ function App() {
                 ["mom-quality-on","Momentum × quality (both top-tertile)"],
                 ["mom-lowvol-on","Momentum × low-vol (both top-tertile)"],
                 ["rev-lowvol-on","Reversal × low-vol (both top-tertile)"],
+                ["momentum-liquid-on","Momentum × liquid (the robust survivor)"],
+                ["votes-aligned-on","Votes aligned (engine not fighting itself)"],
+                ["ic-backed-on","IC-backed conviction (proven votes ≥⅓)"],
+                ["macd-fade-on","MACD faded (bought vs a bearish MACD)"],
                 ["position","POSITION (dip-buy, trailing)"],
                 ["quality-position-on","POSITION · top-tertile ROE × duration"],
                 ["quality-grade-position-on","POSITION · AUTOPSY grade A/B × duration"],

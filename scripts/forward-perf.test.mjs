@@ -295,6 +295,57 @@ test("bothTac: requires BOTH tactical tags; excludes position rows (interaction 
   assert.equal(bothTac({ tags: { mode: "position", momentumActivated: true, qualityActivated: true } }, "momentumActivated", "qualityActivated"), false, "position rows excluded");
 });
 
+test("scoreLedger: momentum-liquid-on isolates top-momentum names that also clear the liquidity floor", () => {
+  const ledger = [
+    // momentum AND liquid → on
+    { ...closed({ id: "L1", entry: 100, exit: 112, benchClose: 104 }), tags: { momentumActivated: true, liquid: true } },
+    // momentum but ILLIQUID → off (the artifact angle A warned about)
+    { ...closed({ id: "L2", entry: 100, exit: 130, benchClose: 105 }), tags: { momentumActivated: true, liquid: false } },
+    // not momentum → off
+    { ...closed({ id: "L3", entry: 100, exit: 101, benchClose: 106 }), tags: { momentumActivated: false, liquid: true } },
+  ];
+  const perf = scoreLedger(ledger);
+  assert.equal(perf.variants["momentum-liquid-on"].n, 1, "only the liquid momentum name is on");
+  assert.equal(perf.variants["momentum-liquid-on"].n + perf.variants["momentum-liquid-off"].n, perf.variants["all"].n, "on/off re-union to the tactical population");
+});
+
+test("scoreLedger: votes-aligned partitions the tactical longs by the engine's self-conflict tag", () => {
+  const ledger = [
+    { ...closed({ id: "V1", entry: 100, exit: 108, benchClose: 104 }), tags: { votesConflict: false } },  // aligned
+    { ...closed({ id: "V2", entry: 100, exit: 101, benchClose: 105 }), tags: { votesConflict: true } },    // conflicted
+    { ...closed({ id: "V3", entry: 100, exit: 110, benchClose: 103 }), tags: {} },                          // no tag ⇒ treated aligned
+  ];
+  const perf = scoreLedger(ledger);
+  assert.equal(perf.variants["votes-aligned-off"].n, 1, "only the conflicted row is off");
+  assert.equal(perf.variants["votes-aligned-on"].n, 2, "aligned + untagged are on");
+  assert.equal(perf.variants["votes-aligned-on"].n + perf.variants["votes-aligned-off"].n, perf.variants["all"].n, "on/off re-union to the tactical population");
+});
+
+test("scoreLedger: ic-backed partitions BUYs by whether proven votes carry ≥⅓ of the conviction", () => {
+  const ledger = [
+    { ...closed({ id: "I1", entry: 100, exit: 109, benchClose: 104 }), tags: { icBackedShare: 0.5 } },   // proven-driven
+    { ...closed({ id: "I2", entry: 100, exit: 101, benchClose: 105 }), tags: { icBackedShare: 0.1 } },   // dead-vote-driven
+    { ...closed({ id: "I3", entry: 100, exit: 110, benchClose: 103 }), tags: { icBackedShare: 0.33 } },  // boundary ⇒ on
+  ];
+  const perf = scoreLedger(ledger);
+  assert.equal(perf.variants["ic-backed-on"].n, 2, "share ≥ 0.33 ⇒ on (incl. boundary)");
+  assert.equal(perf.variants["ic-backed-off"].n, 1, "share < 0.33 ⇒ off");
+  assert.equal(perf.variants["ic-backed-on"].n + perf.variants["ic-backed-off"].n, perf.variants["all"].n);
+});
+
+test("scoreLedger: macd-fade splits BUYs by whether the engine faded a bearish MACD (angle F)", () => {
+  const ledger = [
+    { ...closed({ id: "M1", entry: 100, exit: 109, benchClose: 104 }), tags: { macdBull: false } },  // faded MACD → on
+    { ...closed({ id: "M2", entry: 100, exit: 101, benchClose: 105 }), tags: { macdBull: true } },    // followed MACD → off
+    { ...closed({ id: "M3", entry: 100, exit: 103, benchClose: 102 }), tags: { macdBull: null } },    // no MACD → neither
+  ];
+  const perf = scoreLedger(ledger);
+  assert.equal(perf.variants["macd-fade-on"].n, 1, "only the macd-bearish BUY is 'faded'");
+  assert.equal(perf.variants["macd-fade-off"].n, 1, "only the macd-bullish BUY is 'followed'");
+  // null-MACD rows are in neither leg (they still count in 'all').
+  assert.equal(perf.variants["macd-fade-on"].n + perf.variants["macd-fade-off"].n, perf.variants["all"].n - 1);
+});
+
 test("scoreLedger: empty ledger is honest, not a crash", () => {
   const perf = scoreLedger([]);
   assert.equal(perf.ledger.rows, 0);

@@ -370,6 +370,130 @@ pieces:
   sandbox can't reach Polygon and has no secret — studies run in Actions, where the repo `POLYGON_API_KEY` is
   injected automatically; the key is correct, it's a sandbox/CI location boundary, not a key problem).
 
+**Pie CI runs + the "Wheel in reverse" expert-trader probes — A/B/C robustness (DONE, MEASURED) — branch
+`claude/signalforge-profitability-wheel-qbclby`:** the workflow gained an **opt-in `commit` input** (default
+artifact-only; when true it commits `factor-interaction-study.json` to the dispatch branch — NEVER main — so
+EVIDENCE renders it same-origin). Dispatched in CI (cap 120; survivorship-free roster: 81 covered, 73 w/
+financials, ~2,792 monthly obs, 48 periods, 2022–2026). The **first real pie** put **lowvol #1** (IC 0.113,
+t 3.99), then momentum 12-1 (0.089), Vol/Trend votes (~0.07), merit/healthy (~0.05); **Pat is NEGATIVE**
+(−0.059); ADX/RSI/MACD (the engine's HIGHEST hand-weights) are ~0 → the engine's vote weights are
+**mis-calibrated vs measured IC**. Three expert-trader probes were then built into the harness (all PURE +
+unit-tested, in-sample/research-only, NEVER gated):
+- **Angle A — liquidity screen + beta/sector-neutral IC** (`liquidAt` price≥$5 & trailing-median ADV≥$2M;
+  `trailingBeta` vs SPY; `betaNeutralIC`; reuse `sectorNeutralIC`). **VERDICT:** on the 45 liquid names
+  **lowvol HALVES (0.113→0.050, t 1.2 — significance gone): ~half its pie was stale-price micro-cap artifact.**
+  **Momentum-12-1 is the lone robust survivor** (keeps ~80%, 0.071 t 1.8, neither sector nor beta). 6-1 momentum
+  collapses on liquid names → it's specifically the **12-1** window. Quality/merit survive sector/beta neutral
+  (genuine selection) but their liquid IC ≈ 0 (size-conditional). reversal/cheap = beta-driven noise.
+- **Angle B — unique/incremental IC + PCA effective bets** (`uniqueIC` residualises each selector vs all others,
+  z-scored per period + ridge — note the FIX: raw scales (mom ~1, lowvol ~0.01, fundamentals ~100) + collinear
+  fundamentals made `XtX` singular → price factors read TOO-FEW-PERIODS; standardise+ridge cured it; `pca` via
+  Jacobi eigensolver + participation-ratio). **VERDICT: 8 selectors ≈ 5.3 effective bets, ~3 economic axes**
+  (PC1 quality/low-risk = merit+healthy+lowvol; PC2 momentum; PC3 reversal/value). **merit (keeps 11%) and
+  AUTOPSY_healthy (−5%) are REDUNDANT** — the pie double-counted one quality axis as three. **The two momentum
+  windows duplicate each other** (12-1 keeps only 28% once 6-1 is in) → use ONE window. **lowvol is the one
+  statistically-independent axis (unique t 3.5)** — but A says that strength lives in illiquid names. growing is
+  weakly independent (keeps 94%).
+- **Angle C — bull/bear regime split** (`marketRegimeByDate` SPY vs 200-DMA; `regimeSplitIC`). Sample is
+  **regime-imbalanced: 38 bull vs 10 bear months**, so bear power is low. **momentum-12-1 stays SAME-SIGN
+  positive in both** (+0.099 bull / +0.048 bear) → "bull-signif, bear same-sign UNDERPOWERED" — NOT a disproven
+  artifact (verdict logic refined to separate same-sign-underpowered from true sign-FLIP). **lowvol +0.148→−0.019,
+  merit/healthy positive→negative = real BULL-ONLY flips.** reversal & growing are the only BEAR-positive signals.
+  Honest meta-conclusion: 5y / one macro cycle can't PROVE regime durability — the OOS ledger stays the arbiter.
+- **Angle E — IC term-structure** (`buildPanel` `horizons` opt stamps 1wk/1mo/3mo/6mo/12mo fwd returns no-lookahead;
+  `termStructure` IC per horizon + Newey–West HAC t via `overlapAdjustedT`, overlap ≈ horizon/month). IC rises
+  MONOTONICALLY with horizon (momentum 0.020→0.089→0.117→0.210→0.272; lowvol/merit similar) — but that "12mo is
+  best" is a TRAP: rank-IC mechanically grows for any persistent signal (cumulative-return SNR), and 12mo overlaps
+  11 neighbors so effective n ≈ 48/12 ≈ 4 (naïve t 15 is nonsense; even HAC t 9.7 is unreliable). Decision-useful
+  reads: **NO 1-week edge in anything** (swing/multi-month only — confirms the delayed-feed charter); **1mo is the
+  clean non-overlapping column** (matches the pie); the survivors are **SLOW** (months) → belong in the POSITION
+  book, not rapid turnover; **reversal flips NEGATIVE at 6-12mo** (−0.083, momentum reasserts) → useless here. So
+  momentum-liquid should be held weeks-to-months, not days.
+- **Angle F — fair OSCILLATOR trial** (`oscVotesAt` = voteVector's RSI/MACD/Stoch/BB thresholds, engine parity;
+  `oscillatorEventStudy` = within-name event study, H=21d, excess = signal-bar fwd return − the name's own
+  buy-&-hold, significance ACROSS names). **The pie was the WRONG EXAM:** judged on TIMING (their real job), three
+  of four are significant — **RSI +1.13% (t2.3), Stoch +0.98% (t2.4), BB +2.6% (t2.6)** oversold-BUY excess (the
+  AVOID side is symmetrically negative) → genuine MEAN-REVERSION timers, and the engine's oversold→buy direction is
+  CORRECT. **MACD is used BACKWARDS:** trend-follow buy (macd>0) LOSES −1.56% (t−2.7) while FADING it wins +1.42%
+  (t3.9). This explains the engine self-conflicting (RSI/Stoch/BB "buy the dip" vs MACD "buy the breakout" fire
+  opposite on the same bar → sum + costs + churn = the measured t −12.6 loser). **BUT NOT a green light:** an
+  oversold bounce on the micro-cap roster is the textbook BID-ASK-BOUNCE / stale-price trap (angle A), it's
+  cost-blind + high-turnover, in-sample, and across-name correlated. **Hypothesis, NOT a mandate — do NOT flip MACD
+  or re-wire votes off in-sample; it earns a change only OOS.**
+
+**Net engine implication (in-sample, not a mandate):** the system effectively holds **~2 tradeable independent
+edges, not 8 — momentum-12-1 (robust to liquidity, own axis, same-sign both regimes; use ONE window) and a
+size-constrained low-risk-quality axis** — while the confluence sums many correlated quality/fundamental votes
+as if independent, and over-weights dead oscillators (ADX/RSI/MACD) vs the measured IC. The disciplined next
+move is an OOS **momentum-12-1-on-liquid** variant judged by FDR; NO engine re-weight off in-sample alone.
+EVIDENCE pie card now shows ROBUSTNESS + DIMENSIONALITY + REGIME panels (driver-verified, zero JS errors).
+
+**momentum-12-1-on-liquid OOS variant — WIRED (DONE):** the disciplined follow-through on the A/B/C verdict —
+the one survivor gets its own propose-only OOS label. `forward-log.mjs` `liquidAtBar(candles)` (pure: decision-bar
+price ≥ $5 AND trailing-60-bar median dollar-volume ≥ $2M) stamps `tags.liquid` on every tactical row (static,
+point-in-time; never enters the gate). `forward-perf.mjs` adds `momentum-liquid-on/off` (= `bothTac(momentumActivated,
+liquid)`) under the existing BH/BY FDR family — so the scoreboard can compare momentum-on (any liquidity) vs
+momentum-liquid-on directly. Surfaced in the EVIDENCE scoreboard. Tests +2 (248 green). Matures like every label —
+only the OOS ledger through FDR counts; the 12-1 window is already what `momentumValue` uses (single window, per B).
+
+**Market-regime notifier ("read the room") — DONE (display-only, awareness not a gate):** the user's framing of the
+angle-C+F diagnosis — the engine's votes are CONDITIONALLY valid (trend-following in TRENDING markets, mean-reversion
+in RANGING ones) and the regime-blind confluence fires them all at once, fighting itself. The honest fix is NOT a
+secret regime gate (that would overfit one 2022–2026 cycle) but to SURFACE the regime so the human applies the right
+toolkit. `marketRegime(bars)` (pure, in `engine.mjs`, mirrored byte-for-byte into `index.html`): close-only so it
+works on any index proxy — **direction** (BULL/BEAR vs proxy 200-DMA), **trend** via Kaufman `efficiencyRatio`
+(|net move|/Σ|bar move|: TRENDING ≥0.45 / RANGING <0.25 / TRANSITIONAL), **vol** (21d realized vs 126d baseline:
+CALM/NORMAL/STORMY) → a `{label, favored, cautioned, risk}` read mapping the room to the toolkit. `buildOutlook`
+attaches `regime` from the primary index proxy (SPY); the OUTLOOK tab leads with a bold **🧭 MARKET REGIME** card
+(favored vs "fights the room" + an ELEVATED-risk flag in bear+stormy) and the SIGNALS hero shows a compact regime
+chip beside the verdict. NEVER touches `analyze`/`scoreAt`/`runBacktest`/any gate (parity-safe; verdict unchanged) —
+it tells you which of the engine's votes to TRUST, not what to do. Tests +4 (256 green); engine↔app parity verified
+byte-identical; app mounts clean. Populates on a live fetch (egress-blocked in CI; needs a key in a real browser).
+
+**Self-conflict (Headline #2) — Step 1 MEASURE (DONE), step-by-step, one at a time:** the angle-F diagnosis —
+the engine sums MEAN-REVERSION votes (RSI/Stoch/BB, oversold→buy) and TREND votes (MACD/MA/MAlong/Trend) as if
+independent, but they're conditionally valid in opposite regimes, so they fire opposite on the same bar and the
+confluence fights itself (part of the measured t −12.6). The disciplined fix is sequential: **(1) MEASURE → (2)
+SURFACE → (3) RESOLVE**, and resolve ONLY if the OOS ledger proves it. Step 1 shipped: `computeSignal` now derives
+a **family-level split** (`trendDir`, `meanRevDir`, `famConflict` = the two camps point opposite ways) beside the
+existing generic `conflict` penalty — surfaced on `analyze().confluence`, mirrored byte-for-byte into `index.html`
+(parity verified; the snapshot test is unchanged — additive only). `forward-log` tags `votesConflict` on every
+tactical row; `forward-perf` adds **`votes-aligned-on/off`** under the existing BH/BY FDR family, asking on LIVE
+trades: *does the verdict pay more when the engine is NOT fighting itself?* Propose-only — never touches
+`gate.actionable`; the family split is a LABEL, the engine's signal is byte-identical. Tests +2 (258 green; engine
++ forward-perf). Steps 2 (surface the conflict in the SIGNALS panel) and 3 (let the regime pick the lead camp) are
+DEFERRED until this OOS A/B clears FDR — no in-sample re-wire.
+
+**Self-conflict (Headline #2) — Step 2 SURFACE (DONE, display-only):** the SIGNALS panel now SHOWS when the engine
+is divided. When `analysis.confluence.famConflict` is true, the hero gets a compact **⚠ ENGINE DIVIDED** chip and a
+prominent advisory block spelling out the split — "Mean-reversion votes (RSI/Stoch/BB) say BUY, trend votes
+(MACD/MA/MAlong/Trend) say AVOID — the confluence is fighting itself; each camp is valid in a different regime, so
+one is noise right now." When the OUTLOOK regime is loaded it adds a **regime-aware read** ("market is RANGING →
+weight the MEAN-REVERSION camp"), tying Step 2 to the regime notifier. STRICTLY display: the verdict is byte-identical
+(famConflict is a read-out of the existing signal, never an input). App mounts clean, zero JS errors; renders on a
+live fetch (analysis needs data — egress-blocked in CI). Step 3 (regime actually PICKS the lead camp in the score)
+stays deferred until the votes-aligned OOS ledger clears FDR.
+
+**Vote-weight mis-calibration — OOS test WIRED (DONE):** the pie found the engine's HAND weights mis-calibrated vs
+measured IC — ADX weighted 3 (highest) but IC ≈ 0; RSI/MACD/Pat ≈ 0/negative; Vol IC 0.074 at weight 1
+(under-weighted), Trend significant. Tested OOS without re-weighting the live engine (charter): `computeSignal`
+derives `icBackedShare` = of the weighted conviction pushing THIS signal's way, the fraction from the PROVEN votes
+(Trend/Vol/BB) vs the over-weighted dead ones — surfaced on `analyze().confluence`, mirrored byte-for-byte into
+`index.html` (parity IDENTICAL; analyze snapshot unchanged — additive). `forward-log` tags `icBackedShare`;
+`forward-perf` adds **`ic-backed-on/off`** (proven votes carry ≥⅓ of the case) under the existing BH/BY FDR family
+— the live A/B: do BUYs the data trusts beat BUYs propped up by the mis-weighted dead votes? If on>off under FDR,
+that's the evidence to re-weight (NEVER in-sample). Propose-only — never touches `gate.actionable`; the signal is
+byte-identical. Tests +2 (260 green). EVIDENCE scoreboard row added; matures via the nightly pipeline like every label.
+
+**MACD-fade — OOS test WIRED (DONE), the last loose thread from angle F:** F found MACD is used BACKWARDS at swing
+horizons (trend-follow buy LOSES −1.56% t−2.7, FADING it wins +1.42% t3.9). Wired with NO engine change — `analyze`
+already exposes the MACD direction via `indicators.macd.sig`, so `forward-log` tags `macdBull` (the MACD vote dir at
+the decision bar). `forward-perf` adds **`macd-fade-on/off`**: ON = BUYs the engine took while MACD was BEARISH (it
+FADED MACD), OFF = while MACD was BULLISH (it FOLLOWED it). The live A/B: if ON>OFF under FDR, MACD's engine direction
+is confirmed BACKWARDS — evidence to flip/drop the MACD vote (never in-sample). Rows with no MACD (null) fall in
+neither leg. Propose-only; no engine/parity impact (reads existing analyze output). Tests +1 (261 green). EVIDENCE
+scoreboard row added. Every notable discovery from the pie now has an OOS follow-through.
+
 **Next — Track B:**
 - Mature the `momentum-on` / `merits-on` / `news-*` / `earnings-recent-on` OOS ledgers to n≥10; human-ratify
   only if they clear FDR. PASSIVE — the nightly `forward-log → forward-perf → promote` already partitions every

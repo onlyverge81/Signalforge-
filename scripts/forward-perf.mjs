@@ -199,6 +199,33 @@ export function defaultVariants() {
     //   reversal×low-vol — recent losers that are NOT volatile (calm mean-reversion candidates).
     { label: "rev-lowvol-on", where: t => bothTac(t, "reversalActivated", "lowVolActivated") },
     { label: "rev-lowvol-off", where: t => tac(t) && !bothTac(t, "reversalActivated", "lowVolActivated") },
+    //   momentum × LIQUID — the factor-interaction robustness probe (angle A) found momentum-12-1 is
+    //   the lone factor whose edge survives a liquidity screen (lowvol/quality were ~stale-price
+    //   micro-cap artifacts). This is the disciplined OOS test of that one survivor: top-tertile 12-1
+    //   momentum restricted to names that clear the price + dollar-volume floor at the decision bar.
+    { label: "momentum-liquid-on", where: t => bothTac(t, "momentumActivated", "liquid") },
+    { label: "momentum-liquid-off", where: t => tac(t) && !bothTac(t, "momentumActivated", "liquid") },
+    //   votes-aligned — the SELF-CONFLICT test (research angles C+F). votesConflict is true when the
+    //   engine's mean-reversion votes (RSI/Stoch/BB) and trend votes (MACD/MA/MAlong/Trend) point
+    //   OPPOSITE ways — the engine fighting itself. This A/B asks, on live trades: does the verdict pay
+    //   more when its two camps AGREE (no internal contradiction) than when they conflict? If aligned
+    //   beats conflicted under FDR, that's the OOS evidence to act on the conflict (Step 3); never before.
+    { label: "votes-aligned-on", where: t => tac(t) && !(t.tags && t.tags.votesConflict) },
+    { label: "votes-aligned-off", where: t => tac(t) && !!(t.tags && t.tags.votesConflict) },
+    //   ic-backed — the VOTE-WEIGHT MIS-CALIBRATION test (factor-interaction pie). icBackedShare is the
+    //   fraction of a BUY's weighted conviction coming from the PROVEN votes (Trend/Vol/BB) vs the
+    //   over-weighted empirically-dead ones (ADX/RSI/MACD/Pat). on = the proven votes carry ≥ a third of
+    //   the case. The A/B: do BUYs the data trusts beat BUYs propped up by the mis-weighted dead votes?
+    //   If on > off under FDR, the hand weights are mis-calibrated — evidence to re-weight (never in-sample).
+    { label: "ic-backed-on", where: t => tac(t) && t.tags && t.tags.icBackedShare != null && t.tags.icBackedShare >= 0.33 },
+    { label: "ic-backed-off", where: t => tac(t) && t.tags && t.tags.icBackedShare != null && t.tags.icBackedShare < 0.33 },
+    //   macd-fade — factor-interaction angle F found MACD is used BACKWARDS at swing horizons (trend-
+    //   follow buy LOSES −1.56%, FADING it wins +1.42%). On the live ledger: macd-fade-ON = BUYs the
+    //   engine took while MACD was BEARISH (it FADED MACD); OFF = BUYs taken while MACD was BULLISH (it
+    //   FOLLOWED MACD). If ON > OFF under FDR, MACD's engine direction is confirmed BACKWARDS — evidence
+    //   to flip/drop the MACD vote (never in-sample). Rows with no MACD (null) fall in neither.
+    { label: "macd-fade-on", where: t => tac(t) && t.tags && t.tags.macdBull === false },
+    { label: "macd-fade-off", where: t => tac(t) && t.tags && t.tags.macdBull === true },
     { label: "position", where: t => !!(t.tags && t.tags.mode === "position") },
     // Quality × DURATION (propose-only A/B INSIDE the position/long-hold stream): the
     // quality-duration study found high-ROE names beat the market with an edge that GROWS over

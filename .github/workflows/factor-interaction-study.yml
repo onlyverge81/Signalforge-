@@ -14,9 +14,13 @@ on:
         description: "Max universe size (FIS_MAX)"
         required: false
         default: "120"
+      commit:
+        description: "Commit factor-interaction-study.json to the branch this runs on (default: artifact only)"
+        required: false
+        default: "false"
 
 permissions:
-  contents: read
+  contents: write   # only used when the `commit` input is true; harmless otherwise
 
 jobs:
   study:
@@ -40,3 +44,21 @@ jobs:
           name: factor-interaction-study
           path: factor-interaction-study.json
           if-no-files-found: warn
+      - name: Commit factor-interaction-study.json to this branch (opt-in)
+        if: github.event.inputs.commit == 'true'
+        run: |
+          git config user.name "github-actions[bot]"
+          git config user.email "github-actions[bot]@users.noreply.github.com"
+          # Stage first, THEN check the staged diff — `git diff --quiet` ignores untracked files,
+          # so a never-before-committed file would never persist otherwise.
+          [ -f factor-interaction-study.json ] && git add factor-interaction-study.json || true
+          if git diff --cached --quiet; then
+            echo "factor-interaction-study.json unchanged — nothing to commit."
+          else
+            git commit -m "chore: refresh factor-interaction-study.json (research snapshot, display-only)"
+            # Push to the SAME branch this workflow was dispatched on — NEVER main.
+            for i in 1 2 3; do
+              git pull --rebase origin "${GITHUB_REF_NAME}" && git push origin "HEAD:${GITHUB_REF_NAME}" && break
+              echo "push race (attempt $i) — retrying"; sleep 3
+            done
+          fi

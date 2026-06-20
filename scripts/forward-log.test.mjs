@@ -2,7 +2,7 @@
 // Run: node --test scripts/
 import { test } from "node:test";
 import assert from "node:assert/strict";
-import { splitSettled, markToMarket, mergeLedger, buildEntry, parseFeed, gradeFor, forwardGates, meritGate, momentumValue, momentumRankGate, reversalValue, reversalRankGate, lowVolValue, lowVolRankGate, qualityValue, qualityRankGate, eventTags, earningsGate, buildPositionEntry, markToMarketPosition } from "./forward-log.mjs";
+import { splitSettled, markToMarket, mergeLedger, buildEntry, parseFeed, gradeFor, forwardGates, meritGate, momentumValue, momentumRankGate, reversalValue, reversalRankGate, lowVolValue, lowVolRankGate, qualityValue, qualityRankGate, eventTags, earningsGate, buildPositionEntry, markToMarketPosition, liquidAtBar } from "./forward-log.mjs";
 
 // A long uptrend of `up` rising bars then `dip` declining bars (a pullback inside the trend).
 const _pbar = c => { c=+(+c).toFixed(4); return { date:"2025-01-01", open:c, high:+(c+1).toFixed(4), low:+(c-1).toFixed(4), close:c, volume:1e6 }; };
@@ -270,6 +270,22 @@ test("momentumRankGate: flags the top tertile; <3 rankable names ⇒ none; nulls
   // nulls are not rankable and never activate; the 3 finite values rank among themselves.
   assert.deepEqual(momentumRankGate([null, 0.3, null, 0.9, 0.1]),
     [false, false, false, true, false]);
+});
+
+test("liquidAtBar: clears only when BOTH the price floor and the trailing dollar-volume floor pass", () => {
+  const mk = (n, close, volume) => Array.from({ length: n }, (_, i) => ({ date: "d" + i, close, volume }));
+  // $20 × 1,000,000 = $20M ADV, price ≥ $5 → liquid.
+  assert.equal(liquidAtBar(mk(80, 20, 1_000_000)), true);
+  // Sub-$5 price → fails the price floor regardless of volume.
+  assert.equal(liquidAtBar(mk(80, 3, 5_000_000)), false);
+  // Thin volume ($20 × 10 = $200) → fails the ADV floor.
+  assert.equal(liquidAtBar(mk(80, 20, 10)), false);
+  // Empty / missing volume → not liquid, never a crash.
+  assert.equal(liquidAtBar([]), false);
+  assert.equal(liquidAtBar(mk(80, 20, 0)), false);
+  // The price floor reads the LAST (decision) bar, not the window: a recent drop below $5 fails.
+  const c = mk(80, 20, 1_000_000); c[c.length - 1] = { date: "last", close: 4, volume: 1_000_000 };
+  assert.equal(liquidAtBar(c), false, "decision-bar price below floor ⇒ not liquid");
 });
 
 test("buildEntry: momentum tag is attached; momentumActivated defaults false and never changes status", () => {

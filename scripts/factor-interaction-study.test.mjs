@@ -9,6 +9,13 @@ import {
   buildPanel, obsFor, standaloneICs, contributionPie, spearman,
   correlationMatrix, conditionalIC, interactionScan, combinedComposite,
   parsePolyFinancials, recAsOf, autopsyValues,
+  dollarVol, trailingMedianDollarVol, liquidAt, trailingBeta, betaNeutralIC,
+  obsForNeutral, robustnessFor,
+  solveLinear, olsResidual, uniqueIC, standardizeByPeriod, corrMatrixPearson,
+  jacobiEig, effectiveBets, pca,
+  marketRegimeByDate, regimeSplitIC,
+  termStructure,
+  oscVotesAt, oscillatorEventStudy,
 } from "./factor-interaction-study.mjs";
 import { computeSignal, rsi, macd, bb, stoch, sma, patterns, divergence, adxCalc, obvCalc, vwapCalc } from "./engine.mjs";
 
@@ -238,4 +245,289 @@ test("obsFor yields the factor-agnostic {sym,period,merit,fwdRet} study-lib expe
   const panel = predictivePanel({ periods: 6, names: 9 });
   const obs = obsFor(panel, "A");
   assert.ok(obs.every(o => "sym" in o && "period" in o && "merit" in o && "fwdRet" in o));
+});
+
+// ─── Robustness (angle A): liquidity screen + beta/sector neutralisation ──────
+
+test("liquidity primitives: dollar-volume, trailing median, and the price+ADV gate", () => {
+  assert.equal(dollarVol({ close: 10, volume: 100 }), 1000);
+  assert.equal(dollarVol({ close: 10, volume: 0 }), 0);
+  // Trailing median dollar-volume over a window.
+  const s = series(10, i => 10, () => 100);            // const price 10, vol 100 → $1000/bar
+  assert.equal(trailingMedianDollarVol(s, 9, 5), 1000);
+  // Liquid only when BOTH price floor and ADV floor clear.
+  const liquid = series(80, () => 20, () => 1_000_000);   // $20 × 1M = $20M/bar
+  assert.equal(liquidAt(liquid, 79, { minADV: 2_000_000, minPrice: 5 }), true);
+  const cheap = series(80, () => 3, () => 1_000_000);     // sub-$5 → fails price floor
+  assert.equal(liquidAt(cheap, 79, { minADV: 2_000_000, minPrice: 5 }), false);
+  const thin = series(80, () => 20, () => 10);            // $20 × 10 = $200/bar → fails ADV
+  assert.equal(liquidAt(thin, 79, { minADV: 2_000_000, minPrice: 5 }), false);
+});
+
+test("trailingBeta recovers the true beta: a name that moves 2× the market reads ≈ 2", () => {
+  // Market wiggles; name = 2× the market's daily move (compounded), so beta ≈ 2.
+  const steps = [];
+  for(let i = 0; i < 200; i++) steps.push(((i * 37) % 11 - 5) / 100);   // deterministic pseudo-returns
+  const mkt = [{ t: 0, close: 100 }]; const nm = [{ t: 0, close: 100 }];
+  for(let i = 0; i < steps.length; i++){
+    const t = (i + 1) * 86400000;
+    mkt.push({ t, close: mkt[mkt.length - 1].close * (1 + steps[i]) });
+    nm.push({ t, close: nm[nm.length - 1].close * (1 + 2 * steps[i]) });
+  }
+  const mktRet = new Map(); for(let i = 1; i < mkt.length; i++) mktRet.set(mkt[i].t, mkt[i].close / mkt[i - 1].close - 1);
+  const b = trailingBeta(nm, mktRet, nm.length - 1, 120);
+  assert.ok(Math.abs(b - 2) < 0.05, "beta ≈ 2, got " + b);
+  // Too few overlapping bars → null, not a guess.
+  assert.equal(trailingBeta(nm, mktRet, 5, 120), null);
+});
+
+test("betaNeutralIC: a pure-beta signal COLLAPSES; a beta-orthogonal signal SURVIVES", () => {
+  // Pure beta bet: merit == beta, and forward return is beta plus merit-UNCORRELATED noise. After
+  // regressing out beta, the residual is pure noise → neutral IC has no signal → BETA-DRIVEN.
+  const betaBet = [];
+  for(let p = 0; p < 10; p++) for(let i = 0; i < 12; i++){
+    const beta = (i - 5.5) / 5;                          // spread of betas across names
+    const noise = Math.sin((p * 97 + i * 131) * 1.7) * 0.1;   // scrambled → rank-uncorrelated with merit(=beta)
+    betaBet.push({ period: "P" + p, merit: beta, beta, fwdRet: 0.5 * beta + noise });
+  }
+  const collapsed = betaNeutralIC(betaBet);
+  assert.equal(collapsed.available, true);
+  assert.equal(collapsed.verdict, "BETA-DRIVEN (mostly market)");
+  // Genuine alpha: merit predicts the part of return NOT explained by beta.
+  const alpha = [];
+  for(let p = 0; p < 10; p++) for(let i = 0; i < 12; i++){
+    const beta = (i % 3) - 1;                    // beta varies but is unrelated to merit
+    const merit = (i - 5.5) / 5;
+    alpha.push({ period: "P" + p, merit, beta, fwdRet: 0.4 * merit + 0.3 * beta });
+  }
+  const survives = betaNeutralIC(alpha);
+  assert.equal(survives.available, true);
+  assert.ok(survives.verdict.startsWith("SURVIVES"), "expected SURVIVES, got " + survives.verdict);
+});
+
+test("buildPanel tags liquid/sector/beta only when the inputs are supplied (additive, no-op otherwise)", () => {
+  const bars = series(320, i => 100 + i * 0.2, () => 5_000_000);   // $100 × 5M ≫ floor
+  const market = series(320, i => 50 + i * 0.05);
+  const rb = bars[300].t;
+  const tagged = buildPanel({ ZZ: bars }, [rb], { minBars: 260, market, sectorOf: { ZZ: "Manufacturing" }, liquidity: true });
+  assert.equal(tagged[0].liquid, true);
+  assert.equal(tagged[0].sector, "Manufacturing");
+  assert.ok(tagged[0].beta != null && isFinite(tagged[0].beta));
+  // No options → none of the robustness tags appear (base pie unchanged).
+  const bare = buildPanel({ ZZ: bars }, [rb], { minBars: 260 });
+  assert.equal("liquid" in bare[0], false);
+  assert.equal("sector" in bare[0], false);
+  assert.equal("beta" in bare[0], false);
+  // obsForNeutral surfaces the tags (null-safe) for the diagnostics.
+  const o = obsForNeutral(tagged, "lowvol");
+  assert.ok("sector" in o[0] && "beta" in o[0]);
+});
+
+test("robustnessFor returns raw/liquid IC + sector & beta verdicts in the expected shape", () => {
+  const panel = predictivePanel({ periods: 6, names: 9 });
+  for(const r of panel) r.liquid = true;        // mark all liquid so the liquid IC is computable
+  const rob = robustnessFor(panel, "A");
+  assert.equal(rob.name, "A");
+  assert.ok("liquidIC" in rob && "sectorNeutral" in rob && "betaNeutral" in rob);
+  assert.equal(rob.sectorNeutral.available, false, "no sector tags ⇒ sector-neutral unavailable, not a crash");
+});
+
+// ─── Dimensionality (angle B): unique/incremental IC + PCA effective bets ─────
+
+test("solveLinear solves a small system and returns null when singular", () => {
+  // 2x + y = 5 ; x + 3y = 10  → x=1, y=3
+  const x = solveLinear([[2, 1], [1, 3]], [5, 10]);
+  assert.ok(Math.abs(x[0] - 1) < 1e-9 && Math.abs(x[1] - 3) < 1e-9);
+  assert.equal(solveLinear([[1, 2], [2, 4]], [3, 6]), null, "singular ⇒ null");
+});
+
+test("olsResidual: residual is orthogonal to the regressors and zero for a perfect linear fit", () => {
+  // y = 2 + 3*x exactly → residuals ≈ 0.
+  const X = [[0], [1], [2], [3], [4]];
+  const y = X.map(r => 2 + 3 * r[0]);
+  const resid = olsResidual(y, X);
+  assert.ok(resid.every(e => Math.abs(e) < 1e-9), "perfect fit ⇒ ~0 residuals");
+  // With noise, residual sum ≈ 0 (intercept absorbs the mean).
+  const y2 = X.map((r, i) => 2 + 3 * r[0] + (i % 2 ? 0.5 : -0.5));
+  const r2 = olsResidual(y2, X);
+  assert.ok(Math.abs(r2.reduce((a, b) => a + b, 0)) < 1e-9);
+});
+
+test("uniqueIC: a duplicate factor has ~zero unique IC; an independent one keeps its edge", () => {
+  // Panel: A predicts forward return; B ≈ A (duplicate); C is independent noise-with-signal.
+  const panel = [];
+  for(let p = 0; p < 8; p++) for(let s = 0; s < 14; s++){
+    const a = (s / 14) - 0.5;
+    const dup = a + 1e-6 * ((s * 7 + p) % 3 - 1);          // B nearly identical to A
+    const indep = Math.sin(s * 1.3 + p);                    // C orthogonal-ish to A
+    const fwdRet = 0.6 * a + 0.5 * indep + 0.05 * ((p * 5 + s) % 7 - 3);
+    panel.push({ sym: "S" + s, period: "P" + p, fwdRet, values: { A: a, B: dup, C: indep } });
+  }
+  const u = uniqueIC(panel, ["A", "B", "C"]);
+  const uB = u.find(x => x.name === "B").uniqueIC;
+  const uC = u.find(x => x.name === "C").uniqueIC;
+  assert.ok(Math.abs(uB) < 0.15, "the duplicate's UNIQUE IC collapses toward 0 (got " + uB + ")");
+  assert.ok(Math.abs(uC) > Math.abs(uB), "the independent factor keeps more unique IC than the duplicate");
+});
+
+test("jacobiEig + effectiveBets: a 2-block correlation matrix reads ~2 effective bets", () => {
+  // Diagonal matrix → eigenvalues are the diagonal.
+  const d = jacobiEig([[3, 0], [0, 1]]);
+  assert.ok(Math.abs(d.values[0] - 3) < 1e-9 && Math.abs(d.values[1] - 1) < 1e-9, "sorted descending");
+  // Two perfectly-correlated pairs (4 vars, 2 independent blocks): eigenvalues ≈ [2,2,0,0] → PR=2.
+  const C = [
+    [1, 1, 0, 0],
+    [1, 1, 0, 0],
+    [0, 0, 1, 1],
+    [0, 0, 1, 1],
+  ];
+  const { values } = jacobiEig(C);
+  const eb = effectiveBets(values);
+  assert.ok(Math.abs(eb.participationRatio - 2) < 1e-6, "two independent blocks ⇒ ~2 effective bets (got " + eb.participationRatio + ")");
+  assert.equal(eb.kaiser, 2, "two eigenvalues > 1");
+});
+
+test("standardizeByPeriod + corrMatrixPearson + pca: redundant columns collapse the effective bets", () => {
+  // Three columns but only TWO real axes: X, a near-duplicate of X, and an independent Y.
+  const panel = [];
+  for(let p = 0; p < 8; p++) for(let s = 0; s < 12; s++){
+    const x = (s / 12) - 0.5;
+    const y = Math.cos(s * 0.9 + p);
+    panel.push({ sym: "S" + s, period: "P" + p, fwdRet: 0, values: { X: x, Xdup: x + 1e-3 * (s % 2), Y: y } });
+  }
+  const std = standardizeByPeriod(panel, ["X", "Xdup", "Y"]);
+  assert.ok(std.length > 0 && "z" in std[0]);
+  const C = corrMatrixPearson(std, ["X", "Xdup", "Y"]);
+  assert.ok(Math.abs(C[0][1] - 1) < 0.01, "X and Xdup correlate ~1");
+  const out = pca(panel, ["X", "Xdup", "Y"]);
+  assert.equal(out.available, true);
+  assert.ok(out.effectiveBets < 2.4, "3 columns but ~2 real axes ⇒ effective bets well under 3 (got " + out.effectiveBets + ")");
+  assert.equal(out.components[0].pc, 1);
+  assert.ok("loadings" in out.components[0]);
+});
+
+test("uniqueIC is robust to scale + collinear regressors (regression: price-scale target vs ~100-scale fundamentals)", () => {
+  // Mimic the live failure: a small-scale target (~0.01) regressed on collinear large-scale columns
+  // (F1≈F2 at ~100). Without per-period standardisation + ridge this returned TOO FEW PERIODS.
+  const panel = [];
+  for(let p = 0; p < 10; p++) for(let s = 0; s < 16; s++){
+    const small = ((s / 16) - 0.5) * 0.02;                 // price-factor scale
+    const big = 50 + s * 3;                                 // fundamental scale
+    const bigDup = big + 0.01 * (s % 2);                    // collinear with `big` (~0.99)
+    const fwdRet = 0.4 * small + 0.01 * ((p * 3 + s) % 5 - 2);
+    panel.push({ sym: "S" + s, period: "P" + p, fwdRet, values: { small, big, bigDup } });
+  }
+  const u = uniqueIC(panel, ["small", "big", "bigDup"]);
+  const us = u.find(x => x.name === "small");
+  assert.ok(us.nPeriods >= 6, "the small-scale target must still yield periods (got " + us.nPeriods + ")");
+  assert.notEqual(us.verdict, "TOO FEW PERIODS");
+  assert.ok(us.uniqueIC != null && isFinite(us.uniqueIC), "unique IC computed, not null");
+});
+
+// ─── Regime split (angle C): bull/bear durability ────────────────────────────
+
+test("marketRegimeByDate classifies bull vs bear by SPY vs its 200-DMA (point-in-time)", () => {
+  // 260 rising bars then 60 falling bars. A rebalance late in the rise = bull; deep in the fall = bear.
+  const up = [], n1 = 260, n2 = 80;
+  for(let i = 0; i < n1; i++) up.push({ t: i * 86400000, close: 100 + i });            // steady rise
+  for(let i = 0; i < n2; i++) up.push({ t: (n1 + i) * 86400000, close: 360 - i * 4 }); // sharp fall below the 200-DMA
+  const rbBull = up[n1 - 1].t;                 // end of the rise
+  const rbBear = up[up.length - 1].t;          // deep in the fall
+  const reg = marketRegimeByDate(up, [rbBull, rbBear], 200);
+  // iso() keys — just read the two values back in order.
+  const vals = [...reg.values()];
+  assert.equal(vals[0], "bull", "above the 200-DMA after a long rise");
+  assert.equal(vals[1], "bear", "below the 200-DMA after a sharp fall");
+  // Too little history → null, not a guess.
+  const short = marketRegimeByDate(up.slice(0, 50), [up[40].t], 200);
+  assert.equal([...short.values()][0], null);
+});
+
+test("regimeSplitIC flags a bull-only edge and a durable edge", () => {
+  // Two regimes (P0-P3 bull, P4-P7 bear). A and D are DECORRELATED spreads. A drives returns only in
+  // bull; D drives them in both. So A's bull IC ≫ its (≈0) bear IC, while D holds its sign in both.
+  const panel = [];
+  for(let p = 0; p < 8; p++){
+    const bull = p < 4;
+    for(let s = 0; s < 12; s++){
+      const a = (s / 12) - 0.5;
+      const d = ((s * 7) % 12) / 12 - 0.5;                    // scrambled → ~uncorrelated with a
+      const fwdRet = (bull ? 0.6 : 0.0) * a + 0.5 * d;        // A: bull-only; D: both regimes
+      panel.push({ sym: "S" + s, period: "P" + p, fwdRet, values: { A: a, D: d } });
+    }
+  }
+  const regimeOf = new Map();
+  for(let p = 0; p < 8; p++) regimeOf.set("P" + p, p < 4 ? "bull" : "bear");
+  const out = regimeSplitIC(panel, ["A", "D"], regimeOf);
+  const D = out.find(x => x.name === "D"), A = out.find(x => x.name === "A");
+  assert.ok(D.bull.meanIC > 0 && D.bear.meanIC > 0 && D.sameSign, "D predicts in both regimes (same sign)");
+  // A+D combined predicts strongly in bull, weakly (only D) in bear → A's bull IC ≫ its bear IC.
+  assert.ok(A.bull.meanIC > A.bear.meanIC, "A's edge is concentrated in the bull regime");
+});
+
+// ─── IC term-structure (angle E): rank-IC by forward horizon ──────────────────
+
+test("buildPanel adds multi-horizon forward returns when horizons are supplied (no-lookahead at the tail)", () => {
+  const bars = series(340, i => 100 + i * 0.5);          // steady riser
+  const rb = bars[300].t;
+  const H = [{ label: "1wk", days: 5 }, { label: "3mo", days: 63 }];
+  const panel = buildPanel({ ZZ: bars }, [rb], { minBars: 260, horizons: H });
+  assert.equal(panel.length, 1);
+  assert.ok("fwdRets" in panel[0]);
+  // entry is bars[300].close; 5 bars ahead exists, return matches the series.
+  const entry = bars[300].close;
+  assert.ok(Math.abs(panel[0].fwdRets["1wk"] - (bars[305].close / entry - 1)) < 1e-9);
+  // A rebalance near the END: the 3-month-ahead bar may not exist → null (no-lookahead), not a guess.
+  const rbLate = bars[330].t;
+  const late = buildPanel({ ZZ: bars }, [rbLate], { minBars: 260, horizons: H });
+  assert.equal(late[0].fwdRets["3mo"], null, "no 63-bar-ahead bar ⇒ null at the tail");
+});
+
+test("termStructure surfaces the horizon where a factor's IC peaks", () => {
+  // Build a panel where the factor predicts the 3-MONTH return strongly but the 1-week return weakly.
+  const H = [{ label: "1wk", days: 5 }, { label: "3mo", days: 63 }];
+  const panel = [];
+  for(let p = 0; p < 10; p++) for(let s = 0; s < 14; s++){
+    const a = (s / 14) - 0.5;
+    const noise = Math.sin(p * 3 + s * 1.7) * 0.5;
+    panel.push({ sym: "S" + s, period: "P" + p, fwdRet: 0,
+      values: { A: a },
+      fwdRets: { "1wk": 0.05 * a + noise, "3mo": 0.9 * a + 0.05 * noise } });   // strong at 3mo, weak at 1wk
+  }
+  const ts = termStructure(panel, ["A"], H);
+  const A = ts[0];
+  assert.equal(A.bestHorizon, "3mo", "the factor's edge peaks at the 3-month horizon");
+  const c3 = A.curve.find(c => c.horizon === "3mo"), c1 = A.curve.find(c => c.horizon === "1wk");
+  assert.ok(Math.abs(c3.meanIC) > Math.abs(c1.meanIC), "3mo IC exceeds 1wk IC");
+  assert.ok(c3.tHAC != null && "overlap" in c3, "HAC t + overlap reported for the overlapping horizon");
+});
+
+// ─── Fair oscillator trial (angle F): time-series timing event study ──────────
+
+test("oscVotesAt mirrors voteVector's oscillator thresholds (engine parity) at the last bar", () => {
+  const data = series(300, i => 100 + i * 0.4 + Math.sin(i / 6) * 5);
+  const full = voteVector(data);
+  const osc = oscVotesAt(data);
+  for(const k of ["RSI", "MACD", "Stoch", "BB"]) {
+    if(k in full) assert.equal(osc[k], full[k], k + " must match voteVector exactly");
+  }
+});
+
+test("oscillatorEventStudy detects a timing edge and reports a flat one as ~0 (across-name significance)", () => {
+  // CONSTRUCT a name set where being OVERSOLD (RSI<40) is followed by a bounce: sawtooth dips that recover.
+  // Each name = repeated 40-bar cycles: a dip to a trough (RSI low) then a rally. Forward return after the
+  // oversold trough should beat the name's average → positive RSI bull excess.
+  const sawtooth = (phase) => series(700, i => {
+    const c = (i + phase) % 40;
+    return 100 + (c < 20 ? -c : (c - 40)) * 1.5;   // V-shaped: falls 20 bars, rises 20 — troughs are buys
+  });
+  const bars = {};
+  for(let n = 0; n < 12; n++) bars["S" + n] = sawtooth(n * 3);
+  const study = oscillatorEventStudy(bars, { oscillators: ["RSI"], horizon: 10, stride: 2, minBars: 60 });
+  assert.ok(study.RSI.bull.nNames >= 5, "enough names with oversold events");
+  assert.ok(study.RSI.bull.meanExcessPct != null, "an excess is computed");
+  // The buy-the-dip structure should give RSI's oversold signal a POSITIVE forward excess.
+  assert.ok(study.RSI.bull.meanExcessPct > 0, "oversold entries beat the name's own hold in a mean-reverting series (got " + study.RSI.bull.meanExcessPct + "%)");
+  // Shape of the result object.
+  assert.ok("t" in study.RSI.bull && "verdict" in study.RSI.bull && study.horizon === 10);
 });

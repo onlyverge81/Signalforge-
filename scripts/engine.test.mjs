@@ -11,7 +11,7 @@
 
 import { test } from "node:test";
 import assert from "node:assert/strict";
-import { analyze, runBacktest, scoreAt, scorePosition, checkBarExit, checkBarExitFine, isAmbiguousBar, tradeNet, realizedStats, convergenceBreakout, backtestPattern, edgeStatus, avgIndexGainByDate, correctionLevels, backtestCorrection } from "./engine.mjs";
+import { analyze, runBacktest, scoreAt, scorePosition, checkBarExit, checkBarExitFine, isAmbiguousBar, tradeNet, realizedStats, convergenceBreakout, backtestPattern, edgeStatus, avgIndexGainByDate, correctionLevels, backtestCorrection, efficiencyRatio, marketRegime, computeSignal } from "./engine.mjs";
 
 // ─── Helper: deterministic OHLC series (no RNG, fixed formula) ───────────────
 function gen(n){
@@ -379,4 +379,72 @@ test("backtestCorrection: returns null without enough bars, and never trades on 
   assert.ok(r, "empty map still returns a (descriptive) result");
   assert.equal(r.trades, 0);
   assert.equal(r.proven, false);
+});
+
+// ─── Market-regime notifier ("read the room") ────────────────────────────────
+
+test("efficiencyRatio: a straight-line trend ≈ 1, a round-trip chop ≈ 0", () => {
+  const up = Array.from({ length: 30 }, (_, i) => 100 + i);           // monotonic
+  assert.ok(efficiencyRatio(up, 21) > 0.99, "clean trend → ER ~1");
+  const chop = Array.from({ length: 30 }, (_, i) => 100 + (i % 2));    // up-down-up-down, no net move
+  assert.ok(efficiencyRatio(chop, 21) < 0.1, "pure chop → ER ~0");
+  assert.equal(efficiencyRatio([1, 2, 3], 21), null, "too few bars → null");
+});
+
+test("marketRegime: a rising trend reads BULL · TRENDING and favors trend-following", () => {
+  const bars = Array.from({ length: 220 }, (_, i) => ({ close: 100 * Math.pow(1.004, i) }));  // steady climb
+  const r = marketRegime(bars);
+  assert.equal(r.direction, "BULL");
+  assert.equal(r.trend, "TRENDING");
+  assert.match(r.favored, /Trend-following/);
+  assert.match(r.label, /BULL/);
+});
+
+test("marketRegime: a choppy, flat market reads RANGING and favors mean-reversion", () => {
+  const bars = Array.from({ length: 220 }, (_, i) => ({ close: 100 + Math.sin(i / 2) * 3 }));  // oscillating, no trend
+  const r = marketRegime(bars);
+  assert.equal(r.trend, "RANGING");
+  assert.match(r.favored, /Mean-reversion/);
+});
+
+test("marketRegime: a falling, volatile tape flags ELEVATED risk; <40 bars → null (honest)", () => {
+  const bars = Array.from({ length: 220 }, (_, i) => ({ close: 200 - i * 0.5 + (i > 180 ? Math.sin(i) * 8 : 0) }));
+  const r = marketRegime(bars);
+  assert.equal(r.direction, "BEAR");
+  assert.ok(r.risk && /headwind|ELEVATED/.test(r.risk));
+  assert.equal(marketRegime(Array.from({ length: 20 }, () => ({ close: 100 }))), null, "too little history → null, not a guess");
+});
+
+// ─── Self-conflict family split (research angles C+F) ─────────────────────────
+
+test("computeSignal exposes the mean-reversion vs trend family split and flags famConflict", () => {
+  const base = { B:{lower:105,upper:110}, last:{close:100}, pats:[], div:null, volSig:"NEUTRAL", ADX:null, OBV:null, VWAP:null };
+  // Mean-reversion camp BUYS (oversold RSI/Stoch + close below lower band) while the TREND camp SELLS
+  // (MACD<0, fast<slow MAs, downtrend) → the engine fighting itself.
+  const conflict = computeSignal({ ...base, R:20, S:10, M:{macd:-0.5}, s5:9, s10:10, s20:19, s50:20, trend:"DOWNTREND" });
+  assert.equal(conflict.meanRevDir, 1, "RSI/Stoch oversold + below-band ⇒ mean-rev camp bullish");
+  assert.equal(conflict.trendDir, -1, "MACD<0 + falling MAs + downtrend ⇒ trend camp bearish");
+  assert.equal(conflict.famConflict, true, "opposite camps ⇒ self-conflict");
+  // Both camps AGREE (everything bullish) → no family conflict.
+  const aligned = computeSignal({ ...base, R:20, S:10, M:{macd:0.5}, s5:11, s10:10, s20:21, s50:20, trend:"UPTREND" });
+  assert.equal(aligned.meanRevDir, 1);
+  assert.equal(aligned.trendDir, 1);
+  assert.equal(aligned.famConflict, false, "same-direction camps ⇒ aligned");
+  // analyze() surfaces it on confluence (engine→app contract).
+  const a = analyze(gen(160), "TST", "Stocks", "Trend Following", 1.5, 2.0);
+  assert.ok("famConflict" in a.confluence && "trendDir" in a.confluence && "meanRevDir" in a.confluence);
+});
+
+test("computeSignal.icBackedShare = proven-vote share of the directional conviction (vote-weight test)", () => {
+  const base = { last:{close:100}, pats:[], div:null, ADX:null, OBV:null, VWAP:null };
+  // All-bullish: Trend (proven, w2) + Vol (proven, w1) vs MACD (dead, w2.5) → proven share = 3/5.5.
+  const s = computeSignal({ ...base, R:null, S:null, M:{macd:0.5}, B:null, s5:11, s10:10, s20:21, s50:20,
+    trend:"UPTREND", volSig:"CONFIRMING" });
+  // Bullish drivers here: MACD(2.5), MA(1.5), MAlong(2), Trend(2), Vol(1) → proven = Trend+Vol = 3 of 9.
+  assert.ok(s.icBackedShare > 0 && s.icBackedShare < 1, "share is a fraction, got " + s.icBackedShare);
+  assert.ok(Math.abs(s.icBackedShare - (3 / 9)) < 1e-3, "Trend+Vol weight / total bullish driver weight (3 of 9, 3dp)");
+  // No proven votes firing the signal's way → share 0.
+  const none = computeSignal({ ...base, R:null, S:null, M:{macd:0.5}, B:null, s5:11, s10:10, s20:21, s50:20,
+    trend:"SIDEWAYS", volSig:"NEUTRAL" });
+  assert.equal(none.icBackedShare, 0, "no Trend/Vol/BB driver ⇒ 0 proven share");
 });

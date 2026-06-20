@@ -141,6 +141,28 @@ export function momentumRankGate(values, { topFrac = 1 / 3 } = {}) {
   return flags;
 }
 
+// ─── Liquidity overlay (propose-only) — gate momentum to TRADEABLE names ──────
+// The factor-interaction robustness probe (angle A) found momentum-12-1 is the ONE factor whose edge
+// SURVIVES a liquidity screen (~80% retained on liquid names), while lowvol/quality were largely
+// stale-price micro-cap artifacts. liquidAtBar marks whether the DECISION bar clears a price floor and
+// a trailing-median dollar-volume floor, so a momentum-on-LIQUID variant can be judged OOS. Pure,
+// point-in-time (reads only bars up to the decision bar). A LABEL only — never enters the gate.
+const LIQ_MIN_ADV = 2_000_000, LIQ_MIN_PRICE = 5, LIQ_WIN = 60;
+export function liquidAtBar(candles, { minADV = LIQ_MIN_ADV, minPrice = LIQ_MIN_PRICE, win = LIQ_WIN } = {}) {
+  const c = candles || [];
+  if (!c.length) return false;
+  const last = c[c.length - 1];
+  if (!(last && last.close >= minPrice)) return false;
+  const lo = Math.max(0, c.length - win);
+  const dv = [];
+  for (let i = lo; i < c.length; i++) { const b = c[i]; if (b && b.close > 0 && b.volume > 0) dv.push(b.close * b.volume); }
+  if (!dv.length) return false;
+  dv.sort((a, b) => a - b);
+  const m = dv.length >> 1;
+  const med = dv.length % 2 ? dv[m] : (dv[m - 1] + dv[m]) / 2;
+  return med >= minADV;
+}
+
 // ─── Cross-sectional SHORT-TERM REVERSAL overlay (propose-only) ───────────────
 // The reversal.json study judges this factor with monthly bars; here, on the live DAILY feed,
 // reversalValue computes the same 1-month idea: the NEGATED trailing ~1-month return, so a
@@ -334,6 +356,19 @@ export function buildEntry({ sym, settled, fundaDB, news = [], loggedAt = new Da
       reversalActivated: false,
       lowVol: (v => v == null ? null : parseFloat(v.toFixed(6)))(lowVolValue(settled)),
       lowVolActivated: false,
+      liquid: liquidAtBar(settled),
+      // Self-conflict label (research angles C+F): true when the engine's MEAN-REVERSION camp
+      // (RSI/Stoch/BB) and its TREND camp (MACD/MA/MAlong/Trend) point opposite ways — the engine
+      // fighting itself. Read straight off analyze's confluence (engine parity). Propose-only label.
+      votesConflict: !!(a.confluence && a.confluence.famConflict),
+      // Vote-weight mis-calibration label: the share of THIS BUY's weighted conviction that came from
+      // the votes the pie found PROVEN (Trend/Vol/BB) vs the over-weighted dead ones (ADX/RSI/MACD/Pat).
+      icBackedShare: (a.confluence && a.confluence.icBackedShare != null) ? a.confluence.icBackedShare : null,
+      // MACD-fade label (factor-interaction angle F: MACD is used BACKWARDS at swing horizons — trend-
+      // follow buy loses, fading it wins). macdBull = the MACD vote direction at the decision bar. When
+      // the engine BUYS while macdBull===false it FADED a bearish MACD; ===true it FOLLOWED it. Read off
+      // analyze's indicators (engine parity, no engine change). Propose-only label.
+      macdBull: (a.indicators && a.indicators.macd) ? (a.indicators.macd.sig === "BULLISH" ? true : a.indicators.macd.sig === "BEARISH" ? false : null) : null,
       quality: (q => q == null ? null : parseFloat(q.toFixed(4)))(qualityValue(fundaDB && fundaDB[sym])),
       qualityActivated: false, ...eventTags(eventsAtSignal),
       earningsRecent: earningsGate(fundaDB && fundaDB[sym], decision.date) },

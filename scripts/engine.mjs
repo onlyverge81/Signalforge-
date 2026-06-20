@@ -157,6 +157,45 @@ export function adxCalc(data,n=14){
   const pdi=100*pS[li]/(trS[li]||1),mdi=100*mS[li]/(trS[li]||1);
   return{adx:+adx.toFixed(1),plusDI:+pdi.toFixed(1),minusDI:+mdi.toFixed(1)};
 }
+// ─── Market-regime notifier ("read the room") ────────────────────────────────
+// Awareness, NOT a gate: classify the broad-market environment from a daily index series so the human
+// knows which toolkit fits. Research (factor-interaction angles C+F) showed the engine's votes are
+// CONDITIONALLY valid — trend-following works in TRENDING markets, mean-reversion in RANGING ones — and
+// the regime-blind confluence fires them all at once, fighting itself. This surfaces the regime so the
+// verdict can be weighted by it. Close-only (works on any index proxy, incl. close-only feeds).
+// Kaufman efficiency ratio = |net move| / Σ|bar-to-bar move| over n bars: ~1 = clean trend, ~0 = chop.
+export function efficiencyRatio(closes,n=21){
+  if(!closes||closes.length<n+1) return null;
+  const seg=closes.slice(-(n+1));
+  const net=Math.abs(seg[seg.length-1]-seg[0]);
+  let path=0; for(let i=1;i<seg.length;i++) path+=Math.abs(seg[i]-seg[i-1]);
+  return path>0?net/path:0;
+}
+export function marketRegime(bars){
+  const closes=(bars||[]).map(b=>b&&b.close).filter(c=>c>0);
+  if(closes.length<40) return null;                                // need enough for a vol baseline
+  const last=closes[closes.length-1];
+  const win=Math.min(200,closes.length);
+  const ma=closes.slice(-win).reduce((a,b)=>a+b,0)/win;           // proxy 200-DMA (shorter if data is)
+  const approxMA=win<200;
+  const direction=last>ma*1.01?"BULL":last<ma*0.99?"BEAR":"NEUTRAL";
+  const er=efficiencyRatio(closes,21);
+  const trend=er==null?"UNKNOWN":er>=0.45?"TRENDING":er<0.25?"RANGING":"TRANSITIONAL";
+  const rets=[]; for(let i=1;i<closes.length;i++) rets.push(closes[i]/closes[i-1]-1);
+  const stdev=a=>{ if(a.length<2) return null; const m=a.reduce((x,y)=>x+y,0)/a.length; return Math.sqrt(a.reduce((x,y)=>x+(y-m)**2,0)/a.length); };
+  const recentVol=stdev(rets.slice(-21)), baseVol=stdev(rets.slice(-126));
+  const vol=(recentVol==null||baseVol==null||baseVol===0)?"UNKNOWN"
+    :recentVol>baseVol*1.35?"STORMY":recentVol<baseVol*0.75?"CALM":"NORMAL";
+  let favored,cautioned;
+  if(trend==="TRENDING"){ favored="Trend-following — momentum & breakouts (MA / MACD-up) are reliable here"; cautioned="Mean-reversion: 'buy the dip' fights the tape — oversold can keep falling"; }
+  else if(trend==="RANGING"){ favored="Mean-reversion — oversold bounces (RSI / Stoch / BB) are favored"; cautioned="Breakouts: likely bull-traps; trend votes misfire in chop"; }
+  else { favored="Transitional / mixed — demand stronger multi-signal confluence before acting"; cautioned="Single-signal conviction is risky until the regime resolves"; }
+  const risk=(direction==="BEAR"&&vol==="STORMY")?"ELEVATED — bear + high volatility: reduce size. A regime-blind signal fails hardest here."
+    :(vol==="STORMY")?"Volatility is elevated vs its 6-month norm — widen stops or trim size."
+    :(direction==="BEAR")?"Bear trend — long signals face a market headwind.":null;
+  const label=[direction!=="NEUTRAL"?direction:null,trend!=="UNKNOWN"?trend:null].filter(Boolean).join(" · ")||"INDETERMINATE";
+  return { direction, trend, vol, er:er==null?null:+er.toFixed(2), approxMA, favored, cautioned, risk, label };
+}
 export function obvCalc(data){
   if(data.length<16)return null;
   let obv=0;const series=[0];
@@ -350,7 +389,27 @@ export function computeSignal(ctx, extraVotes=[]) {
   const agreement=total>0?Math.max(bull,bear)/total:0;
   const confidence=Math.min(95,Math.max(35,Math.round(40+Math.abs(net)*3+agreement*15)));
 
-  return {signal, score:parseFloat(net.toFixed(1)), bull, bear, conflict, confidence};
+  // Family-level conflict (research angles C+F): the generic `conflict` above counts ANY disagreement
+  // equally, but the engine's real split is MEAN-REVERSION (RSI/Stoch/BB, oversold→buy) vs TREND
+  // (MACD/MA/MAlong/Trend). When those two camps point opposite ways the engine is fighting itself —
+  // one camp is right for the regime, the other is noise. Measured here, surfaced as a LABEL only.
+  const famDir=names=>{ const s=active.filter(v=>names.includes(v.n)).reduce((a,v)=>a+v.dir,0); return s>0?1:s<0?-1:0; };
+  const trendDir=famDir(["MACD","MA","MAlong","Trend"]);
+  const meanRevDir=famDir(["RSI","Stoch","BB"]);
+  const famConflict=trendDir!==0 && meanRevDir!==0 && trendDir!==meanRevDir;
+
+  // Vote-weight mis-calibration test (factor-interaction pie): the engine's HAND weights over-weight
+  // empirically-dead votes (ADX is weighted 3 but measured IC ≈ 0; RSI/MACD/Pat ≈ 0/negative) and
+  // under-weight proven ones (Vol IC 0.074 at weight 1; Trend significant). icBackedShare = of the
+  // weighted conviction pushing THIS signal's way, the fraction coming from the PROVEN votes. Low share
+  // ⇒ the call rests on the over-weighted dead votes. A LABEL only (tests OOS whether that costs money).
+  const IC_PROVEN_VOTES=["Trend","Vol","BB"];
+  const sd=net>0?1:net<0?-1:0;
+  let drvW=0, provW=0;
+  for(const v of active){ if(sd!==0 && Math.sign(v.dir)===sd){ drvW+=v.w; if(IC_PROVEN_VOTES.includes(v.n)) provW+=v.w; } }
+  const icBackedShare=drvW>0?parseFloat((provW/drvW).toFixed(3)):0;
+
+  return {signal, score:parseFloat(net.toFixed(1)), bull, bear, conflict, confidence, trendDir, meanRevDir, famConflict, icBackedShare};
 }
 
 export function analyze(data, ticker, market, strategy, slMult, tpMult) {
@@ -411,7 +470,7 @@ export function analyze(data, ticker, market, strategy, slMult, tpMult) {
     support:parseFloat(sup.toFixed(4)),resistance:parseFloat(res.toFixed(4)),
     score,
     sfa12, sfa12Compare, convBreakout, convBreakoutTest,
-    confluence:{bull:sigResult.bull,bear:sigResult.bear,conflict:sigResult.conflict},
+    confluence:{bull:sigResult.bull,bear:sigResult.bear,conflict:sigResult.conflict,trendDir:sigResult.trendDir,meanRevDir:sigResult.meanRevDir,famConflict:sigResult.famConflict,icBackedShare:sigResult.icBackedShare},
     indicators:{
       rsi:{v:R,label:rsiLabel},
       stoch:{v:S,label:S>75?"OVERBOUGHT":S<25?"OVERSOLD":"NEUTRAL"},

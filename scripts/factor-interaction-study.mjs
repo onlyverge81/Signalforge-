@@ -35,10 +35,10 @@ import fs from "node:fs";
 import path from "node:path";
 import { fileURLToPath } from "node:url";
 import { readTickers } from "./build-fundamentals.mjs";
-import { fetchPolygonAggs } from "./pattern-study.mjs";
+import { fetchPolygonAggs, fetchSectorMap } from "./pattern-study.mjs";
 import { selectMeritUniverse, grid, addMonths, iso } from "./build-study.mjs";
 import { momentumValue, reversalValue, lowVolValue } from "./forward-log.mjs";
-import { periodStats, assessSignificance, rankIC } from "./study-lib.mjs";
+import { periodStats, assessSignificance, rankIC, sectorNeutralIC, overlapAdjustedT } from "./study-lib.mjs";
 import { rsi, macd, bb, stoch, atr, adxCalc, obvCalc, vwapCalc, patterns, divergence, sma, valueScore } from "./engine.mjs";
 import { meritMetrics } from "./sec-lib.mjs";
 
@@ -47,6 +47,21 @@ const ROOT = path.resolve(__dirname, "..");
 const FIS_MAX = +(process.env.FIS_MAX || 120);
 const MIN_BARS = 260;                 // ≥253 so the 12-month lookback factors are all computable
 const round = x => (x == null || !isFinite(x)) ? null : Math.round(x * 1e4) / 1e4;
+// Robustness (angle A) — liquidity screen + beta window. Env-overridable; defaults target a tradeable
+// floor that excludes the stale-priced micro-cap delisted names that can fake a low-vol "edge".
+const LIQ_MIN_ADV   = +(process.env.LIQ_MIN_ADV   || 2_000_000);  // trailing median dollar-volume floor ($)
+const LIQ_MIN_PRICE = +(process.env.LIQ_MIN_PRICE || 5);          // price floor ($) — drops sub-$5 junk
+const LIQ_WIN       = +(process.env.LIQ_WIN       || 60);         // trailing bars for the ADV median
+const BETA_WIN      = +(process.env.BETA_WIN      || 120);        // trailing bars for each name's market beta
+// IC term-structure (angle E) — forward horizons in TRADING days, monthly rebalanced. Longer horizons
+// OVERLAP the monthly cross-sections, so their naive t overstates; we HAC-deflate (Newey–West) below.
+const HORIZONS = [
+  { label: "1wk",  days: 5 },
+  { label: "1mo",  days: 21 },
+  { label: "3mo",  days: 63 },
+  { label: "6mo",  days: 126 },
+  { label: "12mo", days: 252 },
+];
 
 // The four PRICE/RISK factors, defined by the SAME functions the live OOS labels use (forward-log).
 export const FACTOR_NAMES = ["mom12_1", "mom6_1", "reversal", "lowvol"];
@@ -200,12 +215,101 @@ export function spearman(xs, ys){
 // ─── panel: one row per (sym, rebalance) with every contributor's value + the forward return ──
 // No-lookahead: a contributor at rb reads only bars with t ≤ rb; fwdRet needs a bar strictly after
 // rb up to rb+1mo, and the row is dropped unless that forward window is complete.
-export function buildPanel(barsByTicker, dates, { minBars = MIN_BARS, fundamentals = null } = {}){
+// ─── Robustness (angle A): liquidity screen + beta/sector neutralisation ──────
+// Why: the survivorship-free roster is heavy with DE-LISTED micro-caps whose low REALIZED volatility
+// is often stale-price illusion (a name that barely trades has artificially smooth returns → fake
+// "low-vol premium"). And a cross-sectional factor can be a SECTOR or pure-BETA bet in disguise. These
+// pure helpers let the harness re-measure every slice on a LIQUID sub-universe and after removing the
+// market-beta / sector component — the charter's "alpha, not beta" made testable.
+
+export function dollarVol(bar){ return (bar.close > 0 && bar.volume > 0) ? bar.close * bar.volume : 0; }
+
+// Median trailing dollar-volume over the `win` bars ending at idx (inclusive). Pure, point-in-time.
+export function trailingMedianDollarVol(series, idx, win = LIQ_WIN){
+  const lo = Math.max(0, idx - win + 1);
+  const vals = [];
+  for(let i = lo; i <= idx; i++) vals.push(dollarVol(series[i]));
+  if(!vals.length) return 0;
+  vals.sort((a, b) => a - b);
+  const m = vals.length >> 1;
+  return vals.length % 2 ? vals[m] : (vals[m - 1] + vals[m]) / 2;
+}
+
+// Is the name tradeable at bar idx? Price floor AND trailing-median dollar-volume floor. Point-in-time.
+export function liquidAt(series, idx, { minADV = LIQ_MIN_ADV, minPrice = LIQ_MIN_PRICE, win = LIQ_WIN } = {}){
+  if(!series[idx] || !(series[idx].close >= minPrice)) return false;
+  return trailingMedianDollarVol(series, idx, win) >= minADV;
+}
+
+// Daily simple returns keyed by bar timestamp (for beta alignment). Pure.
+export function dailyReturnsByT(series){
+  const m = new Map();
+  for(let i = 1; i < series.length; i++){
+    const p0 = series[i - 1].close, p1 = series[i].close;
+    if(p0 > 0 && p1 > 0) m.set(series[i].t, p1 / p0 - 1);
+  }
+  return m;
+}
+
+// Trailing market beta = cov(name,mkt)/var(mkt) over the `win` bars ending at idx, aligned by
+// timestamp to the market-return map. Pure; null when too few overlapping bars. No-lookahead (≤ idx).
+export function trailingBeta(series, mktRetByT, idx, win = BETA_WIN){
+  const lo = Math.max(1, idx - win + 1);
+  const ns = [], ms = [];
+  for(let i = lo; i <= idx; i++){
+    const p0 = series[i - 1].close, p1 = series[i].close;
+    const mr = mktRetByT.get(series[i].t);
+    if(p0 > 0 && p1 > 0 && mr != null) { ns.push(p1 / p0 - 1); ms.push(mr); }
+  }
+  if(ns.length < 20) return null;
+  const mean = a => a.reduce((x, y) => x + y, 0) / a.length;
+  const mn = mean(ns), mm = mean(ms);
+  let cov = 0, varM = 0;
+  for(let i = 0; i < ns.length; i++){ cov += (ns[i] - mn) * (ms[i] - mm); varM += (ms[i] - mm) ** 2; }
+  return varM > 0 ? cov / varM : null;
+}
+
+// Beta-neutral IC: per period, cross-sectionally regress fwdRet on beta (OLS), recompute rank-IC on
+// the RESIDUAL forward return. If the IC survives, the edge is alpha; if it collapses, it was a beta
+// bet. Mirrors study-lib's sectorNeutralIC contract (verdict + retention). Pure.
+export function betaNeutralIC(observations){
+  const byP = new Map();
+  for(const r of observations){ if(!byP.has(r.period)) byP.set(r.period, []); byP.get(r.period).push(r); }
+  const neutral = [], raw = [];
+  for(const [, rows] of byP){
+    const clean = rows.filter(r => r.merit != null && isFinite(r.merit) && r.fwdRet != null && isFinite(r.fwdRet) && r.beta != null && isFinite(r.beta));
+    if(clean.length < 3) continue;
+    const n = clean.length;
+    const mb = clean.reduce((a, r) => a + r.beta, 0) / n;
+    const mf = clean.reduce((a, r) => a + r.fwdRet, 0) / n;
+    let cov = 0, varB = 0;
+    for(const r of clean){ cov += (r.beta - mb) * (r.fwdRet - mf); varB += (r.beta - mb) ** 2; }
+    if(!(varB > 0)) continue;
+    const slope = cov / varB, intercept = mf - slope * mb;
+    const resid = clean.map(r => ({ merit: r.merit, fwdRet: r.fwdRet - (intercept + slope * r.beta) }));
+    const icN = rankIC(resid), icR = rankIC(clean);
+    if(icN != null && icR != null){ neutral.push(icN); raw.push(icR); }
+  }
+  if(neutral.length < 6) return { available: false, periods: neutral.length };
+  const nStat = assessSignificance(neutral);
+  const rawMean = raw.reduce((a, b) => a + b, 0) / raw.length;
+  const retention = Math.abs(rawMean) > 1e-9 ? round(nStat.mean / rawMean) : null;
+  const ok = v => v === "SIGNIFICANT" || v === "SUGGESTIVE";
+  const verdict = !ok(nStat.verdict) ? "BETA-DRIVEN (mostly market)"
+    : (retention != null && retention >= 0.5) ? "SURVIVES (alpha)"
+    : "PARTLY BETA-DRIVEN";
+  return { available: true, periods: neutral.length, meanIC: nStat.mean, icT: nStat.t,
+    significance: nStat.verdict, rawMeanIC: round(rawMean), retention, verdict };
+}
+
+export function buildPanel(barsByTicker, dates, { minBars = MIN_BARS, fundamentals = null, market = null, sectorOf = null, liquidity = false, horizons = null } = {}){
   const rows = [];
+  const mktRetByT = market ? dailyReturnsByT(market.slice().sort((a, b) => a.t - b.t)) : null;
   for(const [sym, bars] of Object.entries(barsByTicker)){
     if(!bars || bars.length < minBars) continue;
     const series = bars.slice().sort((a, b) => a.t - b.t);
     const parsed = fundamentals ? fundamentals[sym] : null;       // point-in-time financials, if loaded
+    const sector = sectorOf ? (sectorOf[sym] || null) : null;
     for(const rb of dates){
       // last bar at-or-before the rebalance
       let idx = -1;
@@ -220,15 +324,342 @@ export function buildPanel(barsByTicker, dates, { minBars = MIN_BARS, fundamenta
       const slice = series.slice(0, idx + 1);
       const values = { ...factorValues(slice), ...voteVector(slice) };
       if(parsed) Object.assign(values, autopsyValues(parsed, rb, entry));   // AUTOPSY cheap/healthy/growing/merit, point-in-time
-      rows.push({ sym, period: iso(rb), fwdRet: exit / entry - 1, values });
+      const row = { sym, period: iso(rb), fwdRet: exit / entry - 1, values };
+      if(liquidity) row.liquid = liquidAt(series, idx);                       // tradeable at this bar? (point-in-time)
+      if(sectorOf) row.sector = sector;                                       // SIC division for sector-neutral IC
+      if(mktRetByT) row.beta = trailingBeta(series, mktRetByT, idx);          // trailing market beta for beta-neutral IC
+      if(horizons){                                                           // multi-horizon forward returns (term-structure)
+        const fr = {};
+        for(const h of horizons){ const k = idx + h.days; fr[h.label] = (k < series.length && series[k].close > 0) ? series[k].close / entry - 1 : null; }
+        row.fwdRets = fr;
+      }
+      rows.push(row);
     }
   }
   return rows;
 }
 
+// IC TERM-STRUCTURE (angle E): each selector's rank-IC at every forward horizon, so the holding period
+// where the edge is strongest is visible. Longer horizons overlap the monthly rebalances, so alongside
+// the naive t we report a Newey–West HAC t (overlap ≈ horizon/rebalance) that deflates the overlap.
+export function termStructure(panel, names, horizons){
+  return names.map(name => {
+    const curve = horizons.map(h => {
+      const ics = [];
+      const byP = new Map();
+      for(const r of panel){
+        const fwd = r.fwdRets ? r.fwdRets[h.label] : null;
+        if(r.values[name] == null || !isFinite(r.values[name]) || fwd == null || !isFinite(fwd)) continue;
+        if(!byP.has(r.period)) byP.set(r.period, []);
+        byP.get(r.period).push({ merit: r.values[name], fwdRet: fwd });
+      }
+      for(const [, rows] of byP){ const ic = rankIC(rows); if(ic != null) ics.push(ic); }
+      const st = assessSignificance(ics);
+      const overlap = Math.max(0, Math.round(h.days / 21) - 1);     // months of overlap at a monthly rebalance
+      const hac = overlapAdjustedT(ics, overlap);
+      return { horizon: h.label, days: h.days, meanIC: st.mean, t: st.t, nPeriods: st.n, verdict: st.verdict,
+        tHAC: hac.tHAC, overlap, hacVerdict: hac.verdict };
+    });
+    const best = curve.filter(c => c.meanIC != null).sort((a, b) => Math.abs(b.meanIC) - Math.abs(a.meanIC))[0];
+    return { name, curve, bestHorizon: best ? best.horizon : null };
+  });
+}
+
+// ─── Fair oscillator trial (angle F): TIME-SERIES timing, not cross-sectional selection ────────
+// The pie tests every tool as a cross-sectional SELECTOR (rank names against each other). But RSI /
+// MACD / Stoch / BB are TIMING tools — they're meant to time entry WITHIN a name, not rank names. So
+// the pie gives them the wrong exam. The fair trial: at each bar, when the oscillator fires its
+// engine vote (+1 buy / −1 avoid), does the forward return beat THAT NAME's own buy-&-hold baseline?
+// Mirrors voteVector's exact thresholds (engine parity). Charter-aligned: the benchmark is the name's
+// own hold, so a positive edge is genuine timing alpha, not beta.
+export function oscVotesAt(slice){
+  if(!slice || slice.length < 2) return {};
+  const closes = slice.map(d => d.close), last = slice[slice.length - 1];
+  const R = rsi(closes), M = macd(closes), B = bb(closes), S = stoch(slice);
+  const v = {};
+  if(R != null) v.RSI = R < 40 ? 1 : R > 60 ? -1 : 0;
+  if(M)         v.MACD = M.macd > 0 ? 1 : -1;
+  if(S != null) v.Stoch = S < 25 ? 1 : S > 75 ? -1 : 0;
+  if(B)         v.BB = last.close < B.lower ? 1 : last.close > B.upper ? -1 : 0;
+  return v;
+}
+
+// Pooled within-name event study. For each name we sample bars at `stride`, compute each oscillator's
+// vote, and record the H-day forward return MINUS the name's own mean forward return (its buy-&-hold
+// baseline) — the "excess". Significance is taken ACROSS NAMES (each name's mean excess = one ~independent
+// observation), which is honest about the heavy within-name overlap. Pure.
+export function oscillatorEventStudy(barsByTicker, { oscillators = ["RSI", "MACD", "Stoch", "BB"], horizon = 21, stride = 5, minBars = MIN_BARS } = {}){
+  const mean = a => a.reduce((x, y) => x + y, 0) / a.length;
+  const perOsc = {}; for(const o of oscillators) perOsc[o] = { bull: [], bear: [], nBull: 0, nBear: 0, names: 0 };
+  for(const [, bars] of Object.entries(barsByTicker)){
+    const series = (bars || []).slice().sort((a, b) => a.t - b.t);
+    if(series.length < minBars + horizon) continue;
+    const samples = [];
+    for(let i = minBars - 1; i < series.length - horizon; i += stride){
+      const fwd = series[i + horizon].close / series[i].close - 1;
+      if(isFinite(fwd)) samples.push({ i, fwd });
+    }
+    if(samples.length < 5) continue;
+    const baseline = mean(samples.map(s => s.fwd));     // the name's own buy-&-hold over the sample
+    const ev = {}; for(const o of oscillators) ev[o] = { bull: [], bear: [] };
+    for(const { i, fwd } of samples){
+      const votes = oscVotesAt(series.slice(0, i + 1));
+      for(const o of oscillators){
+        if(votes[o] === 1) ev[o].bull.push(fwd - baseline);
+        else if(votes[o] === -1) ev[o].bear.push(fwd - baseline);
+      }
+    }
+    for(const o of oscillators){
+      if(ev[o].bull.length >= 3){ perOsc[o].bull.push(mean(ev[o].bull)); perOsc[o].nBull += ev[o].bull.length; perOsc[o].names++; }
+      if(ev[o].bear.length >= 3){ perOsc[o].bear.push(mean(ev[o].bear)); perOsc[o].nBear += ev[o].bear.length; }
+    }
+  }
+  const summarise = (arr, nEvents) => {
+    const st = assessSignificance(arr);              // mean / t / verdict across names
+    return { nNames: arr.length, nEvents, meanExcessPct: st.mean == null ? null : round(st.mean * 100), t: st.t, verdict: st.verdict };
+  };
+  const out = { horizon, stride };
+  for(const o of oscillators) out[o] = { bull: summarise(perOsc[o].bull, perOsc[o].nBull), bear: summarise(perOsc[o].bear, perOsc[o].nBear) };
+  return out;
+}
+
 // Extract the factor-agnostic observation array study-lib consumes, for one contributor.
 export function obsFor(panel, name){
   return panel.map(r => ({ sym: r.sym, period: r.period, merit: r.values[name], fwdRet: r.fwdRet }));
+}
+
+// Same, but carrying the sector + beta tags the neutralisation diagnostics need.
+export function obsForNeutral(panel, name){
+  return panel.map(r => ({ sym: r.sym, period: r.period, merit: r.values[name], fwdRet: r.fwdRet, sector: r.sector ?? null, beta: r.beta ?? null }));
+}
+
+// Per-contributor robustness row: raw IC, IC on the LIQUID subset, and sector/beta-neutral verdicts.
+export function robustnessFor(panel, name){
+  const liquid = panel.filter(r => r.liquid);
+  const liqStat = liquid.length ? assessSignificance(periodStats(obsFor(liquid, name)).map(p => p.ic)) : { mean: null, t: null, n: 0, verdict: "NO DATA" };
+  const neutralObs = obsForNeutral(panel, name);
+  return {
+    name,
+    liquidIC: liqStat.mean, liquidT: liqStat.t, liquidPeriods: liqStat.n, liquidVerdict: liqStat.verdict,
+    sectorNeutral: sectorNeutralIC(neutralObs),
+    betaNeutral: betaNeutralIC(neutralObs),
+  };
+}
+
+// ─── Dimensionality (angle B): unique/incremental IC + PCA "effective number of bets" ─────────
+// The pie's slices are UNIVARIATE — they overstate how many independent edges exist when factors
+// overlap (the corr matrix shows healthy↔merit ≈ 0.84). These pure helpers answer two questions:
+//  • UNIQUE IC: what does each selector add AFTER removing what every OTHER selector explains? (a
+//    redundant factor's unique IC collapses toward 0; an independent one keeps most of its raw IC.)
+//  • PCA: how few real axes do the selectors collapse to (the "effective number of bets")?
+
+// Solve the small linear system Ax=b by Gaussian elimination with partial pivoting. null if singular.
+export function solveLinear(A, b){
+  const n = b.length;
+  const M = A.map((row, i) => [...row, b[i]]);
+  for(let c = 0; c < n; c++){
+    let piv = c;
+    for(let r = c + 1; r < n; r++) if(Math.abs(M[r][c]) > Math.abs(M[piv][c])) piv = r;
+    if(Math.abs(M[piv][c]) < 1e-12) return null;
+    [M[c], M[piv]] = [M[piv], M[c]];
+    for(let r = 0; r < n; r++){
+      if(r === c) continue;
+      const f = M[r][c] / M[c][c];
+      for(let k = c; k <= n; k++) M[r][k] -= f * M[c][k];
+    }
+  }
+  // After full Gauss-Jordan elimination each row is [pivot·x_i | rhs], so x_i = rhs / pivot.
+  return M.map((row, i) => row[n] / row[i]);
+}
+
+// OLS residuals of y on the columns X (each X[i] is the regressor row for obs i, WITHOUT intercept —
+// an intercept is added). Optional ridge λ on the non-intercept diagonal keeps the normal equations
+// solvable under near-collinear regressors (e.g. healthy/merit ≈ 0.84). Returns y minus the fit, or
+// null if still singular. Standardise the columns before calling so λ is scale-invariant.
+export function olsResidual(y, X, ridge = 0){
+  const n = y.length; if(!n) return null;
+  const k = X[0].length + 1;                       // +1 intercept
+  const D = X.map(r => [1, ...r]);                  // design matrix with intercept
+  const XtX = Array.from({ length: k }, () => Array(k).fill(0));
+  const Xty = Array(k).fill(0);
+  for(let i = 0; i < n; i++){
+    for(let a = 0; a < k; a++){
+      Xty[a] += D[i][a] * y[i];
+      for(let b = 0; b < k; b++) XtX[a][b] += D[i][a] * D[i][b];
+    }
+  }
+  for(let a = 1; a < k; a++) XtX[a][a] += ridge;   // don't penalise the intercept
+  const beta = solveLinear(XtX, Xty);
+  if(!beta || beta.some(v => v == null || !isFinite(v))) return null;
+  return y.map((yi, i) => yi - D[i].reduce((s, x, a) => s + x * beta[a], 0));
+}
+
+// Unique (partial) IC: per period, residualise the target selector against ALL the others (cross-
+// sectional OLS), then rank-IC the residual against the forward return. Aggregated like standaloneICs.
+// Columns are z-scored per period (via standardizeByPeriod) so price factors (~1) and fundamental
+// scores (~100) share a scale; a small ridge keeps it solvable under the collinear fundamentals.
+export function uniqueIC(panel, names){
+  const std = standardizeByPeriod(panel, names);            // {period, fwdRet, z:{name:zval}} complete rows
+  const byP = new Map();
+  for(const r of std){ if(!byP.has(r.period)) byP.set(r.period, []); byP.get(r.period).push(r); }
+  return names.map(target => {
+    const others = names.filter(n => n !== target);
+    const ics = [];
+    for(const [, rows] of byP){
+      if(rows.length < others.length + 3) continue;          // need more obs than regressors
+      const y = rows.map(r => r.z[target]);
+      const X = rows.map(r => others.map(n => r.z[n]));
+      const resid = olsResidual(y, X, 1e-6);
+      if(!resid) continue;
+      const ic = rankIC(rows.map((r, i) => ({ merit: resid[i], fwdRet: r.fwdRet })));
+      if(ic != null) ics.push(ic);
+    }
+    const st = assessSignificance(ics);
+    return { name: target, uniqueIC: st.mean, t: st.t, nPeriods: st.n, verdict: st.verdict };
+  });
+}
+
+// Per-period z-scored selector rows (mean 0, sd 1 within each period across names). Drops rows with
+// any non-finite selector so the matrix is complete. Pure.
+export function standardizeByPeriod(panel, names){
+  const out = [];
+  const byP = new Map();
+  for(const r of panel){ if(!byP.has(r.period)) byP.set(r.period, []); byP.get(r.period).push(r); }
+  for(const [period, rows] of byP){
+    const clean = rows.filter(r => names.every(n => r.values[n] != null && isFinite(r.values[n])));
+    if(clean.length < 3) continue;
+    const stat = {};
+    for(const n of names){
+      const v = clean.map(r => r.values[n]);
+      const m = v.reduce((a, b) => a + b, 0) / v.length;
+      const sd = Math.sqrt(v.reduce((a, b) => a + (b - m) ** 2, 0) / v.length) || 1;
+      stat[n] = { m, sd };
+    }
+    for(const r of clean){
+      const z = {}; for(const n of names) z[n] = (r.values[n] - stat[n].m) / stat[n].sd;
+      out.push({ period, fwdRet: r.fwdRet, z });
+    }
+  }
+  return out;
+}
+
+// Pearson correlation matrix of the standardised selector columns (pooled across periods → the
+// average within-period cross-sectional correlation). Returns an n×n array aligned to `names`.
+export function corrMatrixPearson(stdRows, names){
+  const n = names.length;
+  const C = Array.from({ length: n }, () => Array(n).fill(0));
+  for(let a = 0; a < n; a++) for(let b = a; b < n; b++){
+    let sxy = 0, sx = 0, sy = 0;
+    for(const r of stdRows){ const x = r.z[names[a]], y = r.z[names[b]]; sxy += x * y; sx += x * x; sy += y * y; }
+    const c = (sx > 0 && sy > 0) ? sxy / Math.sqrt(sx * sy) : 0;
+    C[a][b] = C[b][a] = c;
+  }
+  return C;
+}
+
+// Jacobi eigenvalue algorithm for a small symmetric matrix. Returns eigenvalues + eigenvectors sorted
+// by DESCENDING eigenvalue. Pure; ample for the ≤8×8 correlation matrices here.
+export function jacobiEig(A){
+  const n = A.length;
+  const a = A.map(r => r.slice());
+  const V = Array.from({ length: n }, (_, i) => Array.from({ length: n }, (_, j) => i === j ? 1 : 0));
+  for(let sweep = 0; sweep < 100; sweep++){
+    let off = 0;
+    for(let p = 0; p < n; p++) for(let q = p + 1; q < n; q++) off += a[p][q] * a[p][q];
+    if(off < 1e-14) break;
+    for(let p = 0; p < n; p++) for(let q = p + 1; q < n; q++){
+      if(Math.abs(a[p][q]) < 1e-15) continue;
+      const theta = (a[q][q] - a[p][p]) / (2 * a[p][q]);
+      const t = Math.sign(theta || 1) / (Math.abs(theta) + Math.sqrt(theta * theta + 1));
+      const c = 1 / Math.sqrt(t * t + 1), s = t * c;
+      for(let k = 0; k < n; k++){
+        const akp = a[k][p], akq = a[k][q];
+        a[k][p] = c * akp - s * akq; a[k][q] = s * akp + c * akq;
+      }
+      for(let k = 0; k < n; k++){
+        const apk = a[p][k], aqk = a[q][k];
+        a[p][k] = c * apk - s * aqk; a[q][k] = s * apk + c * aqk;
+      }
+      for(let k = 0; k < n; k++){
+        const vkp = V[k][p], vkq = V[k][q];
+        V[k][p] = c * vkp - s * vkq; V[k][q] = s * vkp + c * vkq;
+      }
+    }
+  }
+  const vals = a.map((row, i) => row[i]);
+  const idx = vals.map((v, i) => i).sort((x, y) => vals[y] - vals[x]);
+  return { values: idx.map(i => vals[i]), vectors: idx.map(i => V.map(row => row[i])) };
+}
+
+// Effective number of independent bets from the eigenvalue spectrum: the participation ratio
+// (Σλ)²/Σλ² (1 = one dominant axis, n = fully independent), plus the Kaiser count (λ>1). Pure.
+export function effectiveBets(eigenvalues){
+  const pos = eigenvalues.map(v => Math.max(0, v));
+  const sum = pos.reduce((a, b) => a + b, 0);
+  const sumSq = pos.reduce((a, b) => a + b * b, 0);
+  return { participationRatio: sumSq > 0 ? round(sum * sum / sumSq) : null, kaiser: eigenvalues.filter(v => v > 1).length };
+}
+
+// PCA of the cross-sectional selector panel → dimensionality verdict + the top components' loadings.
+export function pca(panel, names){
+  const std = standardizeByPeriod(panel, names);
+  if(std.length < names.length + 3) return { available: false, rows: std.length };
+  const C = corrMatrixPearson(std, names);
+  const { values, vectors } = jacobiEig(C);
+  const total = values.reduce((a, v) => a + Math.max(0, v), 0) || 1;
+  const eb = effectiveBets(values);
+  let cum = 0;
+  const components = values.slice(0, Math.min(3, names.length)).map((v, p) => {
+    cum += Math.max(0, v) / total;
+    const loadings = {}; names.forEach((n, i) => { loadings[n] = round(vectors[p][i]); });
+    return { pc: p + 1, eigenvalue: round(v), varPct: round(100 * Math.max(0, v) / total), cumVarPct: round(100 * cum), loadings };
+  });
+  return { available: true, rows: std.length, names, eigenvalues: values.map(round),
+    effectiveBets: eb.participationRatio, kaiser: eb.kaiser, components };
+}
+
+// ─── Regime split (angle C): is a factor's edge durable, or just a bull-market trend? ──────────
+// Classify each rebalance by the broad-market trend (SPY close vs its own trailing 200-DMA, point-in-
+// time), then re-measure each selector's IC separately in BULL and BEAR months. A durable edge holds
+// the same sign (ideally significant) in both; a bull-only edge is a trend artifact, not skill.
+export function marketRegimeByDate(market, dates, win = 200){
+  const m = market.slice().sort((a, b) => a.t - b.t);
+  const closes = m.map(b => b.close);
+  const out = new Map();
+  for(const rb of dates){
+    let idx = -1;
+    for(let i = 0; i < m.length; i++){ if(m[i].t <= rb) idx = i; else break; }
+    if(idx < win - 1){ out.set(iso(rb), null); continue; }
+    const smaVal = sma(closes.slice(0, idx + 1), win);     // trailing 200-DMA at this rebalance
+    out.set(iso(rb), smaVal != null ? (m[idx].close >= smaVal ? "bull" : "bear") : null);
+  }
+  return out;
+}
+
+// Split each selector's per-period IC series into bull/bear buckets by regimeOf (period → regime).
+export function regimeSplitIC(panel, names, regimeOf){
+  const ok = v => v === "SIGNIFICANT" || v === "SUGGESTIVE";
+  return names.map(name => {
+    const ps = periodStats(obsFor(panel, name));
+    const bull = [], bear = [];
+    for(const p of ps){ const r = regimeOf.get(p.period); if(r === "bull") bull.push(p.ic); else if(r === "bear") bear.push(p.ic); }
+    const bs = assessSignificance(bull), br = assessSignificance(bear);
+    const sameSign = bs.mean != null && br.mean != null && bs.mean !== 0 && Math.sign(bs.mean) === Math.sign(br.mean);
+    const thin = bs.n < 4 || br.n < 4;
+    // Distinguish a true trend ARTIFACT (sign flips in the other regime) from a same-sign edge that is
+    // merely UNDERPOWERED in the thinner regime — they are very different conclusions, especially when
+    // one regime (here, bear) has few months.
+    const verdict = thin ? "INSUFFICIENT SPLIT"
+      : (ok(bs.verdict) && ok(br.verdict)) ? (sameSign ? "DURABLE (both regimes)" : "REGIME-FLIP (sign changes)")
+      : (ok(bs.verdict) && !ok(br.verdict)) ? (sameSign ? "BULL-SIGNIF · bear same-sign (underpowered)" : "BULL-ONLY (flips/dies in bear)")
+      : (!ok(bs.verdict) && ok(br.verdict)) ? (sameSign ? "BEAR-SIGNIF · bull same-sign (underpowered)" : "BEAR-ONLY (flips/dies in bull)")
+      : sameSign ? "CONSISTENT SIGN (weak both)"
+      : "REGIME-FLIP (sign changes)";
+    return { name,
+      bull: { meanIC: bs.mean, t: bs.t, nPeriods: bs.n },
+      bear: { meanIC: br.mean, t: br.t, nPeriods: br.n },
+      sameSign, verdict };
+  });
 }
 
 // Standalone predictive value per contributor: the per-period rank-IC series summarised.
@@ -359,6 +790,11 @@ function caveats(survivorshipFree){
     "AUTOPSY (cheap/healthy/growing) + merit are reconstructed point-in-time from Polygon /vX/reference/financials (filing_date ≤ rebalance) and scored by the app's OWN valueScore(meritMetrics(...)) — no re-implementation. Names without financials drop from those slices only.",
     "OUTLOOK is EXCLUDED from the pie by construction, not by oversight: it is a MARKET-TIMING projection (the same 3-index move applied to every name), so it has ~0 cross-sectional name-selection variance and cannot rank names — a slice would be misleading. It is judged on its own alpha-vs-buy-&-hold backtest in the app, not here.",
     "1-month forward windows, monthly rebalance, only COMPLETE windows (no-lookahead). One cross-section per rebalance → modest power; INCONCLUSIVE is an acceptable outcome.",
+    "ROBUSTNESS (angle A): every slice is RE-MEASURED on a liquidity-screened subset (price≥$" + LIQ_MIN_PRICE + ", trailing-median $" + (LIQ_MIN_ADV/1e6) + "M ADV) and after BETA- and SECTOR-neutralisation. A slice that collapses on liquid names was a stale-price micro-cap artifact; one that dies sector/beta-neutral was a sector or market bet, not stock selection. This is the charter's 'alpha, not beta' made testable — watch lowvol especially.",
+    "DIMENSIONALITY (angle B): UNIQUE IC residualises each selector against all the others (cross-sectional OLS) → its contribution AFTER redundancy; PCA's 'effective bets' (participation ratio of the eigenvalues) counts the truly independent axes. Univariate pie slices OVERSTATE breadth when factors overlap (healthy/merit ≈ 0.84) — this collapses them to the real few.",
+    "TERM-STRUCTURE (angle E): each selector's rank-IC is measured at 1wk/1mo/3mo/6mo/12mo forward horizons (monthly rebalanced) to reveal the holding period where the edge is strongest. Horizons beyond 1mo OVERLAP the monthly cross-sections, inflating the naive t — a Newey–West HAC t (overlap ≈ horizon/month) is reported alongside; trust it over the naive t at 3-12mo.",
+    "OSCILLATOR TRIAL (angle F): RSI/MACD/Stoch/BB are TIMING tools, so judging them by cross-sectional IC (the pie) is the wrong exam. This is the fair test — a within-name event study measuring the forward return after each buy/avoid signal MINUS that name's own buy-&-hold; significance is taken across names (each name ≈ one observation) to respect the heavy within-name overlap. Mirrors voteVector's exact thresholds (engine parity). A ~0 excess confirms the technical core is a measured loser even at its real job; a positive one would be genuine timing alpha.",
+    "REGIME SPLIT (angle C): each selector's IC is re-measured in BULL vs BEAR months (SPY vs its 200-DMA, point-in-time). A DURABLE edge holds the same sign in both regimes; a BULL-ONLY edge is a trend artifact that won't survive a market turn. All ~5y of history sits in one macro cycle, so the split has limited power — read it as a direction, not a proof.",
     "IN-SAMPLE only — an attractive pie is 'looks good in-sample,' NOT proven. The technical confluence is a measured in-sample loser (baseline t ≈ −12.6); thin/negative vote slices are the honest finding. Only the OOS ledger under FDR is tradeable evidence.",
   ];
 }
@@ -415,9 +851,18 @@ async function main(){
     }catch(e){ errors.push(sym + ": " + (e.message || e)); console.warn("✗ " + sym.padEnd(6) + " — " + (e.message || e)); }
   }
 
+  // Robustness inputs (angle A) — best-effort, never fatal: a market proxy (SPY) for beta and the SIC
+  // sector map. If either fails the pie still emits; only that neutralisation column goes unavailable.
+  let market = null;
+  try{ market = await fetchDaily("SPY", key); console.log("market proxy: SPY " + market.length + " daily bars (for beta)"); }
+  catch(e){ console.warn("SPY fetch failed — beta-neutral IC unavailable: " + (e.message || e)); }
+  let sectorOf = null;
+  try{ sectorOf = await fetchSectorMap(Object.keys(barsByTicker), key); console.log("sectors resolved: " + Object.keys(sectorOf || {}).length + "/" + Object.keys(barsByTicker).length); }
+  catch(e){ console.warn("sector map failed — sector-neutral IC unavailable: " + (e.message || e)); }
+
   const dates = grid(1);
   const haveFunda = fundCount > 0;
-  const panel = buildPanel(barsByTicker, dates, { fundamentals: haveFunda ? fundamentals : null });
+  const panel = buildPanel(barsByTicker, dates, { fundamentals: haveFunda ? fundamentals : null, market, sectorOf, liquidity: true, horizons: HORIZONS });
   // Whole-app pie: price/risk FACTORS + 13 technical VOTES + (when financials loaded) the AUTOPSY
   // fundamentals (cheap/healthy/growing/merit). OUTLOOK is documented-excluded (market-timing, not
   // cross-sectional — see caveats).
@@ -426,6 +871,19 @@ async function main(){
   const kindOf = n => FACTOR_NAMES.includes(n) ? "factor" : FUNDAMENTAL_NAMES.includes(n) ? "fundamental" : "vote";
   const ics = standaloneICs(panel, ALL);
   const pie = contributionPie(ics);
+
+  // ─── ROBUSTNESS (angle A): does the edge survive a liquidity screen + beta/sector neutralisation? ──
+  const liquidRows = panel.filter(r => r.liquid);
+  const liquidPie = contributionPie(standaloneICs(liquidRows, ALL));
+  const robustness = {
+    liquidity: { minADV: LIQ_MIN_ADV, minPrice: LIQ_MIN_PRICE, advWindow: LIQ_WIN, betaWindow: BETA_WIN,
+      liquidRows: liquidRows.length, totalRows: panel.length,
+      liquidNames: new Set(liquidRows.map(r => r.sym)).size, totalNames: Object.keys(barsByTicker).length },
+    market: market ? "SPY" : null,
+    sectorsResolved: sectorOf ? Object.keys(sectorOf).length : 0,
+    perContributor: ALL.map(n => robustnessFor(panel, n)),
+    liquidPie,
+  };
   // Interactions + composite span the cross-sectional SELECTORS (price/risk factors + fundamentals).
   const selectors = [...FACTOR_NAMES, ...FUNDA];
   const corr = correlationMatrix(panel, selectors);
@@ -433,6 +891,35 @@ async function main(){
   const icW = selectors.map(n => { const s = ics.find(x => x.name === n); return s && s.meanIC != null ? Math.abs(s.meanIC) : 0; });
   const compositeEqual = combinedComposite(panel, selectors);
   const compositeICw = combinedComposite(panel, selectors, { weights: icW });
+
+  // ─── DIMENSIONALITY (angle B): unique/incremental IC + PCA "effective number of bets" ──────────
+  const uIC = uniqueIC(panel, selectors);
+  const dimensionality = {
+    pca: pca(panel, selectors),
+    uniqueIC: uIC.map(u => {
+      const raw = ics.find(s => s.name === u.name);
+      const rawIC = raw ? raw.meanIC : null;
+      return { ...u, rawIC,
+        retainedShare: (rawIC != null && Math.abs(rawIC) > 1e-9 && u.uniqueIC != null) ? round(u.uniqueIC / rawIC) : null };
+    }),
+  };
+
+  // ─── IC TERM-STRUCTURE (angle E): at which holding horizon is each selector's edge strongest? ──
+  const termStructureBlock = { horizons: HORIZONS, perContributor: termStructure(panel, [...FACTOR_NAMES, ...FUNDA], HORIZONS) };
+
+  // ─── FAIR OSCILLATOR TRIAL (angle F): time-series TIMING test (not cross-sectional selection) ──
+  const oscillatorTrial = oscillatorEventStudy(barsByTicker);
+
+  // ─── REGIME SPLIT (angle C): is each selector's edge durable across bull/bear markets? ─────────
+  let regimes = { available: false };
+  if(market){
+    const regimeOf = marketRegimeByDate(market, dates);
+    const periodsInPanel = [...new Set(panel.map(r => r.period))];
+    const bullPeriods = periodsInPanel.filter(p => regimeOf.get(p) === "bull").length;
+    const bearPeriods = periodsInPanel.filter(p => regimeOf.get(p) === "bear").length;
+    regimes = { available: true, method: "SPY close vs trailing 200-DMA (point-in-time)",
+      bullPeriods, bearPeriods, perContributor: regimeSplitIC(panel, [...FACTOR_NAMES, ...FUNDA], regimeOf) };
+  }
 
   const out = {
     generatedAt: new Date().toISOString(),
@@ -446,6 +933,11 @@ async function main(){
     correlationMatrix: corr,
     interactions,
     composite: { equalWeight: compositeEqual, icWeighted: compositeICw },
+    robustness,
+    dimensionality,
+    termStructure: termStructureBlock,
+    oscillatorTrial,
+    regimes,
     caveats: caveats(survivorshipFree),
   };
   fs.writeFileSync(path.join(ROOT, "factor-interaction-study.json"), JSON.stringify(out) + "\n");
@@ -469,6 +961,72 @@ async function main(){
   console.log("  equal-weight   meanIC=" + cc.meanIC + " t=" + cc.t + " (" + cc.verdict + "), n=" + cc.nPeriods +
     "; best single=" + (cc.bestSingle ? cc.bestSingle.name + " " + cc.bestSingle.meanIC : "n/a") + ", gain=" + cc.gain);
   console.log("  IC-weighted    meanIC=" + compositeICw.meanIC + " t=" + compositeICw.t + " (" + compositeICw.verdict + ")");
+
+  console.log("\n════ ROBUSTNESS (angle A): liquidity screen + beta/sector neutralisation ════");
+  console.log("  liquid: " + robustness.liquidity.liquidRows + "/" + robustness.liquidity.totalRows + " rows, " +
+    robustness.liquidity.liquidNames + "/" + robustness.liquidity.totalNames + " names (price≥$" + LIQ_MIN_PRICE +
+    ", $" + (LIQ_MIN_ADV/1e6) + "M ADV) · sectors " + robustness.sectorsResolved + " · beta vs " + (robustness.market || "—"));
+  const sig = ic => ic == null ? " n/a " : (ic >= 0 ? "+" : "") + ic.toFixed(4);
+  for(const n of [...FACTOR_NAMES, ...FUNDA]){
+    const r = robustness.perContributor.find(x => x.name === n); if(!r) continue;
+    const full = ics.find(x => x.name === n);
+    const sn = r.sectorNeutral.available ? r.sectorNeutral.verdict : "n/a";
+    const bn = r.betaNeutral.available ? r.betaNeutral.verdict : "n/a";
+    console.log("  " + n.padEnd(15) + " raw=" + sig(full && full.meanIC) + "  liquid=" + sig(r.liquidIC) +
+      " (t=" + (r.liquidT == null ? "–" : r.liquidT.toFixed(1)) + ")  sector→" + sn + "  beta→" + bn);
+  }
+  console.log("  ↳ a slice that CRATERS on liquid names was stale-price micro-cap noise; one that dies sector/beta-neutral was a sector/market bet.");
+
+  console.log("\n════ DIMENSIONALITY (angle B): how few independent bets do the selectors really hold? ════");
+  const P = dimensionality.pca;
+  if(P.available){
+    console.log("  eigenvalues: [" + P.eigenvalues.join(", ") + "]");
+    console.log("  EFFECTIVE BETS = " + P.effectiveBets + " of " + selectors.length + " selectors (Kaiser λ>1: " + P.kaiser + ")");
+    for(const c of P.components){
+      const load = Object.entries(c.loadings).sort((a, b) => Math.abs(b[1]) - Math.abs(a[1])).slice(0, 4)
+        .map(([n, v]) => n + " " + (v >= 0 ? "+" : "") + v).join(", ");
+      console.log("  PC" + c.pc + " (" + c.varPct + "% var, cum " + c.cumVarPct + "%): " + load);
+    }
+  } else console.log("  PCA unavailable (only " + P.rows + " complete rows).");
+  console.log("  UNIQUE IC (each selector's contribution AFTER removing the others):");
+  for(const u of dimensionality.uniqueIC){
+    const rs = u.retainedShare == null ? "–" : Math.round(u.retainedShare * 100) + "%";
+    console.log("    " + u.name.padEnd(15) + " raw=" + (u.rawIC ?? "n/a") + " → unique=" + (u.uniqueIC ?? "n/a") +
+      " (t=" + (u.t == null ? "–" : u.t.toFixed(1)) + ", keeps " + rs + ") " + u.verdict);
+  }
+  console.log("  ↳ a selector whose unique IC ≈ 0 is REDUNDANT (its edge is already in the others); one that keeps most of its raw IC is an independent axis.");
+
+  console.log("\n════ IC TERM-STRUCTURE (angle E): rank-IC by forward horizon — where is the edge strongest? ════");
+  console.log("  selector        " + HORIZONS.map(h => h.label.padStart(8)).join("") + "   best  (tHAC at best)");
+  for(const ts of termStructureBlock.perContributor){
+    const cells = ts.curve.map(c => (c.meanIC == null ? "   n/a" : (c.meanIC >= 0 ? "+" : "") + c.meanIC.toFixed(3)).padStart(8)).join("");
+    const bc = ts.curve.find(c => c.horizon === ts.bestHorizon);
+    console.log("  " + ts.name.padEnd(15) + cells + "   " + (ts.bestHorizon || "–").padEnd(5) + " (tHAC " + (bc && bc.tHAC != null ? bc.tHAC : "–") + ")");
+  }
+  console.log("  ↳ momentum should PEAK at its native horizon and DECAY; tHAC deflates the overlap at long horizons. Naive t at 3-12mo is inflated by overlapping windows.");
+
+  console.log("\n════ FAIR OSCILLATOR TRIAL (angle F): time-series TIMING vs the name's own buy-&-hold ════");
+  console.log("  " + oscillatorTrial.horizon + "-day forward, stride " + oscillatorTrial.stride + ", excess = signal-bar fwd return − the name's mean fwd return");
+  for(const o of ["RSI", "MACD", "Stoch", "BB"]){
+    const b = oscillatorTrial[o] && oscillatorTrial[o].bull;
+    if(!b) continue;
+    console.log("    " + o.padEnd(6) + " BUY-signal excess: " + (b.meanExcessPct == null ? "n/a" : (b.meanExcessPct >= 0 ? "+" : "") + b.meanExcessPct + "%") +
+      " (t " + (b.t == null ? "–" : b.t.toFixed(1)) + ", " + b.nNames + " names / " + b.nEvents + " events) " + b.verdict);
+  }
+  console.log("  ↳ a POSITIVE significant excess = the oscillator times entries that beat the name's own hold (genuine timing alpha); ≈0 = the pie was right, it's dead even at its real job.");
+
+  if(regimes.available){
+    console.log("\n════ REGIME SPLIT (angle C): bull vs bear-market IC (SPY vs 200-DMA) ════");
+    console.log("  " + regimes.bullPeriods + " bull months, " + regimes.bearPeriods + " bear months");
+    const f = x => x == null ? " n/a " : (x >= 0 ? "+" : "") + x.toFixed(4);
+    for(const r of regimes.perContributor){
+      console.log("    " + r.name.padEnd(15) +
+        " bull=" + f(r.bull.meanIC) + " (t" + (r.bull.t == null ? "–" : r.bull.t.toFixed(1)) + ",n" + r.bull.nPeriods + ")" +
+        "  bear=" + f(r.bear.meanIC) + " (t" + (r.bear.t == null ? "–" : r.bear.t.toFixed(1)) + ",n" + r.bear.nPeriods + ")  → " + r.verdict);
+    }
+    console.log("  ↳ DURABLE = same-sign edge in both regimes; BULL-ONLY = a trend artifact that dies when the market turns.");
+  }
+
   console.log("\nWrote factor-interaction-study.json" + (errors.length ? (" (" + errors.length + " skipped)") : "") + ".");
   console.log("IN-SAMPLE only — not proven, not wired into any gate. Only the OOS ledger under FDR counts.");
 }
