@@ -409,6 +409,17 @@ unit-tested, in-sample/research-only, NEVER gated):
   clean non-overlapping column** (matches the pie); the survivors are **SLOW** (months) → belong in the POSITION
   book, not rapid turnover; **reversal flips NEGATIVE at 6-12mo** (−0.083, momentum reasserts) → useless here. So
   momentum-liquid should be held weeks-to-months, not days.
+- **Angle F — fair OSCILLATOR trial** (`oscVotesAt` = voteVector's RSI/MACD/Stoch/BB thresholds, engine parity;
+  `oscillatorEventStudy` = within-name event study, H=21d, excess = signal-bar fwd return − the name's own
+  buy-&-hold, significance ACROSS names). **The pie was the WRONG EXAM:** judged on TIMING (their real job), three
+  of four are significant — **RSI +1.13% (t2.3), Stoch +0.98% (t2.4), BB +2.6% (t2.6)** oversold-BUY excess (the
+  AVOID side is symmetrically negative) → genuine MEAN-REVERSION timers, and the engine's oversold→buy direction is
+  CORRECT. **MACD is used BACKWARDS:** trend-follow buy (macd>0) LOSES −1.56% (t−2.7) while FADING it wins +1.42%
+  (t3.9). This explains the engine self-conflicting (RSI/Stoch/BB "buy the dip" vs MACD "buy the breakout" fire
+  opposite on the same bar → sum + costs + churn = the measured t −12.6 loser). **BUT NOT a green light:** an
+  oversold bounce on the micro-cap roster is the textbook BID-ASK-BOUNCE / stale-price trap (angle A), it's
+  cost-blind + high-turnover, in-sample, and across-name correlated. **Hypothesis, NOT a mandate — do NOT flip MACD
+  or re-wire votes off in-sample; it earns a change only OOS.**
 
 **Net engine implication (in-sample, not a mandate):** the system effectively holds **~2 tradeable independent
 edges, not 8 — momentum-12-1 (robust to liquidity, own axis, same-sign both regimes; use ONE window) and a
