@@ -3900,6 +3900,33 @@ function App() {
                       </div>
                     );
                   })()}
+                  {factorPie.dimensionality&&factorPie.dimensionality.pca&&factorPie.dimensionality.pca.available&&(()=>{
+                    const D=factorPie.dimensionality, P=D.pca;
+                    return (
+                      <div style={{marginTop:12,borderTop:"1px solid "+BORD,paddingTop:10}}>
+                        <span style={lbl}>🧬 DIMENSIONALITY · how few independent bets remain</span>
+                        <div style={{fontSize:11,color:"#90a4ae",marginBottom:6}}>
+                          <b style={{color:"#26c6da"}}>Effective bets ≈ {P.effectiveBets}</b> of {P.names.length} selectors (Kaiser λ&gt;1: {P.kaiser}). The univariate pie overstates breadth when factors overlap; the real signal lives on a handful of axes.
+                        </div>
+                        {(P.components||[]).map(c=>{
+                          const top=Object.entries(c.loadings).sort((a,b)=>Math.abs(b[1])-Math.abs(a[1])).slice(0,4).map(([n,v])=>n+" "+(v>=0?"+":"")+v).join(", ");
+                          return <div key={c.pc} style={{fontSize:10,color:"#b0bec5",fontFamily:"monospace",marginBottom:2}}>PC{c.pc} ({c.varPct}% var, cum {c.cumVarPct}%): {top}</div>;
+                        })}
+                        <div style={{fontSize:10,color:DIM,marginTop:8,marginBottom:4}}>UNIQUE IC — each selector's edge AFTER removing the others (≈0 ⇒ redundant):</div>
+                        {(D.uniqueIC||[]).map(u=>{
+                          const keep=u.retainedShare==null?"–":Math.round(u.retainedShare*100)+"%";
+                          const col=u.retainedShare==null?"#90a4ae":u.retainedShare>=0.5?"#00e676":u.retainedShare>=0.2?"#ffd740":"#ef5350";
+                          return (
+                            <div key={u.name} style={{display:"flex",alignItems:"center",gap:8,fontSize:10,marginBottom:2,fontFamily:"monospace"}}>
+                              <span style={{width:96,color:"#cfd8dc"}}>{u.name}</span>
+                              <span style={{width:180,color:"#b0bec5"}}>raw {u.rawIC==null?"–":u.rawIC.toFixed(3)} → unique {u.uniqueIC==null?"–":u.uniqueIC.toFixed(3)}{u.t!=null?(" (t"+u.t.toFixed(1)+")"):""}</span>
+                              <span style={{color:col}}>keeps {keep}</span>
+                            </div>
+                          );
+                        })}
+                      </div>
+                    );
+                  })()}
                   <div style={{fontSize:9,color:DIM,marginTop:8}}>Display-only — never feeds the signal. Only the OOS scoreboard below, cleared through FDR, is tradeable evidence.</div>
                 </div>
               );

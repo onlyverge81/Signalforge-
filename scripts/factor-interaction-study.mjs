@@ -348,6 +348,173 @@ export function robustnessFor(panel, name){
   };
 }
 
+// ─── Dimensionality (angle B): unique/incremental IC + PCA "effective number of bets" ─────────
+// The pie's slices are UNIVARIATE — they overstate how many independent edges exist when factors
+// overlap (the corr matrix shows healthy↔merit ≈ 0.84). These pure helpers answer two questions:
+//  • UNIQUE IC: what does each selector add AFTER removing what every OTHER selector explains? (a
+//    redundant factor's unique IC collapses toward 0; an independent one keeps most of its raw IC.)
+//  • PCA: how few real axes do the selectors collapse to (the "effective number of bets")?
+
+// Solve the small linear system Ax=b by Gaussian elimination with partial pivoting. null if singular.
+export function solveLinear(A, b){
+  const n = b.length;
+  const M = A.map((row, i) => [...row, b[i]]);
+  for(let c = 0; c < n; c++){
+    let piv = c;
+    for(let r = c + 1; r < n; r++) if(Math.abs(M[r][c]) > Math.abs(M[piv][c])) piv = r;
+    if(Math.abs(M[piv][c]) < 1e-12) return null;
+    [M[c], M[piv]] = [M[piv], M[c]];
+    for(let r = 0; r < n; r++){
+      if(r === c) continue;
+      const f = M[r][c] / M[c][c];
+      for(let k = c; k <= n; k++) M[r][k] -= f * M[c][k];
+    }
+  }
+  // After full Gauss-Jordan elimination each row is [pivot·x_i | rhs], so x_i = rhs / pivot.
+  return M.map((row, i) => row[n] / row[i]);
+}
+
+// OLS residuals of y on the columns X (each X[i] is the regressor row for obs i, WITHOUT intercept —
+// an intercept is added). Returns y minus the fit, or null if the normal equations are singular.
+export function olsResidual(y, X){
+  const n = y.length; if(!n) return null;
+  const k = X[0].length + 1;                       // +1 intercept
+  const D = X.map(r => [1, ...r]);                  // design matrix with intercept
+  const XtX = Array.from({ length: k }, () => Array(k).fill(0));
+  const Xty = Array(k).fill(0);
+  for(let i = 0; i < n; i++){
+    for(let a = 0; a < k; a++){
+      Xty[a] += D[i][a] * y[i];
+      for(let b = 0; b < k; b++) XtX[a][b] += D[i][a] * D[i][b];
+    }
+  }
+  const beta = solveLinear(XtX, Xty);
+  if(!beta || beta.some(v => v == null || !isFinite(v))) return null;
+  return y.map((yi, i) => yi - D[i].reduce((s, x, a) => s + x * beta[a], 0));
+}
+
+// Unique (partial) IC: per period, residualise the target selector against ALL the others (cross-
+// sectional OLS), then rank-IC the residual against the forward return. Aggregated like standaloneICs.
+export function uniqueIC(panel, names){
+  return names.map(target => {
+    const others = names.filter(n => n !== target);
+    const ics = [];
+    const byP = new Map();
+    for(const r of panel){ if(!byP.has(r.period)) byP.set(r.period, []); byP.get(r.period).push(r); }
+    for(const [, rows] of byP){
+      const clean = rows.filter(r => [target, ...others].every(n => r.values[n] != null && isFinite(r.values[n])) && isFinite(r.fwdRet));
+      if(clean.length < others.length + 3) continue;          // need more obs than regressors
+      const y = clean.map(r => r.values[target]);
+      const X = clean.map(r => others.map(n => r.values[n]));
+      const resid = olsResidual(y, X);
+      if(!resid) continue;
+      const ic = rankIC(clean.map((r, i) => ({ merit: resid[i], fwdRet: r.fwdRet })));
+      if(ic != null) ics.push(ic);
+    }
+    const st = assessSignificance(ics);
+    return { name: target, uniqueIC: st.mean, t: st.t, nPeriods: st.n, verdict: st.verdict };
+  });
+}
+
+// Per-period z-scored selector rows (mean 0, sd 1 within each period across names). Drops rows with
+// any non-finite selector so the matrix is complete. Pure.
+export function standardizeByPeriod(panel, names){
+  const out = [];
+  const byP = new Map();
+  for(const r of panel){ if(!byP.has(r.period)) byP.set(r.period, []); byP.get(r.period).push(r); }
+  for(const [period, rows] of byP){
+    const clean = rows.filter(r => names.every(n => r.values[n] != null && isFinite(r.values[n])));
+    if(clean.length < 3) continue;
+    const stat = {};
+    for(const n of names){
+      const v = clean.map(r => r.values[n]);
+      const m = v.reduce((a, b) => a + b, 0) / v.length;
+      const sd = Math.sqrt(v.reduce((a, b) => a + (b - m) ** 2, 0) / v.length) || 1;
+      stat[n] = { m, sd };
+    }
+    for(const r of clean){
+      const z = {}; for(const n of names) z[n] = (r.values[n] - stat[n].m) / stat[n].sd;
+      out.push({ period, fwdRet: r.fwdRet, z });
+    }
+  }
+  return out;
+}
+
+// Pearson correlation matrix of the standardised selector columns (pooled across periods → the
+// average within-period cross-sectional correlation). Returns an n×n array aligned to `names`.
+export function corrMatrixPearson(stdRows, names){
+  const n = names.length;
+  const C = Array.from({ length: n }, () => Array(n).fill(0));
+  for(let a = 0; a < n; a++) for(let b = a; b < n; b++){
+    let sxy = 0, sx = 0, sy = 0;
+    for(const r of stdRows){ const x = r.z[names[a]], y = r.z[names[b]]; sxy += x * y; sx += x * x; sy += y * y; }
+    const c = (sx > 0 && sy > 0) ? sxy / Math.sqrt(sx * sy) : 0;
+    C[a][b] = C[b][a] = c;
+  }
+  return C;
+}
+
+// Jacobi eigenvalue algorithm for a small symmetric matrix. Returns eigenvalues + eigenvectors sorted
+// by DESCENDING eigenvalue. Pure; ample for the ≤8×8 correlation matrices here.
+export function jacobiEig(A){
+  const n = A.length;
+  const a = A.map(r => r.slice());
+  const V = Array.from({ length: n }, (_, i) => Array.from({ length: n }, (_, j) => i === j ? 1 : 0));
+  for(let sweep = 0; sweep < 100; sweep++){
+    let off = 0;
+    for(let p = 0; p < n; p++) for(let q = p + 1; q < n; q++) off += a[p][q] * a[p][q];
+    if(off < 1e-14) break;
+    for(let p = 0; p < n; p++) for(let q = p + 1; q < n; q++){
+      if(Math.abs(a[p][q]) < 1e-15) continue;
+      const theta = (a[q][q] - a[p][p]) / (2 * a[p][q]);
+      const t = Math.sign(theta || 1) / (Math.abs(theta) + Math.sqrt(theta * theta + 1));
+      const c = 1 / Math.sqrt(t * t + 1), s = t * c;
+      for(let k = 0; k < n; k++){
+        const akp = a[k][p], akq = a[k][q];
+        a[k][p] = c * akp - s * akq; a[k][q] = s * akp + c * akq;
+      }
+      for(let k = 0; k < n; k++){
+        const apk = a[p][k], aqk = a[q][k];
+        a[p][k] = c * apk - s * aqk; a[q][k] = s * apk + c * aqk;
+      }
+      for(let k = 0; k < n; k++){
+        const vkp = V[k][p], vkq = V[k][q];
+        V[k][p] = c * vkp - s * vkq; V[k][q] = s * vkp + c * vkq;
+      }
+    }
+  }
+  const vals = a.map((row, i) => row[i]);
+  const idx = vals.map((v, i) => i).sort((x, y) => vals[y] - vals[x]);
+  return { values: idx.map(i => vals[i]), vectors: idx.map(i => V.map(row => row[i])) };
+}
+
+// Effective number of independent bets from the eigenvalue spectrum: the participation ratio
+// (Σλ)²/Σλ² (1 = one dominant axis, n = fully independent), plus the Kaiser count (λ>1). Pure.
+export function effectiveBets(eigenvalues){
+  const pos = eigenvalues.map(v => Math.max(0, v));
+  const sum = pos.reduce((a, b) => a + b, 0);
+  const sumSq = pos.reduce((a, b) => a + b * b, 0);
+  return { participationRatio: sumSq > 0 ? round(sum * sum / sumSq) : null, kaiser: eigenvalues.filter(v => v > 1).length };
+}
+
+// PCA of the cross-sectional selector panel → dimensionality verdict + the top components' loadings.
+export function pca(panel, names){
+  const std = standardizeByPeriod(panel, names);
+  if(std.length < names.length + 3) return { available: false, rows: std.length };
+  const C = corrMatrixPearson(std, names);
+  const { values, vectors } = jacobiEig(C);
+  const total = values.reduce((a, v) => a + Math.max(0, v), 0) || 1;
+  const eb = effectiveBets(values);
+  let cum = 0;
+  const components = values.slice(0, Math.min(3, names.length)).map((v, p) => {
+    cum += Math.max(0, v) / total;
+    const loadings = {}; names.forEach((n, i) => { loadings[n] = round(vectors[p][i]); });
+    return { pc: p + 1, eigenvalue: round(v), varPct: round(100 * Math.max(0, v) / total), cumVarPct: round(100 * cum), loadings };
+  });
+  return { available: true, rows: std.length, names, eigenvalues: values.map(round),
+    effectiveBets: eb.participationRatio, kaiser: eb.kaiser, components };
+}
+
 // Standalone predictive value per contributor: the per-period rank-IC series summarised.
 export function standaloneICs(panel, names){
   return names.map(name => {
@@ -477,6 +644,7 @@ function caveats(survivorshipFree){
     "OUTLOOK is EXCLUDED from the pie by construction, not by oversight: it is a MARKET-TIMING projection (the same 3-index move applied to every name), so it has ~0 cross-sectional name-selection variance and cannot rank names — a slice would be misleading. It is judged on its own alpha-vs-buy-&-hold backtest in the app, not here.",
     "1-month forward windows, monthly rebalance, only COMPLETE windows (no-lookahead). One cross-section per rebalance → modest power; INCONCLUSIVE is an acceptable outcome.",
     "ROBUSTNESS (angle A): every slice is RE-MEASURED on a liquidity-screened subset (price≥$" + LIQ_MIN_PRICE + ", trailing-median $" + (LIQ_MIN_ADV/1e6) + "M ADV) and after BETA- and SECTOR-neutralisation. A slice that collapses on liquid names was a stale-price micro-cap artifact; one that dies sector/beta-neutral was a sector or market bet, not stock selection. This is the charter's 'alpha, not beta' made testable — watch lowvol especially.",
+    "DIMENSIONALITY (angle B): UNIQUE IC residualises each selector against all the others (cross-sectional OLS) → its contribution AFTER redundancy; PCA's 'effective bets' (participation ratio of the eigenvalues) counts the truly independent axes. Univariate pie slices OVERSTATE breadth when factors overlap (healthy/merit ≈ 0.84) — this collapses them to the real few.",
     "IN-SAMPLE only — an attractive pie is 'looks good in-sample,' NOT proven. The technical confluence is a measured in-sample loser (baseline t ≈ −12.6); thin/negative vote slices are the honest finding. Only the OOS ledger under FDR is tradeable evidence.",
   ];
 }
@@ -574,6 +742,18 @@ async function main(){
   const compositeEqual = combinedComposite(panel, selectors);
   const compositeICw = combinedComposite(panel, selectors, { weights: icW });
 
+  // ─── DIMENSIONALITY (angle B): unique/incremental IC + PCA "effective number of bets" ──────────
+  const uIC = uniqueIC(panel, selectors);
+  const dimensionality = {
+    pca: pca(panel, selectors),
+    uniqueIC: uIC.map(u => {
+      const raw = ics.find(s => s.name === u.name);
+      const rawIC = raw ? raw.meanIC : null;
+      return { ...u, rawIC,
+        retainedShare: (rawIC != null && Math.abs(rawIC) > 1e-9 && u.uniqueIC != null) ? round(u.uniqueIC / rawIC) : null };
+    }),
+  };
+
   const out = {
     generatedAt: new Date().toISOString(),
     universe: { requested: tickers.length, covered: Object.keys(barsByTicker).length, withFinancials: fundCount, source, survivorshipFree, skipped: errors },
@@ -587,6 +767,7 @@ async function main(){
     interactions,
     composite: { equalWeight: compositeEqual, icWeighted: compositeICw },
     robustness,
+    dimensionality,
     caveats: caveats(survivorshipFree),
   };
   fs.writeFileSync(path.join(ROOT, "factor-interaction-study.json"), JSON.stringify(out) + "\n");
@@ -625,6 +806,25 @@ async function main(){
       " (t=" + (r.liquidT == null ? "–" : r.liquidT.toFixed(1)) + ")  sector→" + sn + "  beta→" + bn);
   }
   console.log("  ↳ a slice that CRATERS on liquid names was stale-price micro-cap noise; one that dies sector/beta-neutral was a sector/market bet.");
+
+  console.log("\n════ DIMENSIONALITY (angle B): how few independent bets do the selectors really hold? ════");
+  const P = dimensionality.pca;
+  if(P.available){
+    console.log("  eigenvalues: [" + P.eigenvalues.join(", ") + "]");
+    console.log("  EFFECTIVE BETS = " + P.effectiveBets + " of " + selectors.length + " selectors (Kaiser λ>1: " + P.kaiser + ")");
+    for(const c of P.components){
+      const load = Object.entries(c.loadings).sort((a, b) => Math.abs(b[1]) - Math.abs(a[1])).slice(0, 4)
+        .map(([n, v]) => n + " " + (v >= 0 ? "+" : "") + v).join(", ");
+      console.log("  PC" + c.pc + " (" + c.varPct + "% var, cum " + c.cumVarPct + "%): " + load);
+    }
+  } else console.log("  PCA unavailable (only " + P.rows + " complete rows).");
+  console.log("  UNIQUE IC (each selector's contribution AFTER removing the others):");
+  for(const u of dimensionality.uniqueIC){
+    const rs = u.retainedShare == null ? "–" : Math.round(u.retainedShare * 100) + "%";
+    console.log("    " + u.name.padEnd(15) + " raw=" + (u.rawIC ?? "n/a") + " → unique=" + (u.uniqueIC ?? "n/a") +
+      " (t=" + (u.t == null ? "–" : u.t.toFixed(1)) + ", keeps " + rs + ") " + u.verdict);
+  }
+  console.log("  ↳ a selector whose unique IC ≈ 0 is REDUNDANT (its edge is already in the others); one that keeps most of its raw IC is an independent axis.");
 
   console.log("\nWrote factor-interaction-study.json" + (errors.length ? (" (" + errors.length + " skipped)") : "") + ".");
   console.log("IN-SAMPLE only — not proven, not wired into any gate. Only the OOS ledger under FDR counts.");

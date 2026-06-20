@@ -11,6 +11,8 @@ import {
   parsePolyFinancials, recAsOf, autopsyValues,
   dollarVol, trailingMedianDollarVol, liquidAt, trailingBeta, betaNeutralIC,
   obsForNeutral, robustnessFor,
+  solveLinear, olsResidual, uniqueIC, standardizeByPeriod, corrMatrixPearson,
+  jacobiEig, effectiveBets, pca,
 } from "./factor-interaction-study.mjs";
 import { computeSignal, rsi, macd, bb, stoch, sma, patterns, divergence, adxCalc, obvCalc, vwapCalc } from "./engine.mjs";
 
@@ -325,4 +327,78 @@ test("robustnessFor returns raw/liquid IC + sector & beta verdicts in the expect
   assert.equal(rob.name, "A");
   assert.ok("liquidIC" in rob && "sectorNeutral" in rob && "betaNeutral" in rob);
   assert.equal(rob.sectorNeutral.available, false, "no sector tags ⇒ sector-neutral unavailable, not a crash");
+});
+
+// ─── Dimensionality (angle B): unique/incremental IC + PCA effective bets ─────
+
+test("solveLinear solves a small system and returns null when singular", () => {
+  // 2x + y = 5 ; x + 3y = 10  → x=1, y=3
+  const x = solveLinear([[2, 1], [1, 3]], [5, 10]);
+  assert.ok(Math.abs(x[0] - 1) < 1e-9 && Math.abs(x[1] - 3) < 1e-9);
+  assert.equal(solveLinear([[1, 2], [2, 4]], [3, 6]), null, "singular ⇒ null");
+});
+
+test("olsResidual: residual is orthogonal to the regressors and zero for a perfect linear fit", () => {
+  // y = 2 + 3*x exactly → residuals ≈ 0.
+  const X = [[0], [1], [2], [3], [4]];
+  const y = X.map(r => 2 + 3 * r[0]);
+  const resid = olsResidual(y, X);
+  assert.ok(resid.every(e => Math.abs(e) < 1e-9), "perfect fit ⇒ ~0 residuals");
+  // With noise, residual sum ≈ 0 (intercept absorbs the mean).
+  const y2 = X.map((r, i) => 2 + 3 * r[0] + (i % 2 ? 0.5 : -0.5));
+  const r2 = olsResidual(y2, X);
+  assert.ok(Math.abs(r2.reduce((a, b) => a + b, 0)) < 1e-9);
+});
+
+test("uniqueIC: a duplicate factor has ~zero unique IC; an independent one keeps its edge", () => {
+  // Panel: A predicts forward return; B ≈ A (duplicate); C is independent noise-with-signal.
+  const panel = [];
+  for(let p = 0; p < 8; p++) for(let s = 0; s < 14; s++){
+    const a = (s / 14) - 0.5;
+    const dup = a + 1e-6 * ((s * 7 + p) % 3 - 1);          // B nearly identical to A
+    const indep = Math.sin(s * 1.3 + p);                    // C orthogonal-ish to A
+    const fwdRet = 0.6 * a + 0.5 * indep + 0.05 * ((p * 5 + s) % 7 - 3);
+    panel.push({ sym: "S" + s, period: "P" + p, fwdRet, values: { A: a, B: dup, C: indep } });
+  }
+  const u = uniqueIC(panel, ["A", "B", "C"]);
+  const uB = u.find(x => x.name === "B").uniqueIC;
+  const uC = u.find(x => x.name === "C").uniqueIC;
+  assert.ok(Math.abs(uB) < 0.15, "the duplicate's UNIQUE IC collapses toward 0 (got " + uB + ")");
+  assert.ok(Math.abs(uC) > Math.abs(uB), "the independent factor keeps more unique IC than the duplicate");
+});
+
+test("jacobiEig + effectiveBets: a 2-block correlation matrix reads ~2 effective bets", () => {
+  // Diagonal matrix → eigenvalues are the diagonal.
+  const d = jacobiEig([[3, 0], [0, 1]]);
+  assert.ok(Math.abs(d.values[0] - 3) < 1e-9 && Math.abs(d.values[1] - 1) < 1e-9, "sorted descending");
+  // Two perfectly-correlated pairs (4 vars, 2 independent blocks): eigenvalues ≈ [2,2,0,0] → PR=2.
+  const C = [
+    [1, 1, 0, 0],
+    [1, 1, 0, 0],
+    [0, 0, 1, 1],
+    [0, 0, 1, 1],
+  ];
+  const { values } = jacobiEig(C);
+  const eb = effectiveBets(values);
+  assert.ok(Math.abs(eb.participationRatio - 2) < 1e-6, "two independent blocks ⇒ ~2 effective bets (got " + eb.participationRatio + ")");
+  assert.equal(eb.kaiser, 2, "two eigenvalues > 1");
+});
+
+test("standardizeByPeriod + corrMatrixPearson + pca: redundant columns collapse the effective bets", () => {
+  // Three columns but only TWO real axes: X, a near-duplicate of X, and an independent Y.
+  const panel = [];
+  for(let p = 0; p < 8; p++) for(let s = 0; s < 12; s++){
+    const x = (s / 12) - 0.5;
+    const y = Math.cos(s * 0.9 + p);
+    panel.push({ sym: "S" + s, period: "P" + p, fwdRet: 0, values: { X: x, Xdup: x + 1e-3 * (s % 2), Y: y } });
+  }
+  const std = standardizeByPeriod(panel, ["X", "Xdup", "Y"]);
+  assert.ok(std.length > 0 && "z" in std[0]);
+  const C = corrMatrixPearson(std, ["X", "Xdup", "Y"]);
+  assert.ok(Math.abs(C[0][1] - 1) < 0.01, "X and Xdup correlate ~1");
+  const out = pca(panel, ["X", "Xdup", "Y"]);
+  assert.equal(out.available, true);
+  assert.ok(out.effectiveBets < 2.4, "3 columns but ~2 real axes ⇒ effective bets well under 3 (got " + out.effectiveBets + ")");
+  assert.equal(out.components[0].pc, 1);
+  assert.ok("loadings" in out.components[0]);
 });
