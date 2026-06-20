@@ -400,6 +400,15 @@ unit-tested, in-sample/research-only, NEVER gated):
   artifact (verdict logic refined to separate same-sign-underpowered from true sign-FLIP). **lowvol +0.148→−0.019,
   merit/healthy positive→negative = real BULL-ONLY flips.** reversal & growing are the only BEAR-positive signals.
   Honest meta-conclusion: 5y / one macro cycle can't PROVE regime durability — the OOS ledger stays the arbiter.
+- **Angle E — IC term-structure** (`buildPanel` `horizons` opt stamps 1wk/1mo/3mo/6mo/12mo fwd returns no-lookahead;
+  `termStructure` IC per horizon + Newey–West HAC t via `overlapAdjustedT`, overlap ≈ horizon/month). IC rises
+  MONOTONICALLY with horizon (momentum 0.020→0.089→0.117→0.210→0.272; lowvol/merit similar) — but that "12mo is
+  best" is a TRAP: rank-IC mechanically grows for any persistent signal (cumulative-return SNR), and 12mo overlaps
+  11 neighbors so effective n ≈ 48/12 ≈ 4 (naïve t 15 is nonsense; even HAC t 9.7 is unreliable). Decision-useful
+  reads: **NO 1-week edge in anything** (swing/multi-month only — confirms the delayed-feed charter); **1mo is the
+  clean non-overlapping column** (matches the pie); the survivors are **SLOW** (months) → belong in the POSITION
+  book, not rapid turnover; **reversal flips NEGATIVE at 6-12mo** (−0.083, momentum reasserts) → useless here. So
+  momentum-liquid should be held weeks-to-months, not days.
 
 **Net engine implication (in-sample, not a mandate):** the system effectively holds **~2 tradeable independent
 edges, not 8 — momentum-12-1 (robust to liquidity, own axis, same-sign both regimes; use ONE window) and a
