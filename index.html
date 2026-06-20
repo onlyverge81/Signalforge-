@@ -401,7 +401,7 @@ function backtestPattern(data, opts){
 // Each indicator casts a directional vote (+1 bullish / -1 bearish / 0 neutral)
 // with a reliability weight. Final signal requires confluence (3+ aligned) AND
 // a strong enough weighted score, with conflicting votes dampening the result.
-function computeSignal(ctx, extraVotes=[]) {
+function computeSignal(ctx, extraVotes=[], opts={}) {
   const {R,M,s5,s10,s20,s50,trend,S,B,last,pats,div,volSig,ADX,OBV,VWAP} = ctx;
   const votes=[];
   if(R!=null)  votes.push({n:"RSI",   dir:R<40?1:R>60?-1:0, w:2});
@@ -426,7 +426,10 @@ function computeSignal(ctx, extraVotes=[]) {
   // Used only for the SFA12 "New Logic" shadow comparison.
   if(extraVotes.length) votes.push(...extraVotes);
 
-  const active=votes.filter(v=>v.dir!==0);
+  // Shadow-engine support: drop named votes to ask "does the TEAM signal score better without this
+  // member?" (the team-minus-nuisance test). Default path (no drop) is byte-identical.
+  const used = (opts.drop && opts.drop.length) ? votes.filter(v=>!opts.drop.includes(v.n)) : votes;
+  const active=used.filter(v=>v.dir!==0);
   const bull=active.filter(v=>v.dir>0).length;
   const bear=active.filter(v=>v.dir<0).length;
   const weighted=active.reduce((a,v)=>a+v.dir*v.w,0);
@@ -467,7 +470,7 @@ function computeSignal(ctx, extraVotes=[]) {
   return {signal, score:parseFloat(net.toFixed(1)), bull, bear, conflict, confidence, trendDir, meanRevDir, famConflict, icBackedShare};
 }
 
-function analyze(data, ticker, market, strategy, slMult, tpMult) {
+function analyze(data, ticker, market, strategy, slMult, tpMult, opts={}) {
   const SLM = slMult || 1.5;
   const TPM = tpMult || 2.0;
   const closes=data.map(d=>d.close), vols=data.map(d=>d.volume);
@@ -499,6 +502,14 @@ function analyze(data, ticker, market, strategy, slMult, tpMult) {
   const score=sigResult.score;
   const signal=sigResult.signal;
   const confidence=sigResult.confidence;
+  // Shadow-engine verdicts (team-minus-nuisance): when callers pass shadowDrops, recompute the team
+  // signal with each named vote removed. Decision-only (BUY/HOLD/SELL) — the ledger compares the
+  // shadow team's trades vs the full team's. Off by default (no overhead, no app change).
+  let shadows=null;
+  if(opts.shadowDrops && opts.shadowDrops.length){
+    shadows={};
+    for(const sc of opts.shadowDrops) shadows[sc.key]=computeSignal(ctx,[],{drop:sc.drop}).signal;
+  }
 
   // SFA12 tracker (independent indicator — does NOT affect the live result above).
   const sfa12=sfa12Series(data);
@@ -531,7 +542,7 @@ function analyze(data, ticker, market, strategy, slMult, tpMult) {
     tp1:parseFloat(tp1.toFixed(4)),tp2:parseFloat(tp2.toFixed(4)),rr,
     support:parseFloat(sup.toFixed(4)),resistance:parseFloat(res.toFixed(4)),
     score,
-    sfa12, sfa12Compare, convBreakout, convBreakoutTest,
+    sfa12, sfa12Compare, convBreakout, convBreakoutTest, shadows,
     confluence:{bull:sigResult.bull,bear:sigResult.bear,conflict:sigResult.conflict,trendDir:sigResult.trendDir,meanRevDir:sigResult.meanRevDir,famConflict:sigResult.famConflict,icBackedShare:sigResult.icBackedShare},
     indicators:{
       rsi:{v:R,label:rsiLabel},
@@ -952,7 +963,7 @@ function scoreFlat(slice){
   return{score:s,signal:s>=4?"BUY":s<=-4?"SELL":"HOLD",atr:atr(slice)};
 }
 
-function scoreAt(slice) {
+function scoreAt(slice, drop=null) {
   if (slice.length < 26) return null; // need enough for MACD/SMA
   const closes = slice.map(d=>d.close), vols = slice.map(d=>d.volume);
   const last = slice[slice.length-1];
@@ -965,7 +976,8 @@ function scoreAt(slice) {
   const avgV=vols.slice(0,-3).reduce((a,b)=>a+b,0)/Math.max(vols.length-3,1);
   const recV=vols.slice(-3).reduce((a,b)=>a+b,0)/3;
   const volSig=recV>avgV*1.15?"CONFIRMING":recV<avgV*0.85?"DIVERGING":"NEUTRAL";
-  const r=computeSignal({R,M,s5,s10,s20,s50,trend,S,B,last,pats,div,volSig,ADX,OBV,VWAP});
+  // `drop` (shadow backtests): run the same team signal with named votes removed. Default null = unchanged.
+  const r=computeSignal({R,M,s5,s10,s20,s50,trend,S,B,last,pats,div,volSig,ADX,OBV,VWAP}, [], (drop&&drop.length)?{drop}:{});
   return {score:r.score, signal:r.signal, atr:atr(slice)};
 }
 
@@ -4131,6 +4143,11 @@ function App() {
                 ["votes-aligned-on","Votes aligned (engine not fighting itself)"],
                 ["ic-backed-on","IC-backed conviction (proven votes ≥⅓)"],
                 ["macd-fade-on","MACD faded (bought vs a bearish MACD)"],
+                ["shadow-noMacd","Shadow team — MACD dropped"],
+                ["shadow-noPat","Shadow team — Pattern dropped"],
+                ["shadow-noAdx","Shadow team — ADX dropped"],
+                ["shadow-noMacdPat","Shadow team — MACD+Pat dropped"],
+                ["shadow-noDead","Shadow team — MACD+Pat+ADX dropped"],
                 ["position","POSITION (dip-buy, trailing)"],
                 ["quality-position-on","POSITION · top-tertile ROE × duration"],
                 ["quality-grade-position-on","POSITION · AUTOPSY grade A/B × duration"],

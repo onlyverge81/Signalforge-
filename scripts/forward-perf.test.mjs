@@ -346,6 +346,20 @@ test("scoreLedger: macd-fade splits BUYs by whether the engine faded a bearish M
   assert.equal(perf.variants["macd-fade-on"].n + perf.variants["macd-fade-off"].n, perf.variants["all"].n - 1);
 });
 
+test("scoreLedger: shadow-team streams are scored as their own variants and kept OUT of tactical 'all'", () => {
+  const ledger = [
+    { ...closed({ id: "R1", entry: 100, exit: 105, benchClose: 103 }), tags: {} },                       // real tactical
+    { ...closed({ id: "S1", entry: 100, exit: 112, benchClose: 103 }), tags: { mode: "shadow-noMacd" } }, // shadow team
+    { ...closed({ id: "S2", entry: 100, exit: 111, benchClose: 103 }), tags: { mode: "shadow-noDead" } },
+  ];
+  const perf = scoreLedger(ledger);
+  assert.equal(perf.variants["all"].n, 1, "only the REAL tactical row is in 'all' (shadows excluded)");
+  assert.equal(perf.variants["shadow-noMacd"].n, 1, "shadow-noMacd scored as its own stream");
+  assert.equal(perf.variants["shadow-noDead"].n, 1);
+  // The shadow team beat the real team here → its alpha should read higher (the team-minus-nuisance signal).
+  assert.ok(perf.variants["shadow-noMacd"].alphaGrowthPct > perf.variants["all"].alphaGrowthPct);
+});
+
 test("scoreLedger: empty ledger is honest, not a crash", () => {
   const perf = scoreLedger([]);
   assert.equal(perf.ledger.rows, 0);

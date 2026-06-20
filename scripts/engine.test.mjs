@@ -448,3 +448,22 @@ test("computeSignal.icBackedShare = proven-vote share of the directional convict
     trend:"SIDEWAYS", volSig:"NEUTRAL" });
   assert.equal(none.icBackedShare, 0, "no Trend/Vol/BB driver ⇒ 0 proven share");
 });
+
+test("computeSignal drop: removing a named vote excludes it from the team; absent vote is a no-op", () => {
+  const base = { last:{close:100}, pats:[], div:null, ADX:null, OBV:null, VWAP:null, S:null, R:null, B:null };
+  const ctx = { ...base, M:{macd:0.5}, s5:11, s10:10, s20:21, s50:20, trend:"UPTREND", volSig:"NEUTRAL" };
+  const full = computeSignal(ctx);
+  const noMacd = computeSignal(ctx, [], { drop:["MACD"] });
+  assert.equal(full.bull - noMacd.bull, 1, "dropping the bullish MACD removes one bull vote");
+  assert.ok(full.score !== noMacd.score, "dropping a contributing vote changes the weighted score");
+  assert.equal(computeSignal(ctx, [], { drop:["NOPE"] }).score, full.score, "dropping an absent vote is a no-op");
+  assert.equal(computeSignal(ctx, []).score, full.score, "empty opts is byte-identical to the default path");
+});
+
+test("analyze shadows: shadowDrops attaches per-config team-minus-vote verdicts; off by default", () => {
+  const cfgs = [{ key:"shadow-noMacd", drop:["MACD"] }, { key:"shadow-noPat", drop:["Pat"] }];
+  const a = analyze(gen(160), "TST", "Stocks", "Trend Following", 1.5, 2.0, { shadowDrops: cfgs });
+  assert.ok(a.shadows, "shadows attached when requested");
+  for (const c of cfgs) assert.ok(["BUY","HOLD","SELL"].includes(a.shadows[c.key]), c.key + " is a decision");
+  assert.equal(analyze(gen(160), "TST", "Stocks", "Trend Following", 1.5, 2.0).shadows, null, "no opts ⇒ no shadows (zero overhead)");
+});

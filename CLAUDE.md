@@ -494,6 +494,35 @@ is confirmed BACKWARDS — evidence to flip/drop the MACD vote (never in-sample)
 neither leg. Propose-only; no engine/parity impact (reads existing analyze output). Tests +1 (261 green). EVIDENCE
 scoreboard row added. Every notable discovery from the pie now has an OOS follow-through.
 
+**Team-minus-nuisance SHADOW ENGINE (DONE) — "a vote is welcome to contribute, but not when it's a nuisance":**
+the user's framing of the pie — it exposed each vote's ROLE in the team signal; a vote earns its seat by helping
+the TEAM, not by birthright, and the honest way to revoke a welcome is to run the team WITHOUT it and let the OOS
+ledger judge (demote-fast, never an in-sample re-wire). `computeSignal` gains an additive `opts.drop` (filter votes
+by name; default path byte-identical) and `analyze` an `opts.shadowDrops` → `a.shadows` (per-config team-minus-vote
+verdict, decision-only, off by default, zero app overhead) — both mirrored byte-for-byte into `index.html` (parity
+IDENTICAL; analyze snapshot unchanged). `forward-log.mjs` `SHADOW_CONFIGS` + `buildShadowEntries` log each shadow
+team's OWN actionable-BUY stream (tag `mode:"shadow-…"`, gated identically to the real engine), marked by the SAME
+`markToMarket` as tactical; the factor overlays + `forward-perf` `tac()` exclude `shadow-*` so they never conflate
+with the real tactical `all`. `forward-perf` adds **`shadow-noMacd` / `shadow-noPat` / `shadow-noAdx` /
+`shadow-noMacdPat` / `shadow-noDead`** — each scored vs the full team's `all`: if a shadow team's alpha beats `all`
+under FDR, that vote is a net NUISANCE (evidence to demote it). The nuisance set is principled — MACD (backwards, F),
+Pat (negative/dead), ADX (~0 IC yet highest hand-weight); **RSI/Stoch/BB are deliberately NOT shadowed (angle F
+RESCUED them as mean-reversion timers).** Propose-only; never touches `gate.actionable`; the real signal is
+byte-identical. EVIDENCE scoreboard rows added. Tests +4 (265 green; engine drop/shadows, forward-log builder,
+forward-perf scoping). Matures via the nightly pipeline like every label.
+
+**Shadow BACKTEST study (DONE) — the IMMEDIATE in-sample read on the same question:** the OOS shadow streams need
+the ledger to mature; this gives the directional answer NOW. `scripts/shadow-backtest-study.mjs` (+ `.yml`
+workflow_dispatch, opt-in commit) runs the engine's OWN `runBacktest`/`scoreAt` across the survivorship-free Polygon
+universe for the FULL team and each team-minus-nuisance, comparing aggregate trade quality (win%, expectancy, pooled
+t, total P&L, mean alpha vs each name's buy-&-hold) — the REVEAL is the Δ vs full (positive Δexpectancy/Δalpha + fewer
+trades = the drop helped in-sample). `scoreAt` gained an additive `drop` arg (parity-mirrored into `index.html`); a
+closure scorer `slice=>scoreAt(slice,drop)` runs each shadow backtest through the UNCHANGED `runBacktest`. Pure
+`teamBacktestOne`/`aggregateTeam`/`revealVsFull` are unit-tested (TEAMS pins RSI/Stoch/BB are NEVER dropped). HONEST:
+IN-SAMPLE, never the verdict — the engine's technical core is a measured loser (t −12.6) so even the full team may be
+negative; the RELATIVE delta is the flashlight, the OOS `shadow-*` ledger under FDR is the arbiter. Tests +4 (269
+green).
+
 **Next — Track B:**
 - Mature the `momentum-on` / `merits-on` / `news-*` / `earnings-recent-on` OOS ledgers to n≥10; human-ratify
   only if they clear FDR. PASSIVE — the nightly `forward-log → forward-perf → promote` already partitions every

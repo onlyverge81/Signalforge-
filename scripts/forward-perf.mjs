@@ -144,7 +144,9 @@ export function defaultVariants() {
   // POSITION is a distinct philosophy with its own entry/exit, logged as its own stream
   // (tag mode:"position"). Keep it OUT of the tactical family (all/grades/merits) so the two
   // are never conflated, and judge it as its own "position" variant under the same FDR gate.
-  const tac = t => !(t.tags && t.tags.mode === "position");
+  // Tactical = the REAL engine's longs. Exclude POSITION (its own philosophy) AND the shadow-team
+  // streams (mode:"shadow-…") so neither is conflated into the tactical family; each is its own variant.
+  const tac = t => !(t.tags && (t.tags.mode === "position" || String(t.tags.mode || "").startsWith("shadow")));
   const grade = g => t => tac(t) && (t.tags && t.tags.fundamentalGrade) === g;
   return [
     { label: "all", where: tac },
@@ -226,6 +228,16 @@ export function defaultVariants() {
     //   to flip/drop the MACD vote (never in-sample). Rows with no MACD (null) fall in neither.
     { label: "macd-fade-on", where: t => tac(t) && t.tags && t.tags.macdBull === false },
     { label: "macd-fade-off", where: t => tac(t) && t.tags && t.tags.macdBull === true },
+    // SHADOW ENGINES (team-minus-nuisance): each scores the trades the TEAM took WITHOUT a suspect vote
+    // (mirrors forward-log's SHADOW_CONFIGS). The A/B is each shadow stream vs the full team's `all`: if a
+    // shadow team's alpha beats `all` under FDR, that vote is a net NUISANCE — evidence to demote it
+    // (demote-fast, never re-wired off in-sample). RSI/Stoch/BB are deliberately NOT shadowed (angle F
+    // rescued them as timing tools). Each is its own logged stream, scoped out of tactical above.
+    { label: "shadow-noMacd",    where: t => !!(t.tags && t.tags.mode === "shadow-noMacd") },
+    { label: "shadow-noPat",     where: t => !!(t.tags && t.tags.mode === "shadow-noPat") },
+    { label: "shadow-noAdx",     where: t => !!(t.tags && t.tags.mode === "shadow-noAdx") },
+    { label: "shadow-noMacdPat", where: t => !!(t.tags && t.tags.mode === "shadow-noMacdPat") },
+    { label: "shadow-noDead",    where: t => !!(t.tags && t.tags.mode === "shadow-noDead") },
     { label: "position", where: t => !!(t.tags && t.tags.mode === "position") },
     // Quality × DURATION (propose-only A/B INSIDE the position/long-hold stream): the
     // quality-duration study found high-ROE names beat the market with an edge that GROWS over
