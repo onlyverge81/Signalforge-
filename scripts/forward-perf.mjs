@@ -205,6 +205,13 @@ export function defaultVariants() {
     //   momentum restricted to names that clear the price + dollar-volume floor at the decision bar.
     { label: "momentum-liquid-on", where: t => bothTac(t, "momentumActivated", "liquid") },
     { label: "momentum-liquid-off", where: t => tac(t) && !bothTac(t, "momentumActivated", "liquid") },
+    //   votes-aligned — the SELF-CONFLICT test (research angles C+F). votesConflict is true when the
+    //   engine's mean-reversion votes (RSI/Stoch/BB) and trend votes (MACD/MA/MAlong/Trend) point
+    //   OPPOSITE ways — the engine fighting itself. This A/B asks, on live trades: does the verdict pay
+    //   more when its two camps AGREE (no internal contradiction) than when they conflict? If aligned
+    //   beats conflicted under FDR, that's the OOS evidence to act on the conflict (Step 3); never before.
+    { label: "votes-aligned-on", where: t => tac(t) && !(t.tags && t.tags.votesConflict) },
+    { label: "votes-aligned-off", where: t => tac(t) && !!(t.tags && t.tags.votesConflict) },
     { label: "position", where: t => !!(t.tags && t.tags.mode === "position") },
     // Quality × DURATION (propose-only A/B INSIDE the position/long-hold stream): the
     // quality-duration study found high-ROE names beat the market with an edge that GROWS over

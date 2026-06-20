@@ -357,6 +357,10 @@ export function buildEntry({ sym, settled, fundaDB, news = [], loggedAt = new Da
       lowVol: (v => v == null ? null : parseFloat(v.toFixed(6)))(lowVolValue(settled)),
       lowVolActivated: false,
       liquid: liquidAtBar(settled),
+      // Self-conflict label (research angles C+F): true when the engine's MEAN-REVERSION camp
+      // (RSI/Stoch/BB) and its TREND camp (MACD/MA/MAlong/Trend) point opposite ways — the engine
+      // fighting itself. Read straight off analyze's confluence (engine parity). Propose-only label.
+      votesConflict: !!(a.confluence && a.confluence.famConflict),
       quality: (q => q == null ? null : parseFloat(q.toFixed(4)))(qualityValue(fundaDB && fundaDB[sym])),
       qualityActivated: false, ...eventTags(eventsAtSignal),
       earningsRecent: earningsGate(fundaDB && fundaDB[sym], decision.date) },

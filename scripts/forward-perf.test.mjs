@@ -309,6 +309,18 @@ test("scoreLedger: momentum-liquid-on isolates top-momentum names that also clea
   assert.equal(perf.variants["momentum-liquid-on"].n + perf.variants["momentum-liquid-off"].n, perf.variants["all"].n, "on/off re-union to the tactical population");
 });
 
+test("scoreLedger: votes-aligned partitions the tactical longs by the engine's self-conflict tag", () => {
+  const ledger = [
+    { ...closed({ id: "V1", entry: 100, exit: 108, benchClose: 104 }), tags: { votesConflict: false } },  // aligned
+    { ...closed({ id: "V2", entry: 100, exit: 101, benchClose: 105 }), tags: { votesConflict: true } },    // conflicted
+    { ...closed({ id: "V3", entry: 100, exit: 110, benchClose: 103 }), tags: {} },                          // no tag ⇒ treated aligned
+  ];
+  const perf = scoreLedger(ledger);
+  assert.equal(perf.variants["votes-aligned-off"].n, 1, "only the conflicted row is off");
+  assert.equal(perf.variants["votes-aligned-on"].n, 2, "aligned + untagged are on");
+  assert.equal(perf.variants["votes-aligned-on"].n + perf.variants["votes-aligned-off"].n, perf.variants["all"].n, "on/off re-union to the tactical population");
+});
+
 test("scoreLedger: empty ledger is honest, not a crash", () => {
   const perf = scoreLedger([]);
   assert.equal(perf.ledger.rows, 0);

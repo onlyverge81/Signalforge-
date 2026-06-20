@@ -450,6 +450,20 @@ chip beside the verdict. NEVER touches `analyze`/`scoreAt`/`runBacktest`/any gat
 it tells you which of the engine's votes to TRUST, not what to do. Tests +4 (256 green); engine↔app parity verified
 byte-identical; app mounts clean. Populates on a live fetch (egress-blocked in CI; needs a key in a real browser).
 
+**Self-conflict (Headline #2) — Step 1 MEASURE (DONE), step-by-step, one at a time:** the angle-F diagnosis —
+the engine sums MEAN-REVERSION votes (RSI/Stoch/BB, oversold→buy) and TREND votes (MACD/MA/MAlong/Trend) as if
+independent, but they're conditionally valid in opposite regimes, so they fire opposite on the same bar and the
+confluence fights itself (part of the measured t −12.6). The disciplined fix is sequential: **(1) MEASURE → (2)
+SURFACE → (3) RESOLVE**, and resolve ONLY if the OOS ledger proves it. Step 1 shipped: `computeSignal` now derives
+a **family-level split** (`trendDir`, `meanRevDir`, `famConflict` = the two camps point opposite ways) beside the
+existing generic `conflict` penalty — surfaced on `analyze().confluence`, mirrored byte-for-byte into `index.html`
+(parity verified; the snapshot test is unchanged — additive only). `forward-log` tags `votesConflict` on every
+tactical row; `forward-perf` adds **`votes-aligned-on/off`** under the existing BH/BY FDR family, asking on LIVE
+trades: *does the verdict pay more when the engine is NOT fighting itself?* Propose-only — never touches
+`gate.actionable`; the family split is a LABEL, the engine's signal is byte-identical. Tests +2 (258 green; engine
++ forward-perf). Steps 2 (surface the conflict in the SIGNALS panel) and 3 (let the regime pick the lead camp) are
+DEFERRED until this OOS A/B clears FDR — no in-sample re-wire.
+
 **Next — Track B:**
 - Mature the `momentum-on` / `merits-on` / `news-*` / `earnings-recent-on` OOS ledgers to n≥10; human-ratify
   only if they clear FDR. PASSIVE — the nightly `forward-log → forward-perf → promote` already partitions every

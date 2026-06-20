@@ -389,7 +389,16 @@ export function computeSignal(ctx, extraVotes=[]) {
   const agreement=total>0?Math.max(bull,bear)/total:0;
   const confidence=Math.min(95,Math.max(35,Math.round(40+Math.abs(net)*3+agreement*15)));
 
-  return {signal, score:parseFloat(net.toFixed(1)), bull, bear, conflict, confidence};
+  // Family-level conflict (research angles C+F): the generic `conflict` above counts ANY disagreement
+  // equally, but the engine's real split is MEAN-REVERSION (RSI/Stoch/BB, oversold→buy) vs TREND
+  // (MACD/MA/MAlong/Trend). When those two camps point opposite ways the engine is fighting itself —
+  // one camp is right for the regime, the other is noise. Measured here, surfaced as a LABEL only.
+  const famDir=names=>{ const s=active.filter(v=>names.includes(v.n)).reduce((a,v)=>a+v.dir,0); return s>0?1:s<0?-1:0; };
+  const trendDir=famDir(["MACD","MA","MAlong","Trend"]);
+  const meanRevDir=famDir(["RSI","Stoch","BB"]);
+  const famConflict=trendDir!==0 && meanRevDir!==0 && trendDir!==meanRevDir;
+
+  return {signal, score:parseFloat(net.toFixed(1)), bull, bear, conflict, confidence, trendDir, meanRevDir, famConflict};
 }
 
 export function analyze(data, ticker, market, strategy, slMult, tpMult) {
@@ -450,7 +459,7 @@ export function analyze(data, ticker, market, strategy, slMult, tpMult) {
     support:parseFloat(sup.toFixed(4)),resistance:parseFloat(res.toFixed(4)),
     score,
     sfa12, sfa12Compare, convBreakout, convBreakoutTest,
-    confluence:{bull:sigResult.bull,bear:sigResult.bear,conflict:sigResult.conflict},
+    confluence:{bull:sigResult.bull,bear:sigResult.bear,conflict:sigResult.conflict,trendDir:sigResult.trendDir,meanRevDir:sigResult.meanRevDir,famConflict:sigResult.famConflict},
     indicators:{
       rsi:{v:R,label:rsiLabel},
       stoch:{v:S,label:S>75?"OVERBOUGHT":S<25?"OVERSOLD":"NEUTRAL"},

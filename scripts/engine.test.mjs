@@ -11,7 +11,7 @@
 
 import { test } from "node:test";
 import assert from "node:assert/strict";
-import { analyze, runBacktest, scoreAt, scorePosition, checkBarExit, checkBarExitFine, isAmbiguousBar, tradeNet, realizedStats, convergenceBreakout, backtestPattern, edgeStatus, avgIndexGainByDate, correctionLevels, backtestCorrection, efficiencyRatio, marketRegime } from "./engine.mjs";
+import { analyze, runBacktest, scoreAt, scorePosition, checkBarExit, checkBarExitFine, isAmbiguousBar, tradeNet, realizedStats, convergenceBreakout, backtestPattern, edgeStatus, avgIndexGainByDate, correctionLevels, backtestCorrection, efficiencyRatio, marketRegime, computeSignal } from "./engine.mjs";
 
 // ─── Helper: deterministic OHLC series (no RNG, fixed formula) ───────────────
 function gen(n){
@@ -413,4 +413,24 @@ test("marketRegime: a falling, volatile tape flags ELEVATED risk; <40 bars → n
   assert.equal(r.direction, "BEAR");
   assert.ok(r.risk && /headwind|ELEVATED/.test(r.risk));
   assert.equal(marketRegime(Array.from({ length: 20 }, () => ({ close: 100 }))), null, "too little history → null, not a guess");
+});
+
+// ─── Self-conflict family split (research angles C+F) ─────────────────────────
+
+test("computeSignal exposes the mean-reversion vs trend family split and flags famConflict", () => {
+  const base = { B:{lower:105,upper:110}, last:{close:100}, pats:[], div:null, volSig:"NEUTRAL", ADX:null, OBV:null, VWAP:null };
+  // Mean-reversion camp BUYS (oversold RSI/Stoch + close below lower band) while the TREND camp SELLS
+  // (MACD<0, fast<slow MAs, downtrend) → the engine fighting itself.
+  const conflict = computeSignal({ ...base, R:20, S:10, M:{macd:-0.5}, s5:9, s10:10, s20:19, s50:20, trend:"DOWNTREND" });
+  assert.equal(conflict.meanRevDir, 1, "RSI/Stoch oversold + below-band ⇒ mean-rev camp bullish");
+  assert.equal(conflict.trendDir, -1, "MACD<0 + falling MAs + downtrend ⇒ trend camp bearish");
+  assert.equal(conflict.famConflict, true, "opposite camps ⇒ self-conflict");
+  // Both camps AGREE (everything bullish) → no family conflict.
+  const aligned = computeSignal({ ...base, R:20, S:10, M:{macd:0.5}, s5:11, s10:10, s20:21, s50:20, trend:"UPTREND" });
+  assert.equal(aligned.meanRevDir, 1);
+  assert.equal(aligned.trendDir, 1);
+  assert.equal(aligned.famConflict, false, "same-direction camps ⇒ aligned");
+  // analyze() surfaces it on confluence (engine→app contract).
+  const a = analyze(gen(160), "TST", "Stocks", "Trend Following", 1.5, 2.0);
+  assert.ok("famConflict" in a.confluence && "trendDir" in a.confluence && "meanRevDir" in a.confluence);
 });
