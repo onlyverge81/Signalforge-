@@ -511,6 +511,18 @@ RESCUED them as mean-reversion timers).** Propose-only; never touches `gate.acti
 byte-identical. EVIDENCE scoreboard rows added. Tests +4 (265 green; engine drop/shadows, forward-log builder,
 forward-perf scoping). Matures via the nightly pipeline like every label.
 
+**Shadow BACKTEST study (DONE) — the IMMEDIATE in-sample read on the same question:** the OOS shadow streams need
+the ledger to mature; this gives the directional answer NOW. `scripts/shadow-backtest-study.mjs` (+ `.yml`
+workflow_dispatch, opt-in commit) runs the engine's OWN `runBacktest`/`scoreAt` across the survivorship-free Polygon
+universe for the FULL team and each team-minus-nuisance, comparing aggregate trade quality (win%, expectancy, pooled
+t, total P&L, mean alpha vs each name's buy-&-hold) — the REVEAL is the Δ vs full (positive Δexpectancy/Δalpha + fewer
+trades = the drop helped in-sample). `scoreAt` gained an additive `drop` arg (parity-mirrored into `index.html`); a
+closure scorer `slice=>scoreAt(slice,drop)` runs each shadow backtest through the UNCHANGED `runBacktest`. Pure
+`teamBacktestOne`/`aggregateTeam`/`revealVsFull` are unit-tested (TEAMS pins RSI/Stoch/BB are NEVER dropped). HONEST:
+IN-SAMPLE, never the verdict — the engine's technical core is a measured loser (t −12.6) so even the full team may be
+negative; the RELATIVE delta is the flashlight, the OOS `shadow-*` ledger under FDR is the arbiter. Tests +4 (269
+green).
+
 **Next — Track B:**
 - Mature the `momentum-on` / `merits-on` / `news-*` / `earnings-recent-on` OOS ledgers to n≥10; human-ratify
   only if they clear FDR. PASSIVE — the nightly `forward-log → forward-perf → promote` already partitions every

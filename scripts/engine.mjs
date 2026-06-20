@@ -576,7 +576,7 @@ export function scoreFlat(slice){
   return{score:s,signal:s>=4?"BUY":s<=-4?"SELL":"HOLD",atr:atr(slice)};
 }
 
-export function scoreAt(slice) {
+export function scoreAt(slice, drop=null) {
   if (slice.length < 26) return null;
   const closes = slice.map(d=>d.close), vols = slice.map(d=>d.volume);
   const last = slice[slice.length-1];
@@ -589,7 +589,8 @@ export function scoreAt(slice) {
   const avgV=vols.slice(0,-3).reduce((a,b)=>a+b,0)/Math.max(vols.length-3,1);
   const recV=vols.slice(-3).reduce((a,b)=>a+b,0)/3;
   const volSig=recV>avgV*1.15?"CONFIRMING":recV<avgV*0.85?"DIVERGING":"NEUTRAL";
-  const r=computeSignal({R,M,s5,s10,s20,s50,trend,S,B,last,pats,div,volSig,ADX,OBV,VWAP});
+  // `drop` (shadow backtests): run the same team signal with named votes removed. Default null = unchanged.
+  const r=computeSignal({R,M,s5,s10,s20,s50,trend,S,B,last,pats,div,volSig,ADX,OBV,VWAP}, [], (drop&&drop.length)?{drop}:{});
   return {score:r.score, signal:r.signal, atr:atr(slice)};
 }
 
