@@ -523,6 +523,18 @@ IN-SAMPLE, never the verdict — the engine's technical core is a measured loser
 negative; the RELATIVE delta is the flashlight, the OOS `shadow-*` ledger under FDR is the arbiter. Tests +4 (269
 green).
 
+**First shadow-backtest CI run (DONE, in-sample reveal) — branch `claude/signalforge-profitability-wheel-qbclby`,
+merged via PR #53:** 38/60 survivorship-free names. **Full team:** 2420 trades, win 41.8%, per-trade expectancy
+**−0.533 (t −2.76, significantly losing)**, meanAlpha vs buy-&-hold −57.7. **Dropping the nuisances helps, and they
+COMPOUND:** −MACD alone cuts 556 trades (−23%) + recovers +17pp alpha (the worst single offender — confirms angle F);
+−Pat/−ADX help less alone; **the full cleanup (−MACD−Pat−ADX) FLIPS per-trade expectancy from −0.533 to +0.206 (t
+−2.76 → +0.89), cuts trades 36% (2420→1557), and lifts win rate to 44.8%** — Δexpectancy +0.74, Δalpha +42pp. The
+strongest evidence yet that MACD/Pat/ADX are net-negative nuisances (pie diagnosed → angle F mechanised MACD → the
+in-reverse backtest shows removal flips expectancy positive + slashes churn). **HONEST BOUNDS:** in-sample (the green
+the charter says dies live); even cleaned the team's alpha is STILL −15.3 (recovered +42pp but still loses to passive
+— "a much less bad loser," not an edge); junky de-listed micro-cap universe. This STRENGTHENS THE PRIOR for demoting
+the three; the OOS `shadow-*` ledger under FDR is still the arbiter — NO in-sample re-wire.
+
 **Next — Track B:**
 - Mature the `momentum-on` / `merits-on` / `news-*` / `earnings-recent-on` OOS ledgers to n≥10; human-ratify
   only if they clear FDR. PASSIVE — the nightly `forward-log → forward-perf → promote` already partitions every
