@@ -295,6 +295,20 @@ test("bothTac: requires BOTH tactical tags; excludes position rows (interaction 
   assert.equal(bothTac({ tags: { mode: "position", momentumActivated: true, qualityActivated: true } }, "momentumActivated", "qualityActivated"), false, "position rows excluded");
 });
 
+test("scoreLedger: momentum-liquid-on isolates top-momentum names that also clear the liquidity floor", () => {
+  const ledger = [
+    // momentum AND liquid → on
+    { ...closed({ id: "L1", entry: 100, exit: 112, benchClose: 104 }), tags: { momentumActivated: true, liquid: true } },
+    // momentum but ILLIQUID → off (the artifact angle A warned about)
+    { ...closed({ id: "L2", entry: 100, exit: 130, benchClose: 105 }), tags: { momentumActivated: true, liquid: false } },
+    // not momentum → off
+    { ...closed({ id: "L3", entry: 100, exit: 101, benchClose: 106 }), tags: { momentumActivated: false, liquid: true } },
+  ];
+  const perf = scoreLedger(ledger);
+  assert.equal(perf.variants["momentum-liquid-on"].n, 1, "only the liquid momentum name is on");
+  assert.equal(perf.variants["momentum-liquid-on"].n + perf.variants["momentum-liquid-off"].n, perf.variants["all"].n, "on/off re-union to the tactical population");
+});
+
 test("scoreLedger: empty ledger is honest, not a crash", () => {
   const perf = scoreLedger([]);
   assert.equal(perf.ledger.rows, 0);

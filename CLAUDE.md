@@ -408,6 +408,14 @@ as if independent, and over-weights dead oscillators (ADX/RSI/MACD) vs the measu
 move is an OOS **momentum-12-1-on-liquid** variant judged by FDR; NO engine re-weight off in-sample alone.
 EVIDENCE pie card now shows ROBUSTNESS + DIMENSIONALITY + REGIME panels (driver-verified, zero JS errors).
 
+**momentum-12-1-on-liquid OOS variant — WIRED (DONE):** the disciplined follow-through on the A/B/C verdict —
+the one survivor gets its own propose-only OOS label. `forward-log.mjs` `liquidAtBar(candles)` (pure: decision-bar
+price ≥ $5 AND trailing-60-bar median dollar-volume ≥ $2M) stamps `tags.liquid` on every tactical row (static,
+point-in-time; never enters the gate). `forward-perf.mjs` adds `momentum-liquid-on/off` (= `bothTac(momentumActivated,
+liquid)`) under the existing BH/BY FDR family — so the scoreboard can compare momentum-on (any liquidity) vs
+momentum-liquid-on directly. Surfaced in the EVIDENCE scoreboard. Tests +2 (248 green). Matures like every label —
+only the OOS ledger through FDR counts; the 12-1 window is already what `momentumValue` uses (single window, per B).
+
 **Next — Track B:**
 - Mature the `momentum-on` / `merits-on` / `news-*` / `earnings-recent-on` OOS ledgers to n≥10; human-ratify
   only if they clear FDR. PASSIVE — the nightly `forward-log → forward-perf → promote` already partitions every

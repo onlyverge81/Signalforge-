@@ -199,6 +199,12 @@ export function defaultVariants() {
     //   reversal×low-vol — recent losers that are NOT volatile (calm mean-reversion candidates).
     { label: "rev-lowvol-on", where: t => bothTac(t, "reversalActivated", "lowVolActivated") },
     { label: "rev-lowvol-off", where: t => tac(t) && !bothTac(t, "reversalActivated", "lowVolActivated") },
+    //   momentum × LIQUID — the factor-interaction robustness probe (angle A) found momentum-12-1 is
+    //   the lone factor whose edge survives a liquidity screen (lowvol/quality were ~stale-price
+    //   micro-cap artifacts). This is the disciplined OOS test of that one survivor: top-tertile 12-1
+    //   momentum restricted to names that clear the price + dollar-volume floor at the decision bar.
+    { label: "momentum-liquid-on", where: t => bothTac(t, "momentumActivated", "liquid") },
+    { label: "momentum-liquid-off", where: t => tac(t) && !bothTac(t, "momentumActivated", "liquid") },
     { label: "position", where: t => !!(t.tags && t.tags.mode === "position") },
     // Quality × DURATION (propose-only A/B INSIDE the position/long-hold stream): the
     // quality-duration study found high-ROE names beat the market with an edge that GROWS over
