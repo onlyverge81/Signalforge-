@@ -370,6 +370,44 @@ pieces:
   sandbox can't reach Polygon and has no secret — studies run in Actions, where the repo `POLYGON_API_KEY` is
   injected automatically; the key is correct, it's a sandbox/CI location boundary, not a key problem).
 
+**Pie CI runs + the "Wheel in reverse" expert-trader probes — A/B/C robustness (DONE, MEASURED) — branch
+`claude/signalforge-profitability-wheel-qbclby`:** the workflow gained an **opt-in `commit` input** (default
+artifact-only; when true it commits `factor-interaction-study.json` to the dispatch branch — NEVER main — so
+EVIDENCE renders it same-origin). Dispatched in CI (cap 120; survivorship-free roster: 81 covered, 73 w/
+financials, ~2,792 monthly obs, 48 periods, 2022–2026). The **first real pie** put **lowvol #1** (IC 0.113,
+t 3.99), then momentum 12-1 (0.089), Vol/Trend votes (~0.07), merit/healthy (~0.05); **Pat is NEGATIVE**
+(−0.059); ADX/RSI/MACD (the engine's HIGHEST hand-weights) are ~0 → the engine's vote weights are
+**mis-calibrated vs measured IC**. Three expert-trader probes were then built into the harness (all PURE +
+unit-tested, in-sample/research-only, NEVER gated):
+- **Angle A — liquidity screen + beta/sector-neutral IC** (`liquidAt` price≥$5 & trailing-median ADV≥$2M;
+  `trailingBeta` vs SPY; `betaNeutralIC`; reuse `sectorNeutralIC`). **VERDICT:** on the 45 liquid names
+  **lowvol HALVES (0.113→0.050, t 1.2 — significance gone): ~half its pie was stale-price micro-cap artifact.**
+  **Momentum-12-1 is the lone robust survivor** (keeps ~80%, 0.071 t 1.8, neither sector nor beta). 6-1 momentum
+  collapses on liquid names → it's specifically the **12-1** window. Quality/merit survive sector/beta neutral
+  (genuine selection) but their liquid IC ≈ 0 (size-conditional). reversal/cheap = beta-driven noise.
+- **Angle B — unique/incremental IC + PCA effective bets** (`uniqueIC` residualises each selector vs all others,
+  z-scored per period + ridge — note the FIX: raw scales (mom ~1, lowvol ~0.01, fundamentals ~100) + collinear
+  fundamentals made `XtX` singular → price factors read TOO-FEW-PERIODS; standardise+ridge cured it; `pca` via
+  Jacobi eigensolver + participation-ratio). **VERDICT: 8 selectors ≈ 5.3 effective bets, ~3 economic axes**
+  (PC1 quality/low-risk = merit+healthy+lowvol; PC2 momentum; PC3 reversal/value). **merit (keeps 11%) and
+  AUTOPSY_healthy (−5%) are REDUNDANT** — the pie double-counted one quality axis as three. **The two momentum
+  windows duplicate each other** (12-1 keeps only 28% once 6-1 is in) → use ONE window. **lowvol is the one
+  statistically-independent axis (unique t 3.5)** — but A says that strength lives in illiquid names. growing is
+  weakly independent (keeps 94%).
+- **Angle C — bull/bear regime split** (`marketRegimeByDate` SPY vs 200-DMA; `regimeSplitIC`). Sample is
+  **regime-imbalanced: 38 bull vs 10 bear months**, so bear power is low. **momentum-12-1 stays SAME-SIGN
+  positive in both** (+0.099 bull / +0.048 bear) → "bull-signif, bear same-sign UNDERPOWERED" — NOT a disproven
+  artifact (verdict logic refined to separate same-sign-underpowered from true sign-FLIP). **lowvol +0.148→−0.019,
+  merit/healthy positive→negative = real BULL-ONLY flips.** reversal & growing are the only BEAR-positive signals.
+  Honest meta-conclusion: 5y / one macro cycle can't PROVE regime durability — the OOS ledger stays the arbiter.
+
+**Net engine implication (in-sample, not a mandate):** the system effectively holds **~2 tradeable independent
+edges, not 8 — momentum-12-1 (robust to liquidity, own axis, same-sign both regimes; use ONE window) and a
+size-constrained low-risk-quality axis** — while the confluence sums many correlated quality/fundamental votes
+as if independent, and over-weights dead oscillators (ADX/RSI/MACD) vs the measured IC. The disciplined next
+move is an OOS **momentum-12-1-on-liquid** variant judged by FDR; NO engine re-weight off in-sample alone.
+EVIDENCE pie card now shows ROBUSTNESS + DIMENSIONALITY + REGIME panels (driver-verified, zero JS errors).
+
 **Next — Track B:**
 - Mature the `momentum-on` / `merits-on` / `news-*` / `earnings-recent-on` OOS ledgers to n≥10; human-ratify
   only if they clear FDR. PASSIVE — the nightly `forward-log → forward-perf → promote` already partitions every
