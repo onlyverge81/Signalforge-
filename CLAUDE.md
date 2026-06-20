@@ -464,6 +464,16 @@ trades: *does the verdict pay more when the engine is NOT fighting itself?* Prop
 + forward-perf). Steps 2 (surface the conflict in the SIGNALS panel) and 3 (let the regime pick the lead camp) are
 DEFERRED until this OOS A/B clears FDR — no in-sample re-wire.
 
+**Self-conflict (Headline #2) — Step 2 SURFACE (DONE, display-only):** the SIGNALS panel now SHOWS when the engine
+is divided. When `analysis.confluence.famConflict` is true, the hero gets a compact **⚠ ENGINE DIVIDED** chip and a
+prominent advisory block spelling out the split — "Mean-reversion votes (RSI/Stoch/BB) say BUY, trend votes
+(MACD/MA/MAlong/Trend) say AVOID — the confluence is fighting itself; each camp is valid in a different regime, so
+one is noise right now." When the OUTLOOK regime is loaded it adds a **regime-aware read** ("market is RANGING →
+weight the MEAN-REVERSION camp"), tying Step 2 to the regime notifier. STRICTLY display: the verdict is byte-identical
+(famConflict is a read-out of the existing signal, never an input). App mounts clean, zero JS errors; renders on a
+live fetch (analysis needs data — egress-blocked in CI). Step 3 (regime actually PICKS the lead camp in the score)
+stays deferred until the votes-aligned OOS ledger clears FDR.
+
 **Next — Track B:**
 - Mature the `momentum-on` / `merits-on` / `news-*` / `earnings-recent-on` OOS ledgers to n≥10; human-ratify
   only if they clear FDR. PASSIVE — the nightly `forward-log → forward-perf → promote` already partitions every

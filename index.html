@@ -2686,6 +2686,9 @@ function App() {
                       const g=outlook.regime, tc=g.trend==="TRENDING"?"#26c6da":g.trend==="RANGING"?"#ffd740":"#90a4ae";
                       return <span title={"Market regime (read the room): "+g.label+".\n✓ Favored: "+g.favored+"\n⚠ Fights the room: "+g.cautioned+(g.risk?("\n⚑ "+g.risk):"")+"\nAwareness only — never changes the verdict. See OUTLOOK for detail."} style={{fontSize:9,fontWeight:700,letterSpacing:1,padding:"4px 10px",borderRadius:3,color:tc,background:tc+"1a",border:"1px solid "+tc+"44"}}>🧭 {g.label}</span>;
                     })()}
+                    {analysis.confluence&&analysis.confluence.famConflict&&(
+                      <span title={"The engine is fighting itself: its MEAN-REVERSION votes (RSI/Stoch/BB) and TREND votes (MACD/MA/MAlong/Trend) point opposite ways. They're each valid in a DIFFERENT regime, so one camp is noise right now. Display only — the verdict is unchanged. Measured OOS via the votes-aligned ledger (Headline #2)."} style={{fontSize:9,fontWeight:700,letterSpacing:1,padding:"4px 10px",borderRadius:3,color:"#ffb74d",background:"rgba(255,183,77,0.10)",border:"1px solid #ffb74d55"}}>⚠ ENGINE DIVIDED</span>
+                    )}
                     <span style={{fontSize:9,fontWeight:700,letterSpacing:1,padding:"4px 10px",borderRadius:3,color:mode==="position"?"#00bcd4":"#00e676",background:(mode==="position"?"#00bcd4":"#00e676")+"15",border:"1px solid "+(mode==="position"?"#00bcd4":"#00e676")+"44"}}>{mode==="position"?"🐢 POSITION":"⚡ TACTICAL"}</span>
                     {isIntradayRes(liveMeta?.resolution)&&(
                       <span title={"Intraday timeframe ("+(RES_LABEL[liveMeta?.resolution]||"")+"). This is a short-term read — the signal, ATR levels and indicators are scaled to "+(RES_LABEL[liveMeta?.resolution]||"")+" bars, NOT a daily swing/EOD call. The feed is 15-min delayed, so intraday entries can be stale; treat as context."} style={{fontSize:9,fontWeight:700,letterSpacing:1,padding:"4px 10px",borderRadius:3,color:"#ffb74d",background:"rgba(255,183,77,0.10)",border:"1px solid #ffb74d44"}}>⏱ INTRADAY · {RES_LABEL[liveMeta?.resolution]||liveMeta?.resolution}</span>
@@ -2704,6 +2707,25 @@ function App() {
                   </div>
                 )}
               </div>
+
+              {analysis.confluence&&analysis.confluence.famConflict&&(()=>{
+                const dirWord=d=>d>0?"BUY":d<0?"AVOID":"neutral";
+                const tDir=analysis.confluence.trendDir, mDir=analysis.confluence.meanRevDir;
+                const g=outlook&&outlook.regime;
+                // Regime-aware READ (display only): in a TRENDING market the trend camp is favored; in a
+                // RANGING one the mean-reversion camp is. Never changes the verdict — tells you which camp to weight.
+                const lead=g?(g.trend==="TRENDING"?"trend":g.trend==="RANGING"?"meanrev":null):null;
+                return (
+                  <div style={{marginTop:12,padding:"10px 12px",borderRadius:4,background:"rgba(255,183,77,0.06)",border:"1px solid rgba(255,183,77,0.30)"}}>
+                    <div style={{fontSize:10,fontWeight:700,letterSpacing:1,color:"#ffb74d",marginBottom:6}}>⚠ ENGINE DIVIDED — internal conflict</div>
+                    <div style={{fontSize:11,color:"#cfd8dc",lineHeight:1.7}}>
+                      Mean-reversion votes (RSI/Stoch/BB) say <b style={{color:mDir>0?"#00e676":"#ff8a80"}}>{dirWord(mDir)}</b>, trend votes (MACD/MA/MAlong/Trend) say <b style={{color:tDir>0?"#00e676":"#ff8a80"}}>{dirWord(tDir)}</b> — the confluence is fighting itself. Each camp is valid in a <b>different regime</b>, so one is noise right now.
+                      {lead&&g&&(<><br/><span style={{color:"#26c6da"}}>Room read:</span> the market is <b>{g.trend}</b> → weight the <b>{lead==="trend"?"TREND":"MEAN-REVERSION"}</b> camp; the other is likely chop/trend noise here.</>)}
+                    </div>
+                    <div style={{fontSize:9,color:DIM,marginTop:6}}>Display only — the verdict above is UNCHANGED. Whether resolving this conflict pays is being measured out-of-sample (votes-aligned ledger, EVIDENCE scoreboard). No in-sample re-wire. (Headline #2.)</div>
+                  </div>
+                );
+              })()}
 
               {dataAudit&&dataAudit.issues.length>0&&(
                 <div style={{marginTop:12,padding:"10px 12px",borderRadius:4,
