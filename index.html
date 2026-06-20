@@ -3952,6 +3952,29 @@ function App() {
                       </div>
                     );
                   })()}
+                  {factorPie.oscillatorTrial&&(()=>{
+                    const O=factorPie.oscillatorTrial;
+                    const col=b=>!b||b.meanExcessPct==null?"#90a4ae":(/SIGNIFICANT|SUGGESTIVE/.test(b.verdict)?(b.meanExcessPct>0?"#00e676":"#ef5350"):"#90a4ae");
+                    return (
+                      <div style={{marginTop:12,borderTop:"1px solid "+BORD,paddingTop:10}}>
+                        <span style={lbl}>🎯 FAIR OSCILLATOR TRIAL · timing tools judged on TIMING, not selection</span>
+                        <div style={{fontSize:10,color:DIM,marginBottom:6}}>
+                          The pie ranks names cross-sectionally — the wrong exam for RSI/MACD/Stoch/BB (timing tools). Here: {O.horizon}-day forward return after each BUY signal MINUS the name's own buy-&-hold, significance across names. Positive+significant = genuine timing alpha; ≈0 = dead even at its real job.
+                        </div>
+                        {["RSI","MACD","Stoch","BB"].map(o=>{
+                          const b=O[o]&&O[o].bull; if(!b) return null;
+                          return (
+                            <div key={o} style={{display:"flex",alignItems:"center",gap:8,fontSize:10,marginBottom:2,fontFamily:"monospace"}}>
+                              <span style={{width:96,color:"#cfd8dc"}}>{o}</span>
+                              <span style={{width:150,color:col(b)}}>buy-excess {b.meanExcessPct==null?"–":(b.meanExcessPct>=0?"+":"")+b.meanExcessPct+"%"} (t{b.t==null?"–":b.t.toFixed(1)})</span>
+                              <span style={{width:120,color:DIM}}>{b.nNames} names / {b.nEvents} events</span>
+                              <span style={{flex:1,color:col(b)}}>{b.verdict}</span>
+                            </div>
+                          );
+                        })}
+                      </div>
+                    );
+                  })()}
                   {factorPie.regimes&&factorPie.regimes.available&&(()=>{
                     const G=factorPie.regimes;
                     const vcol=v=>/DURABLE/.test(v)?"#00e676":/flips\/dies|REGIME-FLIP/.test(v)?"#ef5350":"#ffd740";

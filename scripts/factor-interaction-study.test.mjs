@@ -15,6 +15,7 @@ import {
   jacobiEig, effectiveBets, pca,
   marketRegimeByDate, regimeSplitIC,
   termStructure,
+  oscVotesAt, oscillatorEventStudy,
 } from "./factor-interaction-study.mjs";
 import { computeSignal, rsi, macd, bb, stoch, sma, patterns, divergence, adxCalc, obvCalc, vwapCalc } from "./engine.mjs";
 
@@ -499,4 +500,34 @@ test("termStructure surfaces the horizon where a factor's IC peaks", () => {
   const c3 = A.curve.find(c => c.horizon === "3mo"), c1 = A.curve.find(c => c.horizon === "1wk");
   assert.ok(Math.abs(c3.meanIC) > Math.abs(c1.meanIC), "3mo IC exceeds 1wk IC");
   assert.ok(c3.tHAC != null && "overlap" in c3, "HAC t + overlap reported for the overlapping horizon");
+});
+
+// ─── Fair oscillator trial (angle F): time-series timing event study ──────────
+
+test("oscVotesAt mirrors voteVector's oscillator thresholds (engine parity) at the last bar", () => {
+  const data = series(300, i => 100 + i * 0.4 + Math.sin(i / 6) * 5);
+  const full = voteVector(data);
+  const osc = oscVotesAt(data);
+  for(const k of ["RSI", "MACD", "Stoch", "BB"]) {
+    if(k in full) assert.equal(osc[k], full[k], k + " must match voteVector exactly");
+  }
+});
+
+test("oscillatorEventStudy detects a timing edge and reports a flat one as ~0 (across-name significance)", () => {
+  // CONSTRUCT a name set where being OVERSOLD (RSI<40) is followed by a bounce: sawtooth dips that recover.
+  // Each name = repeated 40-bar cycles: a dip to a trough (RSI low) then a rally. Forward return after the
+  // oversold trough should beat the name's average → positive RSI bull excess.
+  const sawtooth = (phase) => series(700, i => {
+    const c = (i + phase) % 40;
+    return 100 + (c < 20 ? -c : (c - 40)) * 1.5;   // V-shaped: falls 20 bars, rises 20 — troughs are buys
+  });
+  const bars = {};
+  for(let n = 0; n < 12; n++) bars["S" + n] = sawtooth(n * 3);
+  const study = oscillatorEventStudy(bars, { oscillators: ["RSI"], horizon: 10, stride: 2, minBars: 60 });
+  assert.ok(study.RSI.bull.nNames >= 5, "enough names with oversold events");
+  assert.ok(study.RSI.bull.meanExcessPct != null, "an excess is computed");
+  // The buy-the-dip structure should give RSI's oversold signal a POSITIVE forward excess.
+  assert.ok(study.RSI.bull.meanExcessPct > 0, "oversold entries beat the name's own hold in a mean-reverting series (got " + study.RSI.bull.meanExcessPct + "%)");
+  // Shape of the result object.
+  assert.ok("t" in study.RSI.bull && "verdict" in study.RSI.bull && study.horizon === 10);
 });

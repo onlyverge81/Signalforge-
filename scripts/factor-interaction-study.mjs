@@ -365,6 +365,64 @@ export function termStructure(panel, names, horizons){
   });
 }
 
+// ─── Fair oscillator trial (angle F): TIME-SERIES timing, not cross-sectional selection ────────
+// The pie tests every tool as a cross-sectional SELECTOR (rank names against each other). But RSI /
+// MACD / Stoch / BB are TIMING tools — they're meant to time entry WITHIN a name, not rank names. So
+// the pie gives them the wrong exam. The fair trial: at each bar, when the oscillator fires its
+// engine vote (+1 buy / −1 avoid), does the forward return beat THAT NAME's own buy-&-hold baseline?
+// Mirrors voteVector's exact thresholds (engine parity). Charter-aligned: the benchmark is the name's
+// own hold, so a positive edge is genuine timing alpha, not beta.
+export function oscVotesAt(slice){
+  if(!slice || slice.length < 2) return {};
+  const closes = slice.map(d => d.close), last = slice[slice.length - 1];
+  const R = rsi(closes), M = macd(closes), B = bb(closes), S = stoch(slice);
+  const v = {};
+  if(R != null) v.RSI = R < 40 ? 1 : R > 60 ? -1 : 0;
+  if(M)         v.MACD = M.macd > 0 ? 1 : -1;
+  if(S != null) v.Stoch = S < 25 ? 1 : S > 75 ? -1 : 0;
+  if(B)         v.BB = last.close < B.lower ? 1 : last.close > B.upper ? -1 : 0;
+  return v;
+}
+
+// Pooled within-name event study. For each name we sample bars at `stride`, compute each oscillator's
+// vote, and record the H-day forward return MINUS the name's own mean forward return (its buy-&-hold
+// baseline) — the "excess". Significance is taken ACROSS NAMES (each name's mean excess = one ~independent
+// observation), which is honest about the heavy within-name overlap. Pure.
+export function oscillatorEventStudy(barsByTicker, { oscillators = ["RSI", "MACD", "Stoch", "BB"], horizon = 21, stride = 5, minBars = MIN_BARS } = {}){
+  const mean = a => a.reduce((x, y) => x + y, 0) / a.length;
+  const perOsc = {}; for(const o of oscillators) perOsc[o] = { bull: [], bear: [], nBull: 0, nBear: 0, names: 0 };
+  for(const [, bars] of Object.entries(barsByTicker)){
+    const series = (bars || []).slice().sort((a, b) => a.t - b.t);
+    if(series.length < minBars + horizon) continue;
+    const samples = [];
+    for(let i = minBars - 1; i < series.length - horizon; i += stride){
+      const fwd = series[i + horizon].close / series[i].close - 1;
+      if(isFinite(fwd)) samples.push({ i, fwd });
+    }
+    if(samples.length < 5) continue;
+    const baseline = mean(samples.map(s => s.fwd));     // the name's own buy-&-hold over the sample
+    const ev = {}; for(const o of oscillators) ev[o] = { bull: [], bear: [] };
+    for(const { i, fwd } of samples){
+      const votes = oscVotesAt(series.slice(0, i + 1));
+      for(const o of oscillators){
+        if(votes[o] === 1) ev[o].bull.push(fwd - baseline);
+        else if(votes[o] === -1) ev[o].bear.push(fwd - baseline);
+      }
+    }
+    for(const o of oscillators){
+      if(ev[o].bull.length >= 3){ perOsc[o].bull.push(mean(ev[o].bull)); perOsc[o].nBull += ev[o].bull.length; perOsc[o].names++; }
+      if(ev[o].bear.length >= 3){ perOsc[o].bear.push(mean(ev[o].bear)); perOsc[o].nBear += ev[o].bear.length; }
+    }
+  }
+  const summarise = (arr, nEvents) => {
+    const st = assessSignificance(arr);              // mean / t / verdict across names
+    return { nNames: arr.length, nEvents, meanExcessPct: st.mean == null ? null : round(st.mean * 100), t: st.t, verdict: st.verdict };
+  };
+  const out = { horizon, stride };
+  for(const o of oscillators) out[o] = { bull: summarise(perOsc[o].bull, perOsc[o].nBull), bear: summarise(perOsc[o].bear, perOsc[o].nBear) };
+  return out;
+}
+
 // Extract the factor-agnostic observation array study-lib consumes, for one contributor.
 export function obsFor(panel, name){
   return panel.map(r => ({ sym: r.sym, period: r.period, merit: r.values[name], fwdRet: r.fwdRet }));
@@ -735,6 +793,7 @@ function caveats(survivorshipFree){
     "ROBUSTNESS (angle A): every slice is RE-MEASURED on a liquidity-screened subset (price≥$" + LIQ_MIN_PRICE + ", trailing-median $" + (LIQ_MIN_ADV/1e6) + "M ADV) and after BETA- and SECTOR-neutralisation. A slice that collapses on liquid names was a stale-price micro-cap artifact; one that dies sector/beta-neutral was a sector or market bet, not stock selection. This is the charter's 'alpha, not beta' made testable — watch lowvol especially.",
     "DIMENSIONALITY (angle B): UNIQUE IC residualises each selector against all the others (cross-sectional OLS) → its contribution AFTER redundancy; PCA's 'effective bets' (participation ratio of the eigenvalues) counts the truly independent axes. Univariate pie slices OVERSTATE breadth when factors overlap (healthy/merit ≈ 0.84) — this collapses them to the real few.",
     "TERM-STRUCTURE (angle E): each selector's rank-IC is measured at 1wk/1mo/3mo/6mo/12mo forward horizons (monthly rebalanced) to reveal the holding period where the edge is strongest. Horizons beyond 1mo OVERLAP the monthly cross-sections, inflating the naive t — a Newey–West HAC t (overlap ≈ horizon/month) is reported alongside; trust it over the naive t at 3-12mo.",
+    "OSCILLATOR TRIAL (angle F): RSI/MACD/Stoch/BB are TIMING tools, so judging them by cross-sectional IC (the pie) is the wrong exam. This is the fair test — a within-name event study measuring the forward return after each buy/avoid signal MINUS that name's own buy-&-hold; significance is taken across names (each name ≈ one observation) to respect the heavy within-name overlap. Mirrors voteVector's exact thresholds (engine parity). A ~0 excess confirms the technical core is a measured loser even at its real job; a positive one would be genuine timing alpha.",
     "REGIME SPLIT (angle C): each selector's IC is re-measured in BULL vs BEAR months (SPY vs its 200-DMA, point-in-time). A DURABLE edge holds the same sign in both regimes; a BULL-ONLY edge is a trend artifact that won't survive a market turn. All ~5y of history sits in one macro cycle, so the split has limited power — read it as a direction, not a proof.",
     "IN-SAMPLE only — an attractive pie is 'looks good in-sample,' NOT proven. The technical confluence is a measured in-sample loser (baseline t ≈ −12.6); thin/negative vote slices are the honest finding. Only the OOS ledger under FDR is tradeable evidence.",
   ];
@@ -848,6 +907,9 @@ async function main(){
   // ─── IC TERM-STRUCTURE (angle E): at which holding horizon is each selector's edge strongest? ──
   const termStructureBlock = { horizons: HORIZONS, perContributor: termStructure(panel, [...FACTOR_NAMES, ...FUNDA], HORIZONS) };
 
+  // ─── FAIR OSCILLATOR TRIAL (angle F): time-series TIMING test (not cross-sectional selection) ──
+  const oscillatorTrial = oscillatorEventStudy(barsByTicker);
+
   // ─── REGIME SPLIT (angle C): is each selector's edge durable across bull/bear markets? ─────────
   let regimes = { available: false };
   if(market){
@@ -874,6 +936,7 @@ async function main(){
     robustness,
     dimensionality,
     termStructure: termStructureBlock,
+    oscillatorTrial,
     regimes,
     caveats: caveats(survivorshipFree),
   };
@@ -941,6 +1004,16 @@ async function main(){
     console.log("  " + ts.name.padEnd(15) + cells + "   " + (ts.bestHorizon || "–").padEnd(5) + " (tHAC " + (bc && bc.tHAC != null ? bc.tHAC : "–") + ")");
   }
   console.log("  ↳ momentum should PEAK at its native horizon and DECAY; tHAC deflates the overlap at long horizons. Naive t at 3-12mo is inflated by overlapping windows.");
+
+  console.log("\n════ FAIR OSCILLATOR TRIAL (angle F): time-series TIMING vs the name's own buy-&-hold ════");
+  console.log("  " + oscillatorTrial.horizon + "-day forward, stride " + oscillatorTrial.stride + ", excess = signal-bar fwd return − the name's mean fwd return");
+  for(const o of ["RSI", "MACD", "Stoch", "BB"]){
+    const b = oscillatorTrial[o] && oscillatorTrial[o].bull;
+    if(!b) continue;
+    console.log("    " + o.padEnd(6) + " BUY-signal excess: " + (b.meanExcessPct == null ? "n/a" : (b.meanExcessPct >= 0 ? "+" : "") + b.meanExcessPct + "%") +
+      " (t " + (b.t == null ? "–" : b.t.toFixed(1)) + ", " + b.nNames + " names / " + b.nEvents + " events) " + b.verdict);
+  }
+  console.log("  ↳ a POSITIVE significant excess = the oscillator times entries that beat the name's own hold (genuine timing alpha); ≈0 = the pie was right, it's dead even at its real job.");
 
   if(regimes.available){
     console.log("\n════ REGIME SPLIT (angle C): bull vs bear-market IC (SPY vs 200-DMA) ════");
