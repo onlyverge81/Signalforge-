@@ -11,7 +11,7 @@
 
 import { test } from "node:test";
 import assert from "node:assert/strict";
-import { analyze, runBacktest, scoreAt, scorePosition, checkBarExit, checkBarExitFine, isAmbiguousBar, tradeNet, realizedStats, convergenceBreakout, backtestPattern, edgeStatus, avgIndexGainByDate, correctionLevels, backtestCorrection } from "./engine.mjs";
+import { analyze, runBacktest, scoreAt, scorePosition, checkBarExit, checkBarExitFine, isAmbiguousBar, tradeNet, realizedStats, convergenceBreakout, backtestPattern, edgeStatus, avgIndexGainByDate, correctionLevels, backtestCorrection, efficiencyRatio, marketRegime } from "./engine.mjs";
 
 // ─── Helper: deterministic OHLC series (no RNG, fixed formula) ───────────────
 function gen(n){
@@ -379,4 +379,38 @@ test("backtestCorrection: returns null without enough bars, and never trades on 
   assert.ok(r, "empty map still returns a (descriptive) result");
   assert.equal(r.trades, 0);
   assert.equal(r.proven, false);
+});
+
+// ─── Market-regime notifier ("read the room") ────────────────────────────────
+
+test("efficiencyRatio: a straight-line trend ≈ 1, a round-trip chop ≈ 0", () => {
+  const up = Array.from({ length: 30 }, (_, i) => 100 + i);           // monotonic
+  assert.ok(efficiencyRatio(up, 21) > 0.99, "clean trend → ER ~1");
+  const chop = Array.from({ length: 30 }, (_, i) => 100 + (i % 2));    // up-down-up-down, no net move
+  assert.ok(efficiencyRatio(chop, 21) < 0.1, "pure chop → ER ~0");
+  assert.equal(efficiencyRatio([1, 2, 3], 21), null, "too few bars → null");
+});
+
+test("marketRegime: a rising trend reads BULL · TRENDING and favors trend-following", () => {
+  const bars = Array.from({ length: 220 }, (_, i) => ({ close: 100 * Math.pow(1.004, i) }));  // steady climb
+  const r = marketRegime(bars);
+  assert.equal(r.direction, "BULL");
+  assert.equal(r.trend, "TRENDING");
+  assert.match(r.favored, /Trend-following/);
+  assert.match(r.label, /BULL/);
+});
+
+test("marketRegime: a choppy, flat market reads RANGING and favors mean-reversion", () => {
+  const bars = Array.from({ length: 220 }, (_, i) => ({ close: 100 + Math.sin(i / 2) * 3 }));  // oscillating, no trend
+  const r = marketRegime(bars);
+  assert.equal(r.trend, "RANGING");
+  assert.match(r.favored, /Mean-reversion/);
+});
+
+test("marketRegime: a falling, volatile tape flags ELEVATED risk; <40 bars → null (honest)", () => {
+  const bars = Array.from({ length: 220 }, (_, i) => ({ close: 200 - i * 0.5 + (i > 180 ? Math.sin(i) * 8 : 0) }));
+  const r = marketRegime(bars);
+  assert.equal(r.direction, "BEAR");
+  assert.ok(r.risk && /headwind|ELEVATED/.test(r.risk));
+  assert.equal(marketRegime(Array.from({ length: 20 }, () => ({ close: 100 }))), null, "too little history → null, not a guess");
 });

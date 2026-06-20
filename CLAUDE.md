@@ -436,6 +436,20 @@ liquid)`) under the existing BH/BY FDR family — so the scoreboard can compare 
 momentum-liquid-on directly. Surfaced in the EVIDENCE scoreboard. Tests +2 (248 green). Matures like every label —
 only the OOS ledger through FDR counts; the 12-1 window is already what `momentumValue` uses (single window, per B).
 
+**Market-regime notifier ("read the room") — DONE (display-only, awareness not a gate):** the user's framing of the
+angle-C+F diagnosis — the engine's votes are CONDITIONALLY valid (trend-following in TRENDING markets, mean-reversion
+in RANGING ones) and the regime-blind confluence fires them all at once, fighting itself. The honest fix is NOT a
+secret regime gate (that would overfit one 2022–2026 cycle) but to SURFACE the regime so the human applies the right
+toolkit. `marketRegime(bars)` (pure, in `engine.mjs`, mirrored byte-for-byte into `index.html`): close-only so it
+works on any index proxy — **direction** (BULL/BEAR vs proxy 200-DMA), **trend** via Kaufman `efficiencyRatio`
+(|net move|/Σ|bar move|: TRENDING ≥0.45 / RANGING <0.25 / TRANSITIONAL), **vol** (21d realized vs 126d baseline:
+CALM/NORMAL/STORMY) → a `{label, favored, cautioned, risk}` read mapping the room to the toolkit. `buildOutlook`
+attaches `regime` from the primary index proxy (SPY); the OUTLOOK tab leads with a bold **🧭 MARKET REGIME** card
+(favored vs "fights the room" + an ELEVATED-risk flag in bear+stormy) and the SIGNALS hero shows a compact regime
+chip beside the verdict. NEVER touches `analyze`/`scoreAt`/`runBacktest`/any gate (parity-safe; verdict unchanged) —
+it tells you which of the engine's votes to TRUST, not what to do. Tests +4 (256 green); engine↔app parity verified
+byte-identical; app mounts clean. Populates on a live fetch (egress-blocked in CI; needs a key in a real browser).
+
 **Next — Track B:**
 - Mature the `momentum-on` / `merits-on` / `news-*` / `earnings-recent-on` OOS ledgers to n≥10; human-ratify
   only if they clear FDR. PASSIVE — the nightly `forward-log → forward-perf → promote` already partitions every

@@ -157,6 +157,45 @@ export function adxCalc(data,n=14){
   const pdi=100*pS[li]/(trS[li]||1),mdi=100*mS[li]/(trS[li]||1);
   return{adx:+adx.toFixed(1),plusDI:+pdi.toFixed(1),minusDI:+mdi.toFixed(1)};
 }
+// ─── Market-regime notifier ("read the room") ────────────────────────────────
+// Awareness, NOT a gate: classify the broad-market environment from a daily index series so the human
+// knows which toolkit fits. Research (factor-interaction angles C+F) showed the engine's votes are
+// CONDITIONALLY valid — trend-following works in TRENDING markets, mean-reversion in RANGING ones — and
+// the regime-blind confluence fires them all at once, fighting itself. This surfaces the regime so the
+// verdict can be weighted by it. Close-only (works on any index proxy, incl. close-only feeds).
+// Kaufman efficiency ratio = |net move| / Σ|bar-to-bar move| over n bars: ~1 = clean trend, ~0 = chop.
+export function efficiencyRatio(closes,n=21){
+  if(!closes||closes.length<n+1) return null;
+  const seg=closes.slice(-(n+1));
+  const net=Math.abs(seg[seg.length-1]-seg[0]);
+  let path=0; for(let i=1;i<seg.length;i++) path+=Math.abs(seg[i]-seg[i-1]);
+  return path>0?net/path:0;
+}
+export function marketRegime(bars){
+  const closes=(bars||[]).map(b=>b&&b.close).filter(c=>c>0);
+  if(closes.length<40) return null;                                // need enough for a vol baseline
+  const last=closes[closes.length-1];
+  const win=Math.min(200,closes.length);
+  const ma=closes.slice(-win).reduce((a,b)=>a+b,0)/win;           // proxy 200-DMA (shorter if data is)
+  const approxMA=win<200;
+  const direction=last>ma*1.01?"BULL":last<ma*0.99?"BEAR":"NEUTRAL";
+  const er=efficiencyRatio(closes,21);
+  const trend=er==null?"UNKNOWN":er>=0.45?"TRENDING":er<0.25?"RANGING":"TRANSITIONAL";
+  const rets=[]; for(let i=1;i<closes.length;i++) rets.push(closes[i]/closes[i-1]-1);
+  const stdev=a=>{ if(a.length<2) return null; const m=a.reduce((x,y)=>x+y,0)/a.length; return Math.sqrt(a.reduce((x,y)=>x+(y-m)**2,0)/a.length); };
+  const recentVol=stdev(rets.slice(-21)), baseVol=stdev(rets.slice(-126));
+  const vol=(recentVol==null||baseVol==null||baseVol===0)?"UNKNOWN"
+    :recentVol>baseVol*1.35?"STORMY":recentVol<baseVol*0.75?"CALM":"NORMAL";
+  let favored,cautioned;
+  if(trend==="TRENDING"){ favored="Trend-following — momentum & breakouts (MA / MACD-up) are reliable here"; cautioned="Mean-reversion: 'buy the dip' fights the tape — oversold can keep falling"; }
+  else if(trend==="RANGING"){ favored="Mean-reversion — oversold bounces (RSI / Stoch / BB) are favored"; cautioned="Breakouts: likely bull-traps; trend votes misfire in chop"; }
+  else { favored="Transitional / mixed — demand stronger multi-signal confluence before acting"; cautioned="Single-signal conviction is risky until the regime resolves"; }
+  const risk=(direction==="BEAR"&&vol==="STORMY")?"ELEVATED — bear + high volatility: reduce size. A regime-blind signal fails hardest here."
+    :(vol==="STORMY")?"Volatility is elevated vs its 6-month norm — widen stops or trim size."
+    :(direction==="BEAR")?"Bear trend — long signals face a market headwind.":null;
+  const label=[direction!=="NEUTRAL"?direction:null,trend!=="UNKNOWN"?trend:null].filter(Boolean).join(" · ")||"INDETERMINATE";
+  return { direction, trend, vol, er:er==null?null:+er.toFixed(2), approxMA, favored, cautioned, risk, label };
+}
 export function obvCalc(data){
   if(data.length<16)return null;
   let obv=0;const series=[0];

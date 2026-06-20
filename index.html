@@ -625,7 +625,47 @@ function buildOutlook(stock, trend, idx, opts){
              perIndex:proxies.map(([s,label])=>({sym:s,label,...(liveMoves[s]||{})}))};
     }
   }
-  return {markets,combined,gainsPct,price,delta,mag,up,down,active,trend,correctionPrice,backtest,fresh};
+  // Structural market-regime read (which toolkit fits the room) — from the primary index proxy's
+  // daily bars. Awareness only; it does not touch the projection above or any signal/gate.
+  const regime=marketRegime(idx["SPY"]||idx[syms[0]]);
+  return {markets,combined,gainsPct,price,delta,mag,up,down,active,trend,correctionPrice,backtest,fresh,regime};
+}
+
+// Market-regime notifier — MIRRORS scripts/engine.mjs byte-for-byte (parity). Awareness, NOT a gate:
+// classify the broad market so the human applies the right toolkit (trend-following in TRENDING markets,
+// mean-reversion in RANGING ones — the engine's votes are conditionally valid, per research angles C+F).
+// Kaufman efficiency ratio = |net move| / Σ|bar-to-bar move|: ~1 = clean trend, ~0 = chop. Close-only.
+function efficiencyRatio(closes,n=21){
+  if(!closes||closes.length<n+1) return null;
+  const seg=closes.slice(-(n+1));
+  const net=Math.abs(seg[seg.length-1]-seg[0]);
+  let path=0; for(let i=1;i<seg.length;i++) path+=Math.abs(seg[i]-seg[i-1]);
+  return path>0?net/path:0;
+}
+function marketRegime(bars){
+  const closes=(bars||[]).map(b=>b&&b.close).filter(c=>c>0);
+  if(closes.length<40) return null;                                // need enough for a vol baseline
+  const last=closes[closes.length-1];
+  const win=Math.min(200,closes.length);
+  const ma=closes.slice(-win).reduce((a,b)=>a+b,0)/win;           // proxy 200-DMA (shorter if data is)
+  const approxMA=win<200;
+  const direction=last>ma*1.01?"BULL":last<ma*0.99?"BEAR":"NEUTRAL";
+  const er=efficiencyRatio(closes,21);
+  const trend=er==null?"UNKNOWN":er>=0.45?"TRENDING":er<0.25?"RANGING":"TRANSITIONAL";
+  const rets=[]; for(let i=1;i<closes.length;i++) rets.push(closes[i]/closes[i-1]-1);
+  const stdev=a=>{ if(a.length<2) return null; const m=a.reduce((x,y)=>x+y,0)/a.length; return Math.sqrt(a.reduce((x,y)=>x+(y-m)**2,0)/a.length); };
+  const recentVol=stdev(rets.slice(-21)), baseVol=stdev(rets.slice(-126));
+  const vol=(recentVol==null||baseVol==null||baseVol===0)?"UNKNOWN"
+    :recentVol>baseVol*1.35?"STORMY":recentVol<baseVol*0.75?"CALM":"NORMAL";
+  let favored,cautioned;
+  if(trend==="TRENDING"){ favored="Trend-following — momentum & breakouts (MA / MACD-up) are reliable here"; cautioned="Mean-reversion: 'buy the dip' fights the tape — oversold can keep falling"; }
+  else if(trend==="RANGING"){ favored="Mean-reversion — oversold bounces (RSI / Stoch / BB) are favored"; cautioned="Breakouts: likely bull-traps; trend votes misfire in chop"; }
+  else { favored="Transitional / mixed — demand stronger multi-signal confluence before acting"; cautioned="Single-signal conviction is risky until the regime resolves"; }
+  const risk=(direction==="BEAR"&&vol==="STORMY")?"ELEVATED — bear + high volatility: reduce size. A regime-blind signal fails hardest here."
+    :(vol==="STORMY")?"Volatility is elevated vs its 6-month norm — widen stops or trim size."
+    :(direction==="BEAR")?"Bear trend — long signals face a market headwind.":null;
+  const label=[direction!=="NEUTRAL"?direction:null,trend!=="UNKNOWN"?trend:null].filter(Boolean).join(" · ")||"INDETERMINATE";
+  return { direction, trend, vol, er:er==null?null:+er.toFixed(2), approxMA, favored, cautioned, risk, label };
 }
 
 // ─── Phase-3 macro regime — condition conviction on the market, when earned ───
@@ -2633,6 +2673,10 @@ function App() {
                       const rc=!macro.proven?"#90a4ae":macro.regime==="RISK-ON"?"#00e676":macro.regime==="RISK-OFF"?"#ff8a80":"#ffd740";
                       return <span title={macro.note} style={{fontSize:9,fontWeight:700,letterSpacing:1,padding:"4px 10px",borderRadius:3,color:rc,background:rc+"1a",border:"1px solid "+rc+"44"}}>🌐 {macro.regime}{macro.proven?"":" · CONTEXT"}</span>;
                     })()}
+                    {outlook&&outlook.regime&&(()=>{
+                      const g=outlook.regime, tc=g.trend==="TRENDING"?"#26c6da":g.trend==="RANGING"?"#ffd740":"#90a4ae";
+                      return <span title={"Market regime (read the room): "+g.label+".\n✓ Favored: "+g.favored+"\n⚠ Fights the room: "+g.cautioned+(g.risk?("\n⚑ "+g.risk):"")+"\nAwareness only — never changes the verdict. See OUTLOOK for detail."} style={{fontSize:9,fontWeight:700,letterSpacing:1,padding:"4px 10px",borderRadius:3,color:tc,background:tc+"1a",border:"1px solid "+tc+"44"}}>🧭 {g.label}</span>;
+                    })()}
                     <span style={{fontSize:9,fontWeight:700,letterSpacing:1,padding:"4px 10px",borderRadius:3,color:mode==="position"?"#00bcd4":"#00e676",background:(mode==="position"?"#00bcd4":"#00e676")+"15",border:"1px solid "+(mode==="position"?"#00bcd4":"#00e676")+"44"}}>{mode==="position"?"🐢 POSITION":"⚡ TACTICAL"}</span>
                     {isIntradayRes(liveMeta?.resolution)&&(
                       <span title={"Intraday timeframe ("+(RES_LABEL[liveMeta?.resolution]||"")+"). This is a short-term read — the signal, ATR levels and indicators are scaled to "+(RES_LABEL[liveMeta?.resolution]||"")+" bars, NOT a daily swing/EOD call. The feed is 15-min delayed, so intraday entries can be stale; treat as context."} style={{fontSize:9,fontWeight:700,letterSpacing:1,padding:"4px 10px",borderRadius:3,color:"#ffb74d",background:"rgba(255,183,77,0.10)",border:"1px solid #ffb74d44"}}>⏱ INTRADAY · {RES_LABEL[liveMeta?.resolution]||liveMeta?.resolution}</span>
@@ -2926,6 +2970,30 @@ function App() {
               const stale=!!(o.fresh&&(o.fresh.band==="CLOSED"||o.fresh.band==="STALE")), STMUT="#90a4ae";
               return(
                 <>
+                  {o.regime&&(()=>{
+                    const g=o.regime;
+                    const dCol=g.direction==="BULL"?"#00e676":g.direction==="BEAR"?"#ff5252":"#90a4ae";
+                    const tCol=g.trend==="TRENDING"?"#26c6da":g.trend==="RANGING"?"#ffd740":"#90a4ae";
+                    const vCol=g.vol==="STORMY"?"#ff5252":g.vol==="CALM"?"#00e676":"#90a4ae";
+                    return (
+                      <div style={{...card,borderLeft:"3px solid "+tCol}}>
+                        <span style={lbl}>🧭 MARKET REGIME · read the room before you pick the tool</span>
+                        <div style={{display:"flex",gap:8,flexWrap:"wrap",alignItems:"center",marginBottom:10}}>
+                          <span style={{fontSize:20,fontWeight:800,letterSpacing:1,color:tCol}}>{g.label}</span>
+                          <span style={{padding:"2px 8px",borderRadius:4,border:"1px solid "+dCol,color:dCol,fontSize:11,fontWeight:700}}>{g.direction}</span>
+                          <span style={{padding:"2px 8px",borderRadius:4,border:"1px solid "+tCol,color:tCol,fontSize:11,fontWeight:700}}>{g.trend}{g.er!=null?(" · ER "+g.er):""}</span>
+                          <span style={{padding:"2px 8px",borderRadius:4,border:"1px solid "+vCol,color:vCol,fontSize:11,fontWeight:700}}>{g.vol} VOL</span>
+                          {g.approxMA&&<span style={{fontSize:9,color:FADE}}>(trend MA approx — &lt;200 bars)</span>}
+                        </div>
+                        <div style={{fontSize:12,color:"#cfd8dc",lineHeight:1.7}}>
+                          <span style={{color:"#00e676"}}>✓ Favored here:</span> {g.favored}<br/>
+                          <span style={{color:"#ff8a80"}}>⚠ Fights the room:</span> {g.cautioned}
+                        </div>
+                        {g.risk&&<div style={{marginTop:8,fontSize:11,color:g.risk.startsWith("ELEVATED")?"#ff5252":"#ffd740",fontWeight:600}}>⚑ {g.risk}</div>}
+                        <div style={{fontSize:9,color:DIM,marginTop:8}}>Awareness only — this never changes the SIGNALS verdict. It tells you which of the engine's votes to TRUST: the confluence fires trend AND mean-reversion votes at once, so in the wrong regime half of them are noise. (Diagnosis: factor-interaction angles C + F.)</div>
+                      </div>
+                    );
+                  })()}
                   <div style={card}>
                     <span style={lbl}>◎ MARKET CORRECTION PERIOD PRICE</span>
                     <div style={{fontSize:11,color:DIM,lineHeight:1.6,marginBottom:14}}>
