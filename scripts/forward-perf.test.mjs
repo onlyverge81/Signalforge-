@@ -321,6 +321,18 @@ test("scoreLedger: votes-aligned partitions the tactical longs by the engine's s
   assert.equal(perf.variants["votes-aligned-on"].n + perf.variants["votes-aligned-off"].n, perf.variants["all"].n, "on/off re-union to the tactical population");
 });
 
+test("scoreLedger: ic-backed partitions BUYs by whether proven votes carry ≥⅓ of the conviction", () => {
+  const ledger = [
+    { ...closed({ id: "I1", entry: 100, exit: 109, benchClose: 104 }), tags: { icBackedShare: 0.5 } },   // proven-driven
+    { ...closed({ id: "I2", entry: 100, exit: 101, benchClose: 105 }), tags: { icBackedShare: 0.1 } },   // dead-vote-driven
+    { ...closed({ id: "I3", entry: 100, exit: 110, benchClose: 103 }), tags: { icBackedShare: 0.33 } },  // boundary ⇒ on
+  ];
+  const perf = scoreLedger(ledger);
+  assert.equal(perf.variants["ic-backed-on"].n, 2, "share ≥ 0.33 ⇒ on (incl. boundary)");
+  assert.equal(perf.variants["ic-backed-off"].n, 1, "share < 0.33 ⇒ off");
+  assert.equal(perf.variants["ic-backed-on"].n + perf.variants["ic-backed-off"].n, perf.variants["all"].n);
+});
+
 test("scoreLedger: empty ledger is honest, not a crash", () => {
   const perf = scoreLedger([]);
   assert.equal(perf.ledger.rows, 0);

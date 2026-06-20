@@ -212,6 +212,13 @@ export function defaultVariants() {
     //   beats conflicted under FDR, that's the OOS evidence to act on the conflict (Step 3); never before.
     { label: "votes-aligned-on", where: t => tac(t) && !(t.tags && t.tags.votesConflict) },
     { label: "votes-aligned-off", where: t => tac(t) && !!(t.tags && t.tags.votesConflict) },
+    //   ic-backed — the VOTE-WEIGHT MIS-CALIBRATION test (factor-interaction pie). icBackedShare is the
+    //   fraction of a BUY's weighted conviction coming from the PROVEN votes (Trend/Vol/BB) vs the
+    //   over-weighted empirically-dead ones (ADX/RSI/MACD/Pat). on = the proven votes carry ≥ a third of
+    //   the case. The A/B: do BUYs the data trusts beat BUYs propped up by the mis-weighted dead votes?
+    //   If on > off under FDR, the hand weights are mis-calibrated — evidence to re-weight (never in-sample).
+    { label: "ic-backed-on", where: t => tac(t) && t.tags && t.tags.icBackedShare != null && t.tags.icBackedShare >= 0.33 },
+    { label: "ic-backed-off", where: t => tac(t) && t.tags && t.tags.icBackedShare != null && t.tags.icBackedShare < 0.33 },
     { label: "position", where: t => !!(t.tags && t.tags.mode === "position") },
     // Quality × DURATION (propose-only A/B INSIDE the position/long-hold stream): the
     // quality-duration study found high-ROE names beat the market with an edge that GROWS over

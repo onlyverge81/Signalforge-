@@ -453,7 +453,18 @@ function computeSignal(ctx, extraVotes=[]) {
   const meanRevDir=famDir(["RSI","Stoch","BB"]);
   const famConflict=trendDir!==0 && meanRevDir!==0 && trendDir!==meanRevDir;
 
-  return {signal, score:parseFloat(net.toFixed(1)), bull, bear, conflict, confidence, trendDir, meanRevDir, famConflict};
+  // Vote-weight mis-calibration test (factor-interaction pie): the engine's HAND weights over-weight
+  // empirically-dead votes (ADX is weighted 3 but measured IC ≈ 0; RSI/MACD/Pat ≈ 0/negative) and
+  // under-weight proven ones (Vol IC 0.074 at weight 1; Trend significant). icBackedShare = of the
+  // weighted conviction pushing THIS signal's way, the fraction coming from the PROVEN votes. Low share
+  // ⇒ the call rests on the over-weighted dead votes. A LABEL only (tests OOS whether that costs money).
+  const IC_PROVEN_VOTES=["Trend","Vol","BB"];
+  const sd=net>0?1:net<0?-1:0;
+  let drvW=0, provW=0;
+  for(const v of active){ if(sd!==0 && Math.sign(v.dir)===sd){ drvW+=v.w; if(IC_PROVEN_VOTES.includes(v.n)) provW+=v.w; } }
+  const icBackedShare=drvW>0?parseFloat((provW/drvW).toFixed(3)):0;
+
+  return {signal, score:parseFloat(net.toFixed(1)), bull, bear, conflict, confidence, trendDir, meanRevDir, famConflict, icBackedShare};
 }
 
 function analyze(data, ticker, market, strategy, slMult, tpMult) {
@@ -521,7 +532,7 @@ function analyze(data, ticker, market, strategy, slMult, tpMult) {
     support:parseFloat(sup.toFixed(4)),resistance:parseFloat(res.toFixed(4)),
     score,
     sfa12, sfa12Compare, convBreakout, convBreakoutTest,
-    confluence:{bull:sigResult.bull,bear:sigResult.bear,conflict:sigResult.conflict,trendDir:sigResult.trendDir,meanRevDir:sigResult.meanRevDir,famConflict:sigResult.famConflict},
+    confluence:{bull:sigResult.bull,bear:sigResult.bear,conflict:sigResult.conflict,trendDir:sigResult.trendDir,meanRevDir:sigResult.meanRevDir,famConflict:sigResult.famConflict,icBackedShare:sigResult.icBackedShare},
     indicators:{
       rsi:{v:R,label:rsiLabel},
       stoch:{v:S,label:S>75?"OVERBOUGHT":S<25?"OVERSOLD":"NEUTRAL"},
@@ -4118,6 +4129,7 @@ function App() {
                 ["rev-lowvol-on","Reversal × low-vol (both top-tertile)"],
                 ["momentum-liquid-on","Momentum × liquid (the robust survivor)"],
                 ["votes-aligned-on","Votes aligned (engine not fighting itself)"],
+                ["ic-backed-on","IC-backed conviction (proven votes ≥⅓)"],
                 ["position","POSITION (dip-buy, trailing)"],
                 ["quality-position-on","POSITION · top-tertile ROE × duration"],
                 ["quality-grade-position-on","POSITION · AUTOPSY grade A/B × duration"],

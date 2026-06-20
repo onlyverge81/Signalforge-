@@ -434,3 +434,17 @@ test("computeSignal exposes the mean-reversion vs trend family split and flags f
   const a = analyze(gen(160), "TST", "Stocks", "Trend Following", 1.5, 2.0);
   assert.ok("famConflict" in a.confluence && "trendDir" in a.confluence && "meanRevDir" in a.confluence);
 });
+
+test("computeSignal.icBackedShare = proven-vote share of the directional conviction (vote-weight test)", () => {
+  const base = { last:{close:100}, pats:[], div:null, ADX:null, OBV:null, VWAP:null };
+  // All-bullish: Trend (proven, w2) + Vol (proven, w1) vs MACD (dead, w2.5) → proven share = 3/5.5.
+  const s = computeSignal({ ...base, R:null, S:null, M:{macd:0.5}, B:null, s5:11, s10:10, s20:21, s50:20,
+    trend:"UPTREND", volSig:"CONFIRMING" });
+  // Bullish drivers here: MACD(2.5), MA(1.5), MAlong(2), Trend(2), Vol(1) → proven = Trend+Vol = 3 of 9.
+  assert.ok(s.icBackedShare > 0 && s.icBackedShare < 1, "share is a fraction, got " + s.icBackedShare);
+  assert.ok(Math.abs(s.icBackedShare - (3 / 9)) < 1e-3, "Trend+Vol weight / total bullish driver weight (3 of 9, 3dp)");
+  // No proven votes firing the signal's way → share 0.
+  const none = computeSignal({ ...base, R:null, S:null, M:{macd:0.5}, B:null, s5:11, s10:10, s20:21, s50:20,
+    trend:"SIDEWAYS", volSig:"NEUTRAL" });
+  assert.equal(none.icBackedShare, 0, "no Trend/Vol/BB driver ⇒ 0 proven share");
+});

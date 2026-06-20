@@ -474,6 +474,17 @@ weight the MEAN-REVERSION camp"), tying Step 2 to the regime notifier. STRICTLY 
 live fetch (analysis needs data — egress-blocked in CI). Step 3 (regime actually PICKS the lead camp in the score)
 stays deferred until the votes-aligned OOS ledger clears FDR.
 
+**Vote-weight mis-calibration — OOS test WIRED (DONE):** the pie found the engine's HAND weights mis-calibrated vs
+measured IC — ADX weighted 3 (highest) but IC ≈ 0; RSI/MACD/Pat ≈ 0/negative; Vol IC 0.074 at weight 1
+(under-weighted), Trend significant. Tested OOS without re-weighting the live engine (charter): `computeSignal`
+derives `icBackedShare` = of the weighted conviction pushing THIS signal's way, the fraction from the PROVEN votes
+(Trend/Vol/BB) vs the over-weighted dead ones — surfaced on `analyze().confluence`, mirrored byte-for-byte into
+`index.html` (parity IDENTICAL; analyze snapshot unchanged — additive). `forward-log` tags `icBackedShare`;
+`forward-perf` adds **`ic-backed-on/off`** (proven votes carry ≥⅓ of the case) under the existing BH/BY FDR family
+— the live A/B: do BUYs the data trusts beat BUYs propped up by the mis-weighted dead votes? If on>off under FDR,
+that's the evidence to re-weight (NEVER in-sample). Propose-only — never touches `gate.actionable`; the signal is
+byte-identical. Tests +2 (260 green). EVIDENCE scoreboard row added; matures via the nightly pipeline like every label.
+
 **Next — Track B:**
 - Mature the `momentum-on` / `merits-on` / `news-*` / `earnings-recent-on` OOS ledgers to n≥10; human-ratify
   only if they clear FDR. PASSIVE — the nightly `forward-log → forward-perf → promote` already partitions every

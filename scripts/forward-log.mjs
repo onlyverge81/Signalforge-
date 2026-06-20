@@ -361,6 +361,9 @@ export function buildEntry({ sym, settled, fundaDB, news = [], loggedAt = new Da
       // (RSI/Stoch/BB) and its TREND camp (MACD/MA/MAlong/Trend) point opposite ways — the engine
       // fighting itself. Read straight off analyze's confluence (engine parity). Propose-only label.
       votesConflict: !!(a.confluence && a.confluence.famConflict),
+      // Vote-weight mis-calibration label: the share of THIS BUY's weighted conviction that came from
+      // the votes the pie found PROVEN (Trend/Vol/BB) vs the over-weighted dead ones (ADX/RSI/MACD/Pat).
+      icBackedShare: (a.confluence && a.confluence.icBackedShare != null) ? a.confluence.icBackedShare : null,
       quality: (q => q == null ? null : parseFloat(q.toFixed(4)))(qualityValue(fundaDB && fundaDB[sym])),
       qualityActivated: false, ...eventTags(eventsAtSignal),
       earningsRecent: earningsGate(fundaDB && fundaDB[sym], decision.date) },
