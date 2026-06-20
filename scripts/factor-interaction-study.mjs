@@ -548,10 +548,13 @@ export function regimeSplitIC(panel, names, regimeOf){
     const bs = assessSignificance(bull), br = assessSignificance(bear);
     const sameSign = bs.mean != null && br.mean != null && bs.mean !== 0 && Math.sign(bs.mean) === Math.sign(br.mean);
     const thin = bs.n < 4 || br.n < 4;
+    // Distinguish a true trend ARTIFACT (sign flips in the other regime) from a same-sign edge that is
+    // merely UNDERPOWERED in the thinner regime — they are very different conclusions, especially when
+    // one regime (here, bear) has few months.
     const verdict = thin ? "INSUFFICIENT SPLIT"
-      : (ok(bs.verdict) && ok(br.verdict) && sameSign) ? "DURABLE (both regimes)"
-      : (ok(bs.verdict) && !ok(br.verdict)) ? "BULL-ONLY (trend artifact?)"
-      : (!ok(bs.verdict) && ok(br.verdict)) ? "BEAR-ONLY"
+      : (ok(bs.verdict) && ok(br.verdict)) ? (sameSign ? "DURABLE (both regimes)" : "REGIME-FLIP (sign changes)")
+      : (ok(bs.verdict) && !ok(br.verdict)) ? (sameSign ? "BULL-SIGNIF · bear same-sign (underpowered)" : "BULL-ONLY (flips/dies in bear)")
+      : (!ok(bs.verdict) && ok(br.verdict)) ? (sameSign ? "BEAR-SIGNIF · bull same-sign (underpowered)" : "BEAR-ONLY (flips/dies in bull)")
       : sameSign ? "CONSISTENT SIGN (weak both)"
       : "REGIME-FLIP (sign changes)";
     return { name,
