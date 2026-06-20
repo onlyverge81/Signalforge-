@@ -416,6 +416,59 @@ export function markToMarket(entry, settled, exitAt = new Date().toISOString(), 
   return entry; // still open
 }
 
+// ─── Shadow-engine streams (team-minus-nuisance): "does the team score better without a vote?" ───
+// The factor-interaction pie exposed each vote's ROLE in the team signal. Some votes are NUISANCES —
+// MACD is used backwards (angle F), Pat is negative, ADX is dead yet the highest hand-weight. A vote
+// earns its seat by helping the TEAM, not by birthright; the honest way to revoke a welcome is to run
+// the team WITHOUT it and let the OOS ledger judge. Each config logs its OWN tactical-style BUY stream
+// (tagged mode:"shadow-…"), gated identically to the real engine (same cost/stats/suspect/long-only
+// gate), so forward-perf compares the shadow team's trades vs the full team's `all`. NOTE: RSI/Stoch/BB
+// are NOT dropped — angle F RESCUED them as mean-reversion TIMERS (genuine at their real job).
+export const SHADOW_CONFIGS = [
+  { key: "shadow-noMacd",    drop: ["MACD"] },           // MACD used backwards at swing horizons (F)
+  { key: "shadow-noPat",     drop: ["Pat"] },            // pattern edge is dead / negative IC
+  { key: "shadow-noAdx",     drop: ["ADX"] },            // ~0 IC yet the engine's highest hand-weight
+  { key: "shadow-noMacdPat", drop: ["MACD", "Pat"] },    // the two named nuisances, together
+  { key: "shadow-noDead",    drop: ["MACD", "Pat", "ADX"] }, // full nuisance cleanup
+];
+// Build the shadow teams' entries for one name: for each config whose shadow signal is an ACTIONABLE
+// BUY, log a tactical-style OPEN entry on the SAME ATR levels. Returns 0..N entries. No-lookahead:
+// reads only `settled`; marked to market later by the same markToMarket as the real tactical stream.
+export function buildShadowEntries({ sym, settled, fundaDB, news = [], loggedAt = new Date().toISOString() }) {
+  if (settled.length < 30) return [];
+  const a = analyze(settled, sym, CFG.market, CFG.strategy, CFG.slMult, CFG.tpMult, { shadowDrops: SHADOW_CONFIGS });
+  if (!a.shadows) return [];
+  const bt = settled.length >= 40 ? runBacktest(settled, scoreAt, CFG.slMult, CFG.tpMult, CFG.costs, null, false) : null;
+  const suspect = auditData(settled).suspect;
+  const decision = settled[settled.length - 1];
+  const entry = a.entry, atr = a.indicators && a.indicators.atr;
+  if (!(entry > 0) || !(atr > 0)) return [];
+  const sl = parseFloat((entry - atr * CFG.slMult).toFixed(4));
+  const tp1 = parseFloat((entry + atr * CFG.tpMult).toFixed(4));
+  const tp2 = parseFloat((entry + atr * CFG.tpMult * 1.75).toFixed(4));
+  const rr = parseFloat((Math.abs(tp1 - entry) / Math.abs(sl - entry)).toFixed(1));
+  const out = [];
+  for (const sc of SHADOW_CONFIGS) {
+    if (a.shadows[sc.key] !== "BUY") continue;                 // the shadow team didn't fire a long
+    // Gate the shadow BUY exactly like the real engine (actionable trades only — a fair team-vs-team set).
+    const gate = forwardGates({ signal: "BUY", entry, tp1, stats: bt?.stats, suspect, costPerTrade, longOnly: CFG.longOnly });
+    if (!gate.actionable) continue;
+    out.push({
+      id: `${sym}-${CFG.interval}-${decision.date}-SHADOW-${sc.key}`,
+      loggedAt, ticker: sym, market: CFG.market, interval: CFG.interval, source: CFG.source, entryFill: CFG.entryFill,
+      signal: "BUY", confidence: a.confidence, trend: a.trend, strength: a.strength,
+      entry, sl, tp1, tp2, rr, support: a.support, resistance: a.resistance,
+      dataAsOf: { date: decision.date, close: decision.close, provider: CFG.provider },
+      barState: "closed",
+      tags: { mode: sc.key, shadowDropped: sc.drop },         // mode:"shadow-…" — scoped out of tactical
+      status: "OPEN",
+      exit: null, exitAt: null, exitDate: null, barsHeld: null,
+      pnl: null, grossPct: null, pnlPct: null, benchClose: null, benchDiv: null,
+    });
+  }
+  return out;
+}
+
 // ─── POSITION entry (PR2): scorePosition decision, logged as its own stream ────
 // Only logs when the long-term trend filter is genuinely ENGAGED (≥200 bars) — short-history
 // names are skipped (null), matching the in-app "not engaged" honesty. An engaged BUY (a dip
@@ -588,7 +641,8 @@ async function main() {
       // 2) Build today's entries (tactical + POSITION), stamping news/event context.
       let news = [];
       if (!fixture && key) { try { news = await fetchPolygonNews(sym, key); } catch { news = []; } }
-      for (const entry of [ buildEntry({ sym, settled, fundaDB, news }), buildPositionEntry({ sym, settled, fundaDB, news }) ]) {
+      for (const entry of [ buildEntry({ sym, settled, fundaDB, news }), buildPositionEntry({ sym, settled, fundaDB, news }),
+                            ...buildShadowEntries({ sym, settled, fundaDB, news }) ]) {
         if (!entry) continue;
         const dup = ledger.some(e => e.id === entry.id) || fresh.some(e => e.id === entry.id);
         if (!dup) { fresh.push(entry); previews.push(entry); logged++; }
@@ -603,7 +657,9 @@ async function main() {
   // Cross-sectional momentum overlay: rank THIS run's new tactical longs by trailing momentum
   // and flag the top tertile as momentumActivated. Pure ranking on already-built entries; it
   // mutates only the propose-only label (never gate.actionable / which trades opened).
-  const tacticalNew = previews.filter(e => e.tags && e.tags.mode !== "position");
+  // Factor overlays rank the REAL tactical longs only — POSITION and the shadow-team streams are excluded
+  // (shadows carry no factor tags and must not pollute the cross-sectional ranking).
+  const tacticalNew = previews.filter(e => e.tags && e.tags.mode !== "position" && !String(e.tags.mode || "").startsWith("shadow"));
   const momFlags = momentumRankGate(tacticalNew.map(e => e.tags.momentum));
   tacticalNew.forEach((e, i) => { e.tags.momentumActivated = momFlags[i]; });
   // Cross-sectional reversal overlay: same top-tertile ranking on the reversal score (biggest

@@ -354,7 +354,7 @@ export function backtestPattern(data, opts){
 }
 
 // ─── Shared signal logic: weighted votes + confluence + conflict penalty ─────
-export function computeSignal(ctx, extraVotes=[]) {
+export function computeSignal(ctx, extraVotes=[], opts={}) {
   const {R,M,s5,s10,s20,s50,trend,S,B,last,pats,div,volSig,ADX,OBV,VWAP} = ctx;
   const votes=[];
   if(R!=null)  votes.push({n:"RSI",   dir:R<40?1:R>60?-1:0, w:2});
@@ -373,7 +373,10 @@ export function computeSignal(ctx, extraVotes=[]) {
   if(VWAP)votes.push({n:"VWAP",dir:last.close>VWAP?1:-1, w:1.5});
   if(extraVotes.length) votes.push(...extraVotes);
 
-  const active=votes.filter(v=>v.dir!==0);
+  // Shadow-engine support: drop named votes to ask "does the TEAM signal score better without this
+  // member?" (the team-minus-nuisance test). Default path (no drop) is byte-identical.
+  const used = (opts.drop && opts.drop.length) ? votes.filter(v=>!opts.drop.includes(v.n)) : votes;
+  const active=used.filter(v=>v.dir!==0);
   const bull=active.filter(v=>v.dir>0).length;
   const bear=active.filter(v=>v.dir<0).length;
   const weighted=active.reduce((a,v)=>a+v.dir*v.w,0);
@@ -412,7 +415,7 @@ export function computeSignal(ctx, extraVotes=[]) {
   return {signal, score:parseFloat(net.toFixed(1)), bull, bear, conflict, confidence, trendDir, meanRevDir, famConflict, icBackedShare};
 }
 
-export function analyze(data, ticker, market, strategy, slMult, tpMult) {
+export function analyze(data, ticker, market, strategy, slMult, tpMult, opts={}) {
   const SLM = slMult || 1.5;
   const TPM = tpMult || 2.0;
   const closes=data.map(d=>d.close), vols=data.map(d=>d.volume);
@@ -440,6 +443,14 @@ export function analyze(data, ticker, market, strategy, slMult, tpMult) {
   const sigResult=computeSignal(ctx);
   const score=sigResult.score;
   const signal=sigResult.signal;
+  // Shadow-engine verdicts (team-minus-nuisance): when callers pass shadowDrops, recompute the team
+  // signal with each named vote removed. Decision-only (BUY/HOLD/SELL) — the ledger compares the
+  // shadow team's trades vs the full team's. Off by default (no overhead, no app change).
+  let shadows=null;
+  if(opts.shadowDrops && opts.shadowDrops.length){
+    shadows={};
+    for(const sc of opts.shadowDrops) shadows[sc.key]=computeSignal(ctx,[],{drop:sc.drop}).signal;
+  }
   const confidence=sigResult.confidence;
 
   const sfa12=sfa12Series(data);
@@ -469,7 +480,7 @@ export function analyze(data, ticker, market, strategy, slMult, tpMult) {
     tp1:parseFloat(tp1.toFixed(4)),tp2:parseFloat(tp2.toFixed(4)),rr,
     support:parseFloat(sup.toFixed(4)),resistance:parseFloat(res.toFixed(4)),
     score,
-    sfa12, sfa12Compare, convBreakout, convBreakoutTest,
+    sfa12, sfa12Compare, convBreakout, convBreakoutTest, shadows,
     confluence:{bull:sigResult.bull,bear:sigResult.bear,conflict:sigResult.conflict,trendDir:sigResult.trendDir,meanRevDir:sigResult.meanRevDir,famConflict:sigResult.famConflict,icBackedShare:sigResult.icBackedShare},
     indicators:{
       rsi:{v:R,label:rsiLabel},

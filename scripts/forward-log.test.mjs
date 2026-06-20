@@ -2,7 +2,7 @@
 // Run: node --test scripts/
 import { test } from "node:test";
 import assert from "node:assert/strict";
-import { splitSettled, markToMarket, mergeLedger, buildEntry, parseFeed, gradeFor, forwardGates, meritGate, momentumValue, momentumRankGate, reversalValue, reversalRankGate, lowVolValue, lowVolRankGate, qualityValue, qualityRankGate, eventTags, earningsGate, buildPositionEntry, markToMarketPosition, liquidAtBar } from "./forward-log.mjs";
+import { splitSettled, markToMarket, mergeLedger, buildEntry, parseFeed, gradeFor, forwardGates, meritGate, momentumValue, momentumRankGate, reversalValue, reversalRankGate, lowVolValue, lowVolRankGate, qualityValue, qualityRankGate, eventTags, earningsGate, buildPositionEntry, markToMarketPosition, liquidAtBar, buildShadowEntries, SHADOW_CONFIGS } from "./forward-log.mjs";
 
 // A long uptrend of `up` rising bars then `dip` declining bars (a pullback inside the trend).
 const _pbar = c => { c=+(+c).toFixed(4); return { date:"2025-01-01", open:c, high:+(c+1).toFixed(4), low:+(c-1).toFixed(4), close:c, volume:1e6 }; };
@@ -454,4 +454,34 @@ test("buildEntry: earningsRecent rides fundamentals.lastFiled and never changes 
   // No fundamentals at all → off, still logs.
   const none = buildEntry({ sym: "TST", settled, fundaDB: null });
   assert.equal(none.tags.earningsRecent, false);
+});
+
+// ─── Shadow-engine streams (team-minus-nuisance) ──────────────────────────────
+
+test("buildShadowEntries: logs an OPEN BUY stream per nuisance config the shadow team fires", () => {
+  const mk = n => Array.from({ length: n }, (_, i) => {
+    const c = 100 * Math.pow(1.004, i) + Math.sin(i / 4) * 3;
+    return { date: "2024-" + String(1 + Math.floor(i / 28) % 12).padStart(2, "0") + "-" + String(1 + i % 28).padStart(2, "0"),
+      open: c, high: c * 1.01, low: c * 0.99, close: +c.toFixed(4), volume: 3_000_000 };
+  });
+  const entries = buildShadowEntries({ sym: "UP", settled: mk(220), fundaDB: null });
+  assert.ok(Array.isArray(entries) && entries.length > 0, "a strong uptrend fires at least one shadow team");
+  const validKeys = new Set(SHADOW_CONFIGS.map(c => c.key));
+  const ids = new Set();
+  for (const e of entries) {
+    assert.ok(validKeys.has(e.tags.mode), "mode is one of the SHADOW_CONFIGS keys: " + e.tags.mode);
+    assert.equal(e.signal, "BUY");
+    assert.equal(e.status, "OPEN");
+    assert.ok(e.sl < e.entry && e.entry < e.tp1, "BUY levels ordered sl < entry < tp1");
+    assert.ok(Array.isArray(e.tags.shadowDropped) && e.tags.shadowDropped.length >= 1, "records which votes it dropped");
+    assert.equal(e.benchClose, null, "benchmark unset until marked to market");
+    ids.add(e.id);
+  }
+  assert.equal(ids.size, entries.length, "ids are unique per config");
+  // The shadow BUY is markToMarket-compatible (same shape as a tactical long) — it closes on SL/TP.
+  const longRun = mk(220).concat(Array.from({ length: 30 }, (_, i) => ({ date: "2025-01-" + String(1 + i).padStart(2, "0"), open: 1000, high: 1000, low: 1000, close: 1000, volume: 1e6 })));
+  const marked = markToMarket(entries[0], longRun);
+  assert.ok(marked.status === "WIN" || marked.status === "OPEN", "marks cleanly via the tactical path");
+  // Too little history → no shadows, no crash.
+  assert.deepEqual(buildShadowEntries({ sym: "X", settled: mk(20), fundaDB: null }), []);
 });
