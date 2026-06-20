@@ -3872,6 +3872,34 @@ function App() {
                       <b>Combined composite</b> (z-scored blend of the price/risk factors): meanIC {cc.meanIC} (t {cc.t}, {cc.verdict}); best single {cc.bestSingle?cc.bestSingle.name+" "+cc.bestSingle.meanIC:"–"}, diversification gain {cc.gain}.
                     </div>
                   )}
+                  {factorPie.robustness&&(()=>{
+                    const R=factorPie.robustness, L=R.liquidity||{};
+                    const sel=(factorPie.contributors&&[...(factorPie.contributors.factors||[]),...(factorPie.contributors.fundamentals||[])])||[];
+                    const vcol=v=>!v?"#90a4ae":/SURVIVES/.test(v)?"#00e676":/PARTLY/.test(v)?"#ffd740":"#ef5350";
+                    const ic=x=>x==null?"–":(x>=0?"+":"")+x.toFixed(3);
+                    return (
+                      <div style={{marginTop:12,borderTop:"1px solid "+BORD,paddingTop:10}}>
+                        <span style={lbl}>🧪 ROBUSTNESS · alpha, not artifact (liquidity screen + sector/beta-neutral)</span>
+                        <div style={{fontSize:10,color:DIM,marginBottom:6}}>
+                          Liquid subset: {L.liquidRows}/{L.totalRows} rows · {L.liquidNames}/{L.totalNames} names (≥${L.minPrice}, ${L.minADV?(L.minADV/1e6):"?"}M ADV) · beta vs {R.market||"—"} · {R.sectorsResolved||0} sectors. A slice that craters on liquid names was stale-price micro-cap noise; one that dies sector/beta-neutral was a sector/market bet.
+                        </div>
+                        {sel.map(n=>{
+                          const r=(R.perContributor||[]).find(x=>x.name===n); if(!r) return null;
+                          const raw=(factorPie.standaloneIC||[]).find(x=>x.name===n);
+                          const sv=r.sectorNeutral&&r.sectorNeutral.available?r.sectorNeutral.verdict:"n/a";
+                          const bv=r.betaNeutral&&r.betaNeutral.available?r.betaNeutral.verdict:"n/a";
+                          return (
+                            <div key={n} style={{display:"flex",alignItems:"center",gap:8,fontSize:10,marginBottom:2,fontFamily:"monospace"}}>
+                              <span style={{width:96,color:"#cfd8dc"}}>{n}</span>
+                              <span style={{width:150,color:"#b0bec5"}}>raw {ic(raw&&raw.meanIC)} → liquid {ic(r.liquidIC)}{r.liquidT!=null?(" (t"+r.liquidT.toFixed(1)+")"):""}</span>
+                              <span style={{flex:1,color:vcol(sv)}}>sector: {sv}</span>
+                              <span style={{flex:1,color:vcol(bv)}}>beta: {bv}</span>
+                            </div>
+                          );
+                        })}
+                      </div>
+                    );
+                  })()}
                   <div style={{fontSize:9,color:DIM,marginTop:8}}>Display-only — never feeds the signal. Only the OOS scoreboard below, cleared through FDR, is tradeable evidence.</div>
                 </div>
               );
