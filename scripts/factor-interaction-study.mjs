@@ -375,8 +375,10 @@ export function solveLinear(A, b){
 }
 
 // OLS residuals of y on the columns X (each X[i] is the regressor row for obs i, WITHOUT intercept —
-// an intercept is added). Returns y minus the fit, or null if the normal equations are singular.
-export function olsResidual(y, X){
+// an intercept is added). Optional ridge λ on the non-intercept diagonal keeps the normal equations
+// solvable under near-collinear regressors (e.g. healthy/merit ≈ 0.84). Returns y minus the fit, or
+// null if still singular. Standardise the columns before calling so λ is scale-invariant.
+export function olsResidual(y, X, ridge = 0){
   const n = y.length; if(!n) return null;
   const k = X[0].length + 1;                       // +1 intercept
   const D = X.map(r => [1, ...r]);                  // design matrix with intercept
@@ -388,6 +390,7 @@ export function olsResidual(y, X){
       for(let b = 0; b < k; b++) XtX[a][b] += D[i][a] * D[i][b];
     }
   }
+  for(let a = 1; a < k; a++) XtX[a][a] += ridge;   // don't penalise the intercept
   const beta = solveLinear(XtX, Xty);
   if(!beta || beta.some(v => v == null || !isFinite(v))) return null;
   return y.map((yi, i) => yi - D[i].reduce((s, x, a) => s + x * beta[a], 0));
@@ -395,20 +398,22 @@ export function olsResidual(y, X){
 
 // Unique (partial) IC: per period, residualise the target selector against ALL the others (cross-
 // sectional OLS), then rank-IC the residual against the forward return. Aggregated like standaloneICs.
+// Columns are z-scored per period (via standardizeByPeriod) so price factors (~1) and fundamental
+// scores (~100) share a scale; a small ridge keeps it solvable under the collinear fundamentals.
 export function uniqueIC(panel, names){
+  const std = standardizeByPeriod(panel, names);            // {period, fwdRet, z:{name:zval}} complete rows
+  const byP = new Map();
+  for(const r of std){ if(!byP.has(r.period)) byP.set(r.period, []); byP.get(r.period).push(r); }
   return names.map(target => {
     const others = names.filter(n => n !== target);
     const ics = [];
-    const byP = new Map();
-    for(const r of panel){ if(!byP.has(r.period)) byP.set(r.period, []); byP.get(r.period).push(r); }
     for(const [, rows] of byP){
-      const clean = rows.filter(r => [target, ...others].every(n => r.values[n] != null && isFinite(r.values[n])) && isFinite(r.fwdRet));
-      if(clean.length < others.length + 3) continue;          // need more obs than regressors
-      const y = clean.map(r => r.values[target]);
-      const X = clean.map(r => others.map(n => r.values[n]));
-      const resid = olsResidual(y, X);
+      if(rows.length < others.length + 3) continue;          // need more obs than regressors
+      const y = rows.map(r => r.z[target]);
+      const X = rows.map(r => others.map(n => r.z[n]));
+      const resid = olsResidual(y, X, 1e-6);
       if(!resid) continue;
-      const ic = rankIC(clean.map((r, i) => ({ merit: resid[i], fwdRet: r.fwdRet })));
+      const ic = rankIC(rows.map((r, i) => ({ merit: resid[i], fwdRet: r.fwdRet })));
       if(ic != null) ics.push(ic);
     }
     const st = assessSignificance(ics);

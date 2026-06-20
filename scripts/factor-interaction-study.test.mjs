@@ -402,3 +402,21 @@ test("standardizeByPeriod + corrMatrixPearson + pca: redundant columns collapse 
   assert.equal(out.components[0].pc, 1);
   assert.ok("loadings" in out.components[0]);
 });
+
+test("uniqueIC is robust to scale + collinear regressors (regression: price-scale target vs ~100-scale fundamentals)", () => {
+  // Mimic the live failure: a small-scale target (~0.01) regressed on collinear large-scale columns
+  // (F1≈F2 at ~100). Without per-period standardisation + ridge this returned TOO FEW PERIODS.
+  const panel = [];
+  for(let p = 0; p < 10; p++) for(let s = 0; s < 16; s++){
+    const small = ((s / 16) - 0.5) * 0.02;                 // price-factor scale
+    const big = 50 + s * 3;                                 // fundamental scale
+    const bigDup = big + 0.01 * (s % 2);                    // collinear with `big` (~0.99)
+    const fwdRet = 0.4 * small + 0.01 * ((p * 3 + s) % 5 - 2);
+    panel.push({ sym: "S" + s, period: "P" + p, fwdRet, values: { small, big, bigDup } });
+  }
+  const u = uniqueIC(panel, ["small", "big", "bigDup"]);
+  const us = u.find(x => x.name === "small");
+  assert.ok(us.nPeriods >= 6, "the small-scale target must still yield periods (got " + us.nPeriods + ")");
+  assert.notEqual(us.verdict, "TOO FEW PERIODS");
+  assert.ok(us.uniqueIC != null && isFinite(us.uniqueIC), "unique IC computed, not null");
+});
