@@ -364,6 +364,11 @@ export function buildEntry({ sym, settled, fundaDB, news = [], loggedAt = new Da
       // Vote-weight mis-calibration label: the share of THIS BUY's weighted conviction that came from
       // the votes the pie found PROVEN (Trend/Vol/BB) vs the over-weighted dead ones (ADX/RSI/MACD/Pat).
       icBackedShare: (a.confluence && a.confluence.icBackedShare != null) ? a.confluence.icBackedShare : null,
+      // MACD-fade label (factor-interaction angle F: MACD is used BACKWARDS at swing horizons — trend-
+      // follow buy loses, fading it wins). macdBull = the MACD vote direction at the decision bar. When
+      // the engine BUYS while macdBull===false it FADED a bearish MACD; ===true it FOLLOWED it. Read off
+      // analyze's indicators (engine parity, no engine change). Propose-only label.
+      macdBull: (a.indicators && a.indicators.macd) ? (a.indicators.macd.sig === "BULLISH" ? true : a.indicators.macd.sig === "BEARISH" ? false : null) : null,
       quality: (q => q == null ? null : parseFloat(q.toFixed(4)))(qualityValue(fundaDB && fundaDB[sym])),
       qualityActivated: false, ...eventTags(eventsAtSignal),
       earningsRecent: earningsGate(fundaDB && fundaDB[sym], decision.date) },

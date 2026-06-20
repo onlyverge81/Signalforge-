@@ -485,6 +485,15 @@ derives `icBackedShare` = of the weighted conviction pushing THIS signal's way, 
 that's the evidence to re-weight (NEVER in-sample). Propose-only — never touches `gate.actionable`; the signal is
 byte-identical. Tests +2 (260 green). EVIDENCE scoreboard row added; matures via the nightly pipeline like every label.
 
+**MACD-fade — OOS test WIRED (DONE), the last loose thread from angle F:** F found MACD is used BACKWARDS at swing
+horizons (trend-follow buy LOSES −1.56% t−2.7, FADING it wins +1.42% t3.9). Wired with NO engine change — `analyze`
+already exposes the MACD direction via `indicators.macd.sig`, so `forward-log` tags `macdBull` (the MACD vote dir at
+the decision bar). `forward-perf` adds **`macd-fade-on/off`**: ON = BUYs the engine took while MACD was BEARISH (it
+FADED MACD), OFF = while MACD was BULLISH (it FOLLOWED it). The live A/B: if ON>OFF under FDR, MACD's engine direction
+is confirmed BACKWARDS — evidence to flip/drop the MACD vote (never in-sample). Rows with no MACD (null) fall in
+neither leg. Propose-only; no engine/parity impact (reads existing analyze output). Tests +1 (261 green). EVIDENCE
+scoreboard row added. Every notable discovery from the pie now has an OOS follow-through.
+
 **Next — Track B:**
 - Mature the `momentum-on` / `merits-on` / `news-*` / `earnings-recent-on` OOS ledgers to n≥10; human-ratify
   only if they clear FDR. PASSIVE — the nightly `forward-log → forward-perf → promote` already partitions every

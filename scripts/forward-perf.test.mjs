@@ -333,6 +333,19 @@ test("scoreLedger: ic-backed partitions BUYs by whether proven votes carry ≥�
   assert.equal(perf.variants["ic-backed-on"].n + perf.variants["ic-backed-off"].n, perf.variants["all"].n);
 });
 
+test("scoreLedger: macd-fade splits BUYs by whether the engine faded a bearish MACD (angle F)", () => {
+  const ledger = [
+    { ...closed({ id: "M1", entry: 100, exit: 109, benchClose: 104 }), tags: { macdBull: false } },  // faded MACD → on
+    { ...closed({ id: "M2", entry: 100, exit: 101, benchClose: 105 }), tags: { macdBull: true } },    // followed MACD → off
+    { ...closed({ id: "M3", entry: 100, exit: 103, benchClose: 102 }), tags: { macdBull: null } },    // no MACD → neither
+  ];
+  const perf = scoreLedger(ledger);
+  assert.equal(perf.variants["macd-fade-on"].n, 1, "only the macd-bearish BUY is 'faded'");
+  assert.equal(perf.variants["macd-fade-off"].n, 1, "only the macd-bullish BUY is 'followed'");
+  // null-MACD rows are in neither leg (they still count in 'all').
+  assert.equal(perf.variants["macd-fade-on"].n + perf.variants["macd-fade-off"].n, perf.variants["all"].n - 1);
+});
+
 test("scoreLedger: empty ledger is honest, not a crash", () => {
   const perf = scoreLedger([]);
   assert.equal(perf.ledger.rows, 0);

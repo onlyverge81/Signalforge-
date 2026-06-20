@@ -219,6 +219,13 @@ export function defaultVariants() {
     //   If on > off under FDR, the hand weights are mis-calibrated — evidence to re-weight (never in-sample).
     { label: "ic-backed-on", where: t => tac(t) && t.tags && t.tags.icBackedShare != null && t.tags.icBackedShare >= 0.33 },
     { label: "ic-backed-off", where: t => tac(t) && t.tags && t.tags.icBackedShare != null && t.tags.icBackedShare < 0.33 },
+    //   macd-fade — factor-interaction angle F found MACD is used BACKWARDS at swing horizons (trend-
+    //   follow buy LOSES −1.56%, FADING it wins +1.42%). On the live ledger: macd-fade-ON = BUYs the
+    //   engine took while MACD was BEARISH (it FADED MACD); OFF = BUYs taken while MACD was BULLISH (it
+    //   FOLLOWED MACD). If ON > OFF under FDR, MACD's engine direction is confirmed BACKWARDS — evidence
+    //   to flip/drop the MACD vote (never in-sample). Rows with no MACD (null) fall in neither.
+    { label: "macd-fade-on", where: t => tac(t) && t.tags && t.tags.macdBull === false },
+    { label: "macd-fade-off", where: t => tac(t) && t.tags && t.tags.macdBull === true },
     { label: "position", where: t => !!(t.tags && t.tags.mode === "position") },
     // Quality × DURATION (propose-only A/B INSIDE the position/long-hold stream): the
     // quality-duration study found high-ROE names beat the market with an edge that GROWS over
