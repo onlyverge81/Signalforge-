@@ -520,6 +520,47 @@ export function pca(panel, names){
     effectiveBets: eb.participationRatio, kaiser: eb.kaiser, components };
 }
 
+// ─── Regime split (angle C): is a factor's edge durable, or just a bull-market trend? ──────────
+// Classify each rebalance by the broad-market trend (SPY close vs its own trailing 200-DMA, point-in-
+// time), then re-measure each selector's IC separately in BULL and BEAR months. A durable edge holds
+// the same sign (ideally significant) in both; a bull-only edge is a trend artifact, not skill.
+export function marketRegimeByDate(market, dates, win = 200){
+  const m = market.slice().sort((a, b) => a.t - b.t);
+  const closes = m.map(b => b.close);
+  const out = new Map();
+  for(const rb of dates){
+    let idx = -1;
+    for(let i = 0; i < m.length; i++){ if(m[i].t <= rb) idx = i; else break; }
+    if(idx < win - 1){ out.set(iso(rb), null); continue; }
+    const smaVal = sma(closes.slice(0, idx + 1), win);     // trailing 200-DMA at this rebalance
+    out.set(iso(rb), smaVal != null ? (m[idx].close >= smaVal ? "bull" : "bear") : null);
+  }
+  return out;
+}
+
+// Split each selector's per-period IC series into bull/bear buckets by regimeOf (period → regime).
+export function regimeSplitIC(panel, names, regimeOf){
+  const ok = v => v === "SIGNIFICANT" || v === "SUGGESTIVE";
+  return names.map(name => {
+    const ps = periodStats(obsFor(panel, name));
+    const bull = [], bear = [];
+    for(const p of ps){ const r = regimeOf.get(p.period); if(r === "bull") bull.push(p.ic); else if(r === "bear") bear.push(p.ic); }
+    const bs = assessSignificance(bull), br = assessSignificance(bear);
+    const sameSign = bs.mean != null && br.mean != null && bs.mean !== 0 && Math.sign(bs.mean) === Math.sign(br.mean);
+    const thin = bs.n < 4 || br.n < 4;
+    const verdict = thin ? "INSUFFICIENT SPLIT"
+      : (ok(bs.verdict) && ok(br.verdict) && sameSign) ? "DURABLE (both regimes)"
+      : (ok(bs.verdict) && !ok(br.verdict)) ? "BULL-ONLY (trend artifact?)"
+      : (!ok(bs.verdict) && ok(br.verdict)) ? "BEAR-ONLY"
+      : sameSign ? "CONSISTENT SIGN (weak both)"
+      : "REGIME-FLIP (sign changes)";
+    return { name,
+      bull: { meanIC: bs.mean, t: bs.t, nPeriods: bs.n },
+      bear: { meanIC: br.mean, t: br.t, nPeriods: br.n },
+      sameSign, verdict };
+  });
+}
+
 // Standalone predictive value per contributor: the per-period rank-IC series summarised.
 export function standaloneICs(panel, names){
   return names.map(name => {
@@ -650,6 +691,7 @@ function caveats(survivorshipFree){
     "1-month forward windows, monthly rebalance, only COMPLETE windows (no-lookahead). One cross-section per rebalance → modest power; INCONCLUSIVE is an acceptable outcome.",
     "ROBUSTNESS (angle A): every slice is RE-MEASURED on a liquidity-screened subset (price≥$" + LIQ_MIN_PRICE + ", trailing-median $" + (LIQ_MIN_ADV/1e6) + "M ADV) and after BETA- and SECTOR-neutralisation. A slice that collapses on liquid names was a stale-price micro-cap artifact; one that dies sector/beta-neutral was a sector or market bet, not stock selection. This is the charter's 'alpha, not beta' made testable — watch lowvol especially.",
     "DIMENSIONALITY (angle B): UNIQUE IC residualises each selector against all the others (cross-sectional OLS) → its contribution AFTER redundancy; PCA's 'effective bets' (participation ratio of the eigenvalues) counts the truly independent axes. Univariate pie slices OVERSTATE breadth when factors overlap (healthy/merit ≈ 0.84) — this collapses them to the real few.",
+    "REGIME SPLIT (angle C): each selector's IC is re-measured in BULL vs BEAR months (SPY vs its 200-DMA, point-in-time). A DURABLE edge holds the same sign in both regimes; a BULL-ONLY edge is a trend artifact that won't survive a market turn. All ~5y of history sits in one macro cycle, so the split has limited power — read it as a direction, not a proof.",
     "IN-SAMPLE only — an attractive pie is 'looks good in-sample,' NOT proven. The technical confluence is a measured in-sample loser (baseline t ≈ −12.6); thin/negative vote slices are the honest finding. Only the OOS ledger under FDR is tradeable evidence.",
   ];
 }
@@ -759,6 +801,17 @@ async function main(){
     }),
   };
 
+  // ─── REGIME SPLIT (angle C): is each selector's edge durable across bull/bear markets? ─────────
+  let regimes = { available: false };
+  if(market){
+    const regimeOf = marketRegimeByDate(market, dates);
+    const periodsInPanel = [...new Set(panel.map(r => r.period))];
+    const bullPeriods = periodsInPanel.filter(p => regimeOf.get(p) === "bull").length;
+    const bearPeriods = periodsInPanel.filter(p => regimeOf.get(p) === "bear").length;
+    regimes = { available: true, method: "SPY close vs trailing 200-DMA (point-in-time)",
+      bullPeriods, bearPeriods, perContributor: regimeSplitIC(panel, [...FACTOR_NAMES, ...FUNDA], regimeOf) };
+  }
+
   const out = {
     generatedAt: new Date().toISOString(),
     universe: { requested: tickers.length, covered: Object.keys(barsByTicker).length, withFinancials: fundCount, source, survivorshipFree, skipped: errors },
@@ -773,6 +826,7 @@ async function main(){
     composite: { equalWeight: compositeEqual, icWeighted: compositeICw },
     robustness,
     dimensionality,
+    regimes,
     caveats: caveats(survivorshipFree),
   };
   fs.writeFileSync(path.join(ROOT, "factor-interaction-study.json"), JSON.stringify(out) + "\n");
@@ -830,6 +884,18 @@ async function main(){
       " (t=" + (u.t == null ? "–" : u.t.toFixed(1)) + ", keeps " + rs + ") " + u.verdict);
   }
   console.log("  ↳ a selector whose unique IC ≈ 0 is REDUNDANT (its edge is already in the others); one that keeps most of its raw IC is an independent axis.");
+
+  if(regimes.available){
+    console.log("\n════ REGIME SPLIT (angle C): bull vs bear-market IC (SPY vs 200-DMA) ════");
+    console.log("  " + regimes.bullPeriods + " bull months, " + regimes.bearPeriods + " bear months");
+    const f = x => x == null ? " n/a " : (x >= 0 ? "+" : "") + x.toFixed(4);
+    for(const r of regimes.perContributor){
+      console.log("    " + r.name.padEnd(15) +
+        " bull=" + f(r.bull.meanIC) + " (t" + (r.bull.t == null ? "–" : r.bull.t.toFixed(1)) + ",n" + r.bull.nPeriods + ")" +
+        "  bear=" + f(r.bear.meanIC) + " (t" + (r.bear.t == null ? "–" : r.bear.t.toFixed(1)) + ",n" + r.bear.nPeriods + ")  → " + r.verdict);
+    }
+    console.log("  ↳ DURABLE = same-sign edge in both regimes; BULL-ONLY = a trend artifact that dies when the market turns.");
+  }
 
   console.log("\nWrote factor-interaction-study.json" + (errors.length ? (" (" + errors.length + " skipped)") : "") + ".");
   console.log("IN-SAMPLE only — not proven, not wired into any gate. Only the OOS ledger under FDR counts.");

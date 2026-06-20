@@ -3927,6 +3927,27 @@ function App() {
                       </div>
                     );
                   })()}
+                  {factorPie.regimes&&factorPie.regimes.available&&(()=>{
+                    const G=factorPie.regimes;
+                    const vcol=v=>/DURABLE/.test(v)?"#00e676":/BULL-ONLY|REGIME-FLIP/.test(v)?"#ef5350":/BEAR-ONLY|CONSISTENT/.test(v)?"#ffd740":"#90a4ae";
+                    const ic=x=>x==null?"–":(x>=0?"+":"")+x.toFixed(3);
+                    return (
+                      <div style={{marginTop:12,borderTop:"1px solid "+BORD,paddingTop:10}}>
+                        <span style={lbl}>🌗 REGIME SPLIT · durable edge, or just a bull-market trend?</span>
+                        <div style={{fontSize:10,color:DIM,marginBottom:6}}>
+                          {G.bullPeriods} bull months vs {G.bearPeriods} bear months (SPY vs its 200-DMA). DURABLE = same-sign edge in both; BULL-ONLY = a trend artifact. All ~5y sit in one macro cycle → read as direction, not proof.
+                        </div>
+                        {(G.perContributor||[]).map(r=>(
+                          <div key={r.name} style={{display:"flex",alignItems:"center",gap:8,fontSize:10,marginBottom:2,fontFamily:"monospace"}}>
+                            <span style={{width:96,color:"#cfd8dc"}}>{r.name}</span>
+                            <span style={{width:118,color:"#b0bec5"}}>bull {ic(r.bull.meanIC)} (t{r.bull.t==null?"–":r.bull.t.toFixed(1)})</span>
+                            <span style={{width:118,color:"#b0bec5"}}>bear {ic(r.bear.meanIC)} (t{r.bear.t==null?"–":r.bear.t.toFixed(1)})</span>
+                            <span style={{flex:1,color:vcol(r.verdict)}}>{r.verdict}</span>
+                          </div>
+                        ))}
+                      </div>
+                    );
+                  })()}
                   <div style={{fontSize:9,color:DIM,marginTop:8}}>Display-only — never feeds the signal. Only the OOS scoreboard below, cleared through FDR, is tradeable evidence.</div>
                 </div>
               );

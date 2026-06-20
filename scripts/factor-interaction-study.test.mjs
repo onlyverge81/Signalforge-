@@ -13,6 +13,7 @@ import {
   obsForNeutral, robustnessFor,
   solveLinear, olsResidual, uniqueIC, standardizeByPeriod, corrMatrixPearson,
   jacobiEig, effectiveBets, pca,
+  marketRegimeByDate, regimeSplitIC,
 } from "./factor-interaction-study.mjs";
 import { computeSignal, rsi, macd, bb, stoch, sma, patterns, divergence, adxCalc, obvCalc, vwapCalc } from "./engine.mjs";
 
@@ -419,4 +420,45 @@ test("uniqueIC is robust to scale + collinear regressors (regression: price-scal
   assert.ok(us.nPeriods >= 6, "the small-scale target must still yield periods (got " + us.nPeriods + ")");
   assert.notEqual(us.verdict, "TOO FEW PERIODS");
   assert.ok(us.uniqueIC != null && isFinite(us.uniqueIC), "unique IC computed, not null");
+});
+
+// ─── Regime split (angle C): bull/bear durability ────────────────────────────
+
+test("marketRegimeByDate classifies bull vs bear by SPY vs its 200-DMA (point-in-time)", () => {
+  // 260 rising bars then 60 falling bars. A rebalance late in the rise = bull; deep in the fall = bear.
+  const up = [], n1 = 260, n2 = 80;
+  for(let i = 0; i < n1; i++) up.push({ t: i * 86400000, close: 100 + i });            // steady rise
+  for(let i = 0; i < n2; i++) up.push({ t: (n1 + i) * 86400000, close: 360 - i * 4 }); // sharp fall below the 200-DMA
+  const rbBull = up[n1 - 1].t;                 // end of the rise
+  const rbBear = up[up.length - 1].t;          // deep in the fall
+  const reg = marketRegimeByDate(up, [rbBull, rbBear], 200);
+  // iso() keys — just read the two values back in order.
+  const vals = [...reg.values()];
+  assert.equal(vals[0], "bull", "above the 200-DMA after a long rise");
+  assert.equal(vals[1], "bear", "below the 200-DMA after a sharp fall");
+  // Too little history → null, not a guess.
+  const short = marketRegimeByDate(up.slice(0, 50), [up[40].t], 200);
+  assert.equal([...short.values()][0], null);
+});
+
+test("regimeSplitIC flags a bull-only edge and a durable edge", () => {
+  // Two regimes (P0-P3 bull, P4-P7 bear). A and D are DECORRELATED spreads. A drives returns only in
+  // bull; D drives them in both. So A's bull IC ≫ its (≈0) bear IC, while D holds its sign in both.
+  const panel = [];
+  for(let p = 0; p < 8; p++){
+    const bull = p < 4;
+    for(let s = 0; s < 12; s++){
+      const a = (s / 12) - 0.5;
+      const d = ((s * 7) % 12) / 12 - 0.5;                    // scrambled → ~uncorrelated with a
+      const fwdRet = (bull ? 0.6 : 0.0) * a + 0.5 * d;        // A: bull-only; D: both regimes
+      panel.push({ sym: "S" + s, period: "P" + p, fwdRet, values: { A: a, D: d } });
+    }
+  }
+  const regimeOf = new Map();
+  for(let p = 0; p < 8; p++) regimeOf.set("P" + p, p < 4 ? "bull" : "bear");
+  const out = regimeSplitIC(panel, ["A", "D"], regimeOf);
+  const D = out.find(x => x.name === "D"), A = out.find(x => x.name === "A");
+  assert.ok(D.bull.meanIC > 0 && D.bear.meanIC > 0 && D.sameSign, "D predicts in both regimes (same sign)");
+  // A+D combined predicts strongly in bull, weakly (only D) in bear → A's bull IC ≫ its bear IC.
+  assert.ok(A.bull.meanIC > A.bear.meanIC, "A's edge is concentrated in the bull regime");
 });
