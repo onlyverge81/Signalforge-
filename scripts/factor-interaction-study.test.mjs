@@ -9,6 +9,8 @@ import {
   buildPanel, obsFor, standaloneICs, contributionPie, spearman,
   correlationMatrix, conditionalIC, interactionScan, combinedComposite,
   parsePolyFinancials, recAsOf, autopsyValues,
+  dollarVol, trailingMedianDollarVol, liquidAt, trailingBeta, betaNeutralIC,
+  obsForNeutral, robustnessFor,
 } from "./factor-interaction-study.mjs";
 import { computeSignal, rsi, macd, bb, stoch, sma, patterns, divergence, adxCalc, obvCalc, vwapCalc } from "./engine.mjs";
 
@@ -238,4 +240,89 @@ test("obsFor yields the factor-agnostic {sym,period,merit,fwdRet} study-lib expe
   const panel = predictivePanel({ periods: 6, names: 9 });
   const obs = obsFor(panel, "A");
   assert.ok(obs.every(o => "sym" in o && "period" in o && "merit" in o && "fwdRet" in o));
+});
+
+// ─── Robustness (angle A): liquidity screen + beta/sector neutralisation ──────
+
+test("liquidity primitives: dollar-volume, trailing median, and the price+ADV gate", () => {
+  assert.equal(dollarVol({ close: 10, volume: 100 }), 1000);
+  assert.equal(dollarVol({ close: 10, volume: 0 }), 0);
+  // Trailing median dollar-volume over a window.
+  const s = series(10, i => 10, () => 100);            // const price 10, vol 100 → $1000/bar
+  assert.equal(trailingMedianDollarVol(s, 9, 5), 1000);
+  // Liquid only when BOTH price floor and ADV floor clear.
+  const liquid = series(80, () => 20, () => 1_000_000);   // $20 × 1M = $20M/bar
+  assert.equal(liquidAt(liquid, 79, { minADV: 2_000_000, minPrice: 5 }), true);
+  const cheap = series(80, () => 3, () => 1_000_000);     // sub-$5 → fails price floor
+  assert.equal(liquidAt(cheap, 79, { minADV: 2_000_000, minPrice: 5 }), false);
+  const thin = series(80, () => 20, () => 10);            // $20 × 10 = $200/bar → fails ADV
+  assert.equal(liquidAt(thin, 79, { minADV: 2_000_000, minPrice: 5 }), false);
+});
+
+test("trailingBeta recovers the true beta: a name that moves 2× the market reads ≈ 2", () => {
+  // Market wiggles; name = 2× the market's daily move (compounded), so beta ≈ 2.
+  const steps = [];
+  for(let i = 0; i < 200; i++) steps.push(((i * 37) % 11 - 5) / 100);   // deterministic pseudo-returns
+  const mkt = [{ t: 0, close: 100 }]; const nm = [{ t: 0, close: 100 }];
+  for(let i = 0; i < steps.length; i++){
+    const t = (i + 1) * 86400000;
+    mkt.push({ t, close: mkt[mkt.length - 1].close * (1 + steps[i]) });
+    nm.push({ t, close: nm[nm.length - 1].close * (1 + 2 * steps[i]) });
+  }
+  const mktRet = new Map(); for(let i = 1; i < mkt.length; i++) mktRet.set(mkt[i].t, mkt[i].close / mkt[i - 1].close - 1);
+  const b = trailingBeta(nm, mktRet, nm.length - 1, 120);
+  assert.ok(Math.abs(b - 2) < 0.05, "beta ≈ 2, got " + b);
+  // Too few overlapping bars → null, not a guess.
+  assert.equal(trailingBeta(nm, mktRet, 5, 120), null);
+});
+
+test("betaNeutralIC: a pure-beta signal COLLAPSES; a beta-orthogonal signal SURVIVES", () => {
+  // Pure beta bet: merit == beta, and forward return is beta plus merit-UNCORRELATED noise. After
+  // regressing out beta, the residual is pure noise → neutral IC has no signal → BETA-DRIVEN.
+  const betaBet = [];
+  for(let p = 0; p < 10; p++) for(let i = 0; i < 12; i++){
+    const beta = (i - 5.5) / 5;                          // spread of betas across names
+    const noise = Math.sin((p * 97 + i * 131) * 1.7) * 0.1;   // scrambled → rank-uncorrelated with merit(=beta)
+    betaBet.push({ period: "P" + p, merit: beta, beta, fwdRet: 0.5 * beta + noise });
+  }
+  const collapsed = betaNeutralIC(betaBet);
+  assert.equal(collapsed.available, true);
+  assert.equal(collapsed.verdict, "BETA-DRIVEN (mostly market)");
+  // Genuine alpha: merit predicts the part of return NOT explained by beta.
+  const alpha = [];
+  for(let p = 0; p < 10; p++) for(let i = 0; i < 12; i++){
+    const beta = (i % 3) - 1;                    // beta varies but is unrelated to merit
+    const merit = (i - 5.5) / 5;
+    alpha.push({ period: "P" + p, merit, beta, fwdRet: 0.4 * merit + 0.3 * beta });
+  }
+  const survives = betaNeutralIC(alpha);
+  assert.equal(survives.available, true);
+  assert.ok(survives.verdict.startsWith("SURVIVES"), "expected SURVIVES, got " + survives.verdict);
+});
+
+test("buildPanel tags liquid/sector/beta only when the inputs are supplied (additive, no-op otherwise)", () => {
+  const bars = series(320, i => 100 + i * 0.2, () => 5_000_000);   // $100 × 5M ≫ floor
+  const market = series(320, i => 50 + i * 0.05);
+  const rb = bars[300].t;
+  const tagged = buildPanel({ ZZ: bars }, [rb], { minBars: 260, market, sectorOf: { ZZ: "Manufacturing" }, liquidity: true });
+  assert.equal(tagged[0].liquid, true);
+  assert.equal(tagged[0].sector, "Manufacturing");
+  assert.ok(tagged[0].beta != null && isFinite(tagged[0].beta));
+  // No options → none of the robustness tags appear (base pie unchanged).
+  const bare = buildPanel({ ZZ: bars }, [rb], { minBars: 260 });
+  assert.equal("liquid" in bare[0], false);
+  assert.equal("sector" in bare[0], false);
+  assert.equal("beta" in bare[0], false);
+  // obsForNeutral surfaces the tags (null-safe) for the diagnostics.
+  const o = obsForNeutral(tagged, "lowvol");
+  assert.ok("sector" in o[0] && "beta" in o[0]);
+});
+
+test("robustnessFor returns raw/liquid IC + sector & beta verdicts in the expected shape", () => {
+  const panel = predictivePanel({ periods: 6, names: 9 });
+  for(const r of panel) r.liquid = true;        // mark all liquid so the liquid IC is computable
+  const rob = robustnessFor(panel, "A");
+  assert.equal(rob.name, "A");
+  assert.ok("liquidIC" in rob && "sectorNeutral" in rob && "betaNeutral" in rob);
+  assert.equal(rob.sectorNeutral.available, false, "no sector tags ⇒ sector-neutral unavailable, not a crash");
 });

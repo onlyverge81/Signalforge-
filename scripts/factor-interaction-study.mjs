@@ -35,10 +35,10 @@ import fs from "node:fs";
 import path from "node:path";
 import { fileURLToPath } from "node:url";
 import { readTickers } from "./build-fundamentals.mjs";
-import { fetchPolygonAggs } from "./pattern-study.mjs";
+import { fetchPolygonAggs, fetchSectorMap } from "./pattern-study.mjs";
 import { selectMeritUniverse, grid, addMonths, iso } from "./build-study.mjs";
 import { momentumValue, reversalValue, lowVolValue } from "./forward-log.mjs";
-import { periodStats, assessSignificance, rankIC } from "./study-lib.mjs";
+import { periodStats, assessSignificance, rankIC, sectorNeutralIC } from "./study-lib.mjs";
 import { rsi, macd, bb, stoch, atr, adxCalc, obvCalc, vwapCalc, patterns, divergence, sma, valueScore } from "./engine.mjs";
 import { meritMetrics } from "./sec-lib.mjs";
 
@@ -47,6 +47,12 @@ const ROOT = path.resolve(__dirname, "..");
 const FIS_MAX = +(process.env.FIS_MAX || 120);
 const MIN_BARS = 260;                 // ≥253 so the 12-month lookback factors are all computable
 const round = x => (x == null || !isFinite(x)) ? null : Math.round(x * 1e4) / 1e4;
+// Robustness (angle A) — liquidity screen + beta window. Env-overridable; defaults target a tradeable
+// floor that excludes the stale-priced micro-cap delisted names that can fake a low-vol "edge".
+const LIQ_MIN_ADV   = +(process.env.LIQ_MIN_ADV   || 2_000_000);  // trailing median dollar-volume floor ($)
+const LIQ_MIN_PRICE = +(process.env.LIQ_MIN_PRICE || 5);          // price floor ($) — drops sub-$5 junk
+const LIQ_WIN       = +(process.env.LIQ_WIN       || 60);         // trailing bars for the ADV median
+const BETA_WIN      = +(process.env.BETA_WIN      || 120);        // trailing bars for each name's market beta
 
 // The four PRICE/RISK factors, defined by the SAME functions the live OOS labels use (forward-log).
 export const FACTOR_NAMES = ["mom12_1", "mom6_1", "reversal", "lowvol"];
@@ -200,12 +206,101 @@ export function spearman(xs, ys){
 // ─── panel: one row per (sym, rebalance) with every contributor's value + the forward return ──
 // No-lookahead: a contributor at rb reads only bars with t ≤ rb; fwdRet needs a bar strictly after
 // rb up to rb+1mo, and the row is dropped unless that forward window is complete.
-export function buildPanel(barsByTicker, dates, { minBars = MIN_BARS, fundamentals = null } = {}){
+// ─── Robustness (angle A): liquidity screen + beta/sector neutralisation ──────
+// Why: the survivorship-free roster is heavy with DE-LISTED micro-caps whose low REALIZED volatility
+// is often stale-price illusion (a name that barely trades has artificially smooth returns → fake
+// "low-vol premium"). And a cross-sectional factor can be a SECTOR or pure-BETA bet in disguise. These
+// pure helpers let the harness re-measure every slice on a LIQUID sub-universe and after removing the
+// market-beta / sector component — the charter's "alpha, not beta" made testable.
+
+export function dollarVol(bar){ return (bar.close > 0 && bar.volume > 0) ? bar.close * bar.volume : 0; }
+
+// Median trailing dollar-volume over the `win` bars ending at idx (inclusive). Pure, point-in-time.
+export function trailingMedianDollarVol(series, idx, win = LIQ_WIN){
+  const lo = Math.max(0, idx - win + 1);
+  const vals = [];
+  for(let i = lo; i <= idx; i++) vals.push(dollarVol(series[i]));
+  if(!vals.length) return 0;
+  vals.sort((a, b) => a - b);
+  const m = vals.length >> 1;
+  return vals.length % 2 ? vals[m] : (vals[m - 1] + vals[m]) / 2;
+}
+
+// Is the name tradeable at bar idx? Price floor AND trailing-median dollar-volume floor. Point-in-time.
+export function liquidAt(series, idx, { minADV = LIQ_MIN_ADV, minPrice = LIQ_MIN_PRICE, win = LIQ_WIN } = {}){
+  if(!series[idx] || !(series[idx].close >= minPrice)) return false;
+  return trailingMedianDollarVol(series, idx, win) >= minADV;
+}
+
+// Daily simple returns keyed by bar timestamp (for beta alignment). Pure.
+export function dailyReturnsByT(series){
+  const m = new Map();
+  for(let i = 1; i < series.length; i++){
+    const p0 = series[i - 1].close, p1 = series[i].close;
+    if(p0 > 0 && p1 > 0) m.set(series[i].t, p1 / p0 - 1);
+  }
+  return m;
+}
+
+// Trailing market beta = cov(name,mkt)/var(mkt) over the `win` bars ending at idx, aligned by
+// timestamp to the market-return map. Pure; null when too few overlapping bars. No-lookahead (≤ idx).
+export function trailingBeta(series, mktRetByT, idx, win = BETA_WIN){
+  const lo = Math.max(1, idx - win + 1);
+  const ns = [], ms = [];
+  for(let i = lo; i <= idx; i++){
+    const p0 = series[i - 1].close, p1 = series[i].close;
+    const mr = mktRetByT.get(series[i].t);
+    if(p0 > 0 && p1 > 0 && mr != null) { ns.push(p1 / p0 - 1); ms.push(mr); }
+  }
+  if(ns.length < 20) return null;
+  const mean = a => a.reduce((x, y) => x + y, 0) / a.length;
+  const mn = mean(ns), mm = mean(ms);
+  let cov = 0, varM = 0;
+  for(let i = 0; i < ns.length; i++){ cov += (ns[i] - mn) * (ms[i] - mm); varM += (ms[i] - mm) ** 2; }
+  return varM > 0 ? cov / varM : null;
+}
+
+// Beta-neutral IC: per period, cross-sectionally regress fwdRet on beta (OLS), recompute rank-IC on
+// the RESIDUAL forward return. If the IC survives, the edge is alpha; if it collapses, it was a beta
+// bet. Mirrors study-lib's sectorNeutralIC contract (verdict + retention). Pure.
+export function betaNeutralIC(observations){
+  const byP = new Map();
+  for(const r of observations){ if(!byP.has(r.period)) byP.set(r.period, []); byP.get(r.period).push(r); }
+  const neutral = [], raw = [];
+  for(const [, rows] of byP){
+    const clean = rows.filter(r => r.merit != null && isFinite(r.merit) && r.fwdRet != null && isFinite(r.fwdRet) && r.beta != null && isFinite(r.beta));
+    if(clean.length < 3) continue;
+    const n = clean.length;
+    const mb = clean.reduce((a, r) => a + r.beta, 0) / n;
+    const mf = clean.reduce((a, r) => a + r.fwdRet, 0) / n;
+    let cov = 0, varB = 0;
+    for(const r of clean){ cov += (r.beta - mb) * (r.fwdRet - mf); varB += (r.beta - mb) ** 2; }
+    if(!(varB > 0)) continue;
+    const slope = cov / varB, intercept = mf - slope * mb;
+    const resid = clean.map(r => ({ merit: r.merit, fwdRet: r.fwdRet - (intercept + slope * r.beta) }));
+    const icN = rankIC(resid), icR = rankIC(clean);
+    if(icN != null && icR != null){ neutral.push(icN); raw.push(icR); }
+  }
+  if(neutral.length < 6) return { available: false, periods: neutral.length };
+  const nStat = assessSignificance(neutral);
+  const rawMean = raw.reduce((a, b) => a + b, 0) / raw.length;
+  const retention = Math.abs(rawMean) > 1e-9 ? round(nStat.mean / rawMean) : null;
+  const ok = v => v === "SIGNIFICANT" || v === "SUGGESTIVE";
+  const verdict = !ok(nStat.verdict) ? "BETA-DRIVEN (mostly market)"
+    : (retention != null && retention >= 0.5) ? "SURVIVES (alpha)"
+    : "PARTLY BETA-DRIVEN";
+  return { available: true, periods: neutral.length, meanIC: nStat.mean, icT: nStat.t,
+    significance: nStat.verdict, rawMeanIC: round(rawMean), retention, verdict };
+}
+
+export function buildPanel(barsByTicker, dates, { minBars = MIN_BARS, fundamentals = null, market = null, sectorOf = null, liquidity = false } = {}){
   const rows = [];
+  const mktRetByT = market ? dailyReturnsByT(market.slice().sort((a, b) => a.t - b.t)) : null;
   for(const [sym, bars] of Object.entries(barsByTicker)){
     if(!bars || bars.length < minBars) continue;
     const series = bars.slice().sort((a, b) => a.t - b.t);
     const parsed = fundamentals ? fundamentals[sym] : null;       // point-in-time financials, if loaded
+    const sector = sectorOf ? (sectorOf[sym] || null) : null;
     for(const rb of dates){
       // last bar at-or-before the rebalance
       let idx = -1;
@@ -220,7 +315,11 @@ export function buildPanel(barsByTicker, dates, { minBars = MIN_BARS, fundamenta
       const slice = series.slice(0, idx + 1);
       const values = { ...factorValues(slice), ...voteVector(slice) };
       if(parsed) Object.assign(values, autopsyValues(parsed, rb, entry));   // AUTOPSY cheap/healthy/growing/merit, point-in-time
-      rows.push({ sym, period: iso(rb), fwdRet: exit / entry - 1, values });
+      const row = { sym, period: iso(rb), fwdRet: exit / entry - 1, values };
+      if(liquidity) row.liquid = liquidAt(series, idx);                       // tradeable at this bar? (point-in-time)
+      if(sectorOf) row.sector = sector;                                       // SIC division for sector-neutral IC
+      if(mktRetByT) row.beta = trailingBeta(series, mktRetByT, idx);          // trailing market beta for beta-neutral IC
+      rows.push(row);
     }
   }
   return rows;
@@ -229,6 +328,24 @@ export function buildPanel(barsByTicker, dates, { minBars = MIN_BARS, fundamenta
 // Extract the factor-agnostic observation array study-lib consumes, for one contributor.
 export function obsFor(panel, name){
   return panel.map(r => ({ sym: r.sym, period: r.period, merit: r.values[name], fwdRet: r.fwdRet }));
+}
+
+// Same, but carrying the sector + beta tags the neutralisation diagnostics need.
+export function obsForNeutral(panel, name){
+  return panel.map(r => ({ sym: r.sym, period: r.period, merit: r.values[name], fwdRet: r.fwdRet, sector: r.sector ?? null, beta: r.beta ?? null }));
+}
+
+// Per-contributor robustness row: raw IC, IC on the LIQUID subset, and sector/beta-neutral verdicts.
+export function robustnessFor(panel, name){
+  const liquid = panel.filter(r => r.liquid);
+  const liqStat = liquid.length ? assessSignificance(periodStats(obsFor(liquid, name)).map(p => p.ic)) : { mean: null, t: null, n: 0, verdict: "NO DATA" };
+  const neutralObs = obsForNeutral(panel, name);
+  return {
+    name,
+    liquidIC: liqStat.mean, liquidT: liqStat.t, liquidPeriods: liqStat.n, liquidVerdict: liqStat.verdict,
+    sectorNeutral: sectorNeutralIC(neutralObs),
+    betaNeutral: betaNeutralIC(neutralObs),
+  };
 }
 
 // Standalone predictive value per contributor: the per-period rank-IC series summarised.
@@ -359,6 +476,7 @@ function caveats(survivorshipFree){
     "AUTOPSY (cheap/healthy/growing) + merit are reconstructed point-in-time from Polygon /vX/reference/financials (filing_date ≤ rebalance) and scored by the app's OWN valueScore(meritMetrics(...)) — no re-implementation. Names without financials drop from those slices only.",
     "OUTLOOK is EXCLUDED from the pie by construction, not by oversight: it is a MARKET-TIMING projection (the same 3-index move applied to every name), so it has ~0 cross-sectional name-selection variance and cannot rank names — a slice would be misleading. It is judged on its own alpha-vs-buy-&-hold backtest in the app, not here.",
     "1-month forward windows, monthly rebalance, only COMPLETE windows (no-lookahead). One cross-section per rebalance → modest power; INCONCLUSIVE is an acceptable outcome.",
+    "ROBUSTNESS (angle A): every slice is RE-MEASURED on a liquidity-screened subset (price≥$" + LIQ_MIN_PRICE + ", trailing-median $" + (LIQ_MIN_ADV/1e6) + "M ADV) and after BETA- and SECTOR-neutralisation. A slice that collapses on liquid names was a stale-price micro-cap artifact; one that dies sector/beta-neutral was a sector or market bet, not stock selection. This is the charter's 'alpha, not beta' made testable — watch lowvol especially.",
     "IN-SAMPLE only — an attractive pie is 'looks good in-sample,' NOT proven. The technical confluence is a measured in-sample loser (baseline t ≈ −12.6); thin/negative vote slices are the honest finding. Only the OOS ledger under FDR is tradeable evidence.",
   ];
 }
@@ -415,9 +533,18 @@ async function main(){
     }catch(e){ errors.push(sym + ": " + (e.message || e)); console.warn("✗ " + sym.padEnd(6) + " — " + (e.message || e)); }
   }
 
+  // Robustness inputs (angle A) — best-effort, never fatal: a market proxy (SPY) for beta and the SIC
+  // sector map. If either fails the pie still emits; only that neutralisation column goes unavailable.
+  let market = null;
+  try{ market = await fetchDaily("SPY", key); console.log("market proxy: SPY " + market.length + " daily bars (for beta)"); }
+  catch(e){ console.warn("SPY fetch failed — beta-neutral IC unavailable: " + (e.message || e)); }
+  let sectorOf = null;
+  try{ sectorOf = await fetchSectorMap(Object.keys(barsByTicker), key); console.log("sectors resolved: " + Object.keys(sectorOf || {}).length + "/" + Object.keys(barsByTicker).length); }
+  catch(e){ console.warn("sector map failed — sector-neutral IC unavailable: " + (e.message || e)); }
+
   const dates = grid(1);
   const haveFunda = fundCount > 0;
-  const panel = buildPanel(barsByTicker, dates, { fundamentals: haveFunda ? fundamentals : null });
+  const panel = buildPanel(barsByTicker, dates, { fundamentals: haveFunda ? fundamentals : null, market, sectorOf, liquidity: true });
   // Whole-app pie: price/risk FACTORS + 13 technical VOTES + (when financials loaded) the AUTOPSY
   // fundamentals (cheap/healthy/growing/merit). OUTLOOK is documented-excluded (market-timing, not
   // cross-sectional — see caveats).
@@ -426,6 +553,19 @@ async function main(){
   const kindOf = n => FACTOR_NAMES.includes(n) ? "factor" : FUNDAMENTAL_NAMES.includes(n) ? "fundamental" : "vote";
   const ics = standaloneICs(panel, ALL);
   const pie = contributionPie(ics);
+
+  // ─── ROBUSTNESS (angle A): does the edge survive a liquidity screen + beta/sector neutralisation? ──
+  const liquidRows = panel.filter(r => r.liquid);
+  const liquidPie = contributionPie(standaloneICs(liquidRows, ALL));
+  const robustness = {
+    liquidity: { minADV: LIQ_MIN_ADV, minPrice: LIQ_MIN_PRICE, advWindow: LIQ_WIN, betaWindow: BETA_WIN,
+      liquidRows: liquidRows.length, totalRows: panel.length,
+      liquidNames: new Set(liquidRows.map(r => r.sym)).size, totalNames: Object.keys(barsByTicker).length },
+    market: market ? "SPY" : null,
+    sectorsResolved: sectorOf ? Object.keys(sectorOf).length : 0,
+    perContributor: ALL.map(n => robustnessFor(panel, n)),
+    liquidPie,
+  };
   // Interactions + composite span the cross-sectional SELECTORS (price/risk factors + fundamentals).
   const selectors = [...FACTOR_NAMES, ...FUNDA];
   const corr = correlationMatrix(panel, selectors);
@@ -446,6 +586,7 @@ async function main(){
     correlationMatrix: corr,
     interactions,
     composite: { equalWeight: compositeEqual, icWeighted: compositeICw },
+    robustness,
     caveats: caveats(survivorshipFree),
   };
   fs.writeFileSync(path.join(ROOT, "factor-interaction-study.json"), JSON.stringify(out) + "\n");
@@ -469,6 +610,22 @@ async function main(){
   console.log("  equal-weight   meanIC=" + cc.meanIC + " t=" + cc.t + " (" + cc.verdict + "), n=" + cc.nPeriods +
     "; best single=" + (cc.bestSingle ? cc.bestSingle.name + " " + cc.bestSingle.meanIC : "n/a") + ", gain=" + cc.gain);
   console.log("  IC-weighted    meanIC=" + compositeICw.meanIC + " t=" + compositeICw.t + " (" + compositeICw.verdict + ")");
+
+  console.log("\n════ ROBUSTNESS (angle A): liquidity screen + beta/sector neutralisation ════");
+  console.log("  liquid: " + robustness.liquidity.liquidRows + "/" + robustness.liquidity.totalRows + " rows, " +
+    robustness.liquidity.liquidNames + "/" + robustness.liquidity.totalNames + " names (price≥$" + LIQ_MIN_PRICE +
+    ", $" + (LIQ_MIN_ADV/1e6) + "M ADV) · sectors " + robustness.sectorsResolved + " · beta vs " + (robustness.market || "—"));
+  const sig = ic => ic == null ? " n/a " : (ic >= 0 ? "+" : "") + ic.toFixed(4);
+  for(const n of [...FACTOR_NAMES, ...FUNDA]){
+    const r = robustness.perContributor.find(x => x.name === n); if(!r) continue;
+    const full = ics.find(x => x.name === n);
+    const sn = r.sectorNeutral.available ? r.sectorNeutral.verdict : "n/a";
+    const bn = r.betaNeutral.available ? r.betaNeutral.verdict : "n/a";
+    console.log("  " + n.padEnd(15) + " raw=" + sig(full && full.meanIC) + "  liquid=" + sig(r.liquidIC) +
+      " (t=" + (r.liquidT == null ? "–" : r.liquidT.toFixed(1)) + ")  sector→" + sn + "  beta→" + bn);
+  }
+  console.log("  ↳ a slice that CRATERS on liquid names was stale-price micro-cap noise; one that dies sector/beta-neutral was a sector/market bet.");
+
   console.log("\nWrote factor-interaction-study.json" + (errors.length ? (" (" + errors.length + " skipped)") : "") + ".");
   console.log("IN-SAMPLE only — not proven, not wired into any gate. Only the OOS ledger under FDR counts.");
 }
