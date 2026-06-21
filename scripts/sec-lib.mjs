@@ -85,6 +85,22 @@ export function secInstant(node, asOf){ // latest point-in-time (balance-sheet) 
 
 export function secFirst(facts,names){ for(const n of names){ if(facts[n]) return facts[n]; } return null; }
 
+// Latest SEC FILING date across the given tags — the earnings-announcement proxy (a 10-Q/10-K's
+// `filed` date is ~the earnings release). Point-in-time: only filings dated on/before `asOf` count
+// (so a historical decision can't peek at a filing that hadn't happened yet). Returns an ISO date
+// string or null. Pure. Unlike the value helpers it keys on `filed`, not the period `end`.
+export function secLastFiled(facts, names, asOf){
+  const lim=cutoff(asOf);
+  let best=null;
+  for(const n of names){
+    const node=facts[n]; if(!node) continue;
+    for(const e of secUnit(node)){
+      if(e.filed && new Date(e.filed).getTime()<=lim && (!best || e.filed>best)) best=e.filed;
+    }
+  }
+  return best;
+}
+
 // ─── Merit score (parity with the browser app's valueScore().total) ──────────
 // The cross-sectional study ranks names by merit; the app DISPLAYS valueScore's
 // grade. To keep CI ranking and the shown grade from drifting, this reproduces

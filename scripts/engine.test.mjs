@@ -11,7 +11,7 @@
 
 import { test } from "node:test";
 import assert from "node:assert/strict";
-import { analyze, runBacktest, scoreAt, checkBarExit, tradeNet, realizedStats, convergenceBreakout, backtestPattern } from "./engine.mjs";
+import { analyze, runBacktest, scoreAt, scorePosition, checkBarExit, checkBarExitFine, isAmbiguousBar, tradeNet, realizedStats, convergenceBreakout, backtestPattern, edgeStatus, avgIndexGainByDate, correctionLevels, backtestCorrection, efficiencyRatio, marketRegime, computeSignal } from "./engine.mjs";
 
 // ─── Helper: deterministic OHLC series (no RNG, fixed formula) ───────────────
 function gen(n){
@@ -44,6 +44,44 @@ test("checkBarExit: clean TP hit is a WIN; no touch is null; SELL side mirrors",
   // SELL: high ≥ sl is the loss leg, checked first.
   assert.deepEqual(checkBarExit(sell, {open:100,high:103,low:97,close:99}), {exit:102, result:"LOSS"});
   assert.deepEqual(checkBarExit(sell, {open:100,high:101,low:97,close:99}), {exit:98, result:"WIN"});
+});
+
+// ─── 1b) checkBarExitFine — resolve the straddle from finer sub-bars ─────────
+test("isAmbiguousBar: true only when a bar straddles BOTH stop and target", () => {
+  const t={dir:"BUY", entry:100, sl:98, tp:102};
+  assert.equal(isAmbiguousBar(t, {high:103, low:97}), true);   // both touched
+  assert.equal(isAmbiguousBar(t, {high:103, low:99}), false);  // only TP
+  assert.equal(isAmbiguousBar(t, {high:101, low:97}), false);  // only SL
+});
+
+test("checkBarExitFine: sub-bars reveal TP came first → WIN, overturning the pessimistic LOSS", () => {
+  const t={dir:"BUY", entry:100, sl:98, tp:102};
+  const coarse={open:100,high:103,low:97,close:101};          // ambiguous: straddles both
+  assert.deepEqual(checkBarExit(t, coarse), {exit:98, result:"LOSS"}); // pessimistic guess
+  // intraday path: price tagged TP (high 102.5) BEFORE it ever traded down to SL.
+  const subBars=[
+    {open:100,high:102.5,low:100,close:102},                  // TP touched here, SL not yet
+    {open:102,high:102,low:97,close:98},                      // SL later — but we already exited
+  ];
+  assert.deepEqual(checkBarExitFine(t, coarse, subBars), {exit:102, result:"WIN", resolvedBy:"subbars"});
+});
+
+test("checkBarExitFine: sub-bars confirming SL-first keep the LOSS", () => {
+  const t={dir:"BUY", entry:100, sl:98, tp:102};
+  const coarse={open:100,high:103,low:97,close:101};
+  const subBars=[
+    {open:100,high:100.5,low:97,close:98},                    // SL first
+    {open:98,high:103,low:98,close:102},                      // TP only afterwards
+  ];
+  assert.deepEqual(checkBarExitFine(t, coarse, subBars), {exit:98, result:"LOSS", resolvedBy:"subbars"});
+});
+
+test("checkBarExitFine: unambiguous bars and the no-sub-bars case defer to checkBarExit", () => {
+  const t={dir:"BUY", entry:100, sl:98, tp:102};
+  // clean TP, sub-bars irrelevant → identical to checkBarExit (no resolvedBy tag)
+  assert.deepEqual(checkBarExitFine(t, {open:100,high:103,low:99,close:101}, []), {exit:102, result:"WIN"});
+  // ambiguous but no finer data → falls back to the safe pessimistic LOSS
+  assert.deepEqual(checkBarExitFine(t, {open:100,high:103,low:97,close:101}, null), {exit:98, result:"LOSS"});
 });
 
 // ─── 2) tradeNet — round-trip cost model ─────────────────────────────────────
@@ -115,25 +153,111 @@ test("runBacktest() snapshot on the deterministic 160-bar series", () => {
   assert.equal(bt.stats.significance, "TOO FEW TRADES"); // only 8 trades on this series
 });
 
-// ─── 5) "Uptrend Convergence with Breakout" pattern detector ─────────────────
-// Coil (flat ribbon) → breakout (steady uptrend) should fire; a flat ribbon alone
-// must stay silent; too-short input returns null.
-function genCoilBreak(){
-  const rows=[]; const push=c=>{ const close=+c.toFixed(4);
-    rows.push({date:"2025-01-01",open:close,high:close+0.2,low:close-0.2,close,volume:1000000}); };
-  for(let i=0;i<40;i++) push(100 + (i%2?0.02:-0.02));   // coil: ribbon pinched flat
-  for(let i=1;i<=40;i++) push(100 + i*0.8);             // pop: steady uptrend
+// ─── 5) POSITION mode — true 200-bar trend filter, dip-buy, thesis-break, trailing ──
+const pbar = c => { c=+(+c).toFixed(4); return { date:"2025-01-01", open:c, high:+(c+1).toFixed(4), low:+(c-1).toFixed(4), close:c, volume:1e6 }; };
+// `up` rising bars then `dip` declining bars (a pullback inside the uptrend).
+function posUp(up, dip=0){
+  const rows=[]; for(let i=0;i<up;i++) rows.push(pbar(100+0.5*i));
+  const top=100+0.5*(up-1); for(let i=1;i<=dip;i++) rows.push(pbar(top-1.2*i));
   return rows;
 }
-function genFlat(n){ const rows=[]; for(let i=0;i<n;i++){ const c=100+(i%2?0.02:-0.02);
-  rows.push({date:"x",open:c,high:c+0.2,low:c-0.2,close:c,volume:1e6}); } return rows; }
+
+test("scorePosition: NOT engaged under 200 bars — no silent short-SMA proxy (the fix)", () => {
+  const r=scorePosition(posUp(150));
+  assert.equal(r.engaged, false);
+  assert.equal(r.signal, "HOLD");
+  assert.match(r.reason, /200 bars/);
+});
+
+test("scorePosition: with 200+ bars, buys a pullback inside a real uptrend", () => {
+  const r=scorePosition(posUp(206, 14)); // 206 up, then a 14-bar dip → RSI<45, still > SMA200
+  assert.equal(r.engaged, true);
+  assert.equal(r.signal, "BUY");
+  assert.ok(r.dipDepth > 0 && r.trendStrength > 0);
+});
+
+test("scorePosition: a broken long-term thesis flips to SELL", () => {
+  const rows=[]; for(let i=0;i<100;i++) rows.push(pbar(100+0.5*i));   // up to 149.5
+  for(let i=1;i<=180;i++) rows.push(pbar(149.5-0.6*i));               // long decline below SMA200
+  const r=scorePosition(rows);
+  assert.equal(r.engaged, true);
+  assert.equal(r.signal, "SELL");
+});
+
+test("runBacktest holdMode: a TRAILING stop lets a winner run past a fixed TP, exits on the pullback", () => {
+  const rows=[];
+  for(let i=0;i<35;i++) rows.push(pbar(100));            // base
+  for(let i=1;i<=20;i++) rows.push(pbar(100+i));         // rally 101..120 (peak)
+  for(let i=1;i<=10;i++) rows.push(pbar(120-i));         // pullback 119..110
+  // Custom scorer: one BUY early (atr=1), HOLD after — isolates the EXIT logic from entry.
+  let fired=false;
+  const scorer=slice=>{ if(!fired && slice.length===34){ fired=true; return {score:6,signal:"BUY",atr:1}; } return {score:0,signal:"HOLD",atr:1}; };
+  const bt=runBacktest(rows, scorer, 3, 6, {slip:0,comm:0}, null, true); // holdMode (POSITION)
+  assert.equal(bt.trades.length, 1);
+  const tr=bt.trades[0];
+  assert.ok(tr.exit > tr.entry + 6, "winner ran PAST the 6xATR fixed-TP cap (trailing let it run)");
+  assert.ok(tr.exit < 120, "but exited on the pullback — did not sell the exact top");
+  assert.equal(tr.result, "WIN");
+});
+
+// ─── edgeStatus — the SIGN-aware gate (the inverted-significance bug fix) ─────
+// A SIGNIFICANT *negative* edge is a proven money-loser; it must mute, not show.
+test("edgeStatus: a SIGNIFICANT negative edge is muted, not proven (the bug fix)", () => {
+  const e = edgeStatus({ significance:"SIGNIFICANT", expectancy:-0.47 });
+  assert.equal(e.proven, false);          // a loser is never 'proven'
+  assert.equal(e.shown, false);           // never shown loud
+  assert.equal(e.muted, true);            // muted because the edge is against us
+  assert.equal(e.negativeEdge, true);     // explicitly a proven loser
+});
+test("edgeStatus: a SIGNIFICANT positive edge is proven and shown", () => {
+  const e = edgeStatus({ significance:"SIGNIFICANT", expectancy:0.42 });
+  assert.equal(e.proven, true);
+  assert.equal(e.shown, true);
+  assert.equal(e.muted, false);
+  assert.equal(e.negativeEdge, false);
+});
+test("edgeStatus: SUGGESTIVE positive shows but isn't 'proven'; unproven and missing mute", () => {
+  const sug = edgeStatus({ significance:"SUGGESTIVE", expectancy:0.3 });
+  assert.equal(sug.shown, true); assert.equal(sug.proven, false); assert.equal(sug.muted, false);
+  const weak = edgeStatus({ significance:"NOT SIGNIFICANT", expectancy:0.3 });
+  assert.equal(weak.muted, true); assert.equal(weak.negativeEdge, false); // unproven ≠ a loser
+  const none = edgeStatus(null);
+  assert.equal(none.muted, true); assert.equal(none.verdict, null);
+});
+
+// ─── 5) "Uptrend Convergence with Breakout" pattern detector ─────────────────
+// Mechanics (trendFilter:false): coil (flat ribbon) → breakout (steady uptrend)
+// fires; a flat ribbon alone stays silent; too-short input returns null.
+function push(rows,c){ const close=+c.toFixed(4); rows.push({date:"2025-01-01",open:close,high:close+0.2,low:close-0.2,close,volume:1000000}); }
+function genCoilBreak(){
+  const rows=[];
+  for(let i=0;i<40;i++) push(rows, 100 + (i%2?0.02:-0.02));  // coil: ribbon pinched flat
+  for(let i=1;i<=40;i++) push(rows, 100 + i*0.8);            // pop: steady uptrend
+  return rows;
+}
+function genFlat(n){ const rows=[]; for(let i=0;i<n;i++) push(rows, 100+(i%2?0.02:-0.02)); return rows; }
+// Established uptrend → long flat coil → breakout (passes the trend filter).
+function genTrendCoilBreak(){
+  const rows=[];
+  for(let i=0;i<60;i++) push(rows, 100 + i*0.5);            // 60-bar uptrend → rising SMA50
+  for(let i=0;i<24;i++) push(rows, 129.5 + (i%2?0.02:-0.02)); // 24-bar coil (long enough to pinch SMA20)
+  for(let i=1;i<=25;i++) push(rows, 129.5 + i*0.7);          // breakout
+  return rows;
+}
+// Flat base (no prior trend) → long coil → breakout (the filter should suppress).
+function genFlatCoilBreak(){
+  const rows=[];
+  for(let i=0;i<85;i++) push(rows, 100 + (i%2?0.02:-0.02)); // flat base → flat SMA50
+  for(let i=1;i<=25;i++) push(rows, 100 + i*0.7);           // breakout off the flat base
+  return rows;
+}
 
 test("convergenceBreakout: null on too-short input", () => {
   assert.equal(convergenceBreakout(genFlat(12)), null);
 });
 
-test("backtestPattern: fires on coil→breakout with a positive forward edge", () => {
-  const bt=backtestPattern(genCoilBreak(), {horizon:5, minBars:30});
+test("backtestPattern: fires on coil→breakout mechanics (filter off)", () => {
+  const bt=backtestPattern(genCoilBreak(), {horizon:5, minBars:30, trendFilter:false});
   assert.ok(bt, "expected a result object");
   assert.ok(bt.signals>0, "expected ≥1 detection, got "+bt.signals);
   assert.ok(bt.avgFwdRet>0, "uptrend signals should carry positive forward return");
@@ -141,7 +265,205 @@ test("backtestPattern: fires on coil→breakout with a positive forward edge", (
 });
 
 test("pattern stays silent on a flat ribbon (no breakout)", () => {
-  const bt=backtestPattern(genFlat(120), {horizon:5, minBars:30});
+  const bt=backtestPattern(genFlat(120), {horizon:5, minBars:30, trendFilter:false});
   assert.ok(bt, "expected a result with enough bars");
   assert.equal(bt.signals, 0);
+});
+
+test("trend filter: fires inside an established uptrend (default on)", () => {
+  const bt=backtestPattern(genTrendCoilBreak(), {horizon:5, minBars:50});
+  assert.ok(bt, "expected a result object");
+  assert.ok(bt.signals>0, "an in-uptrend breakout should pass the trend filter, got "+bt.signals);
+});
+
+test("trend filter: suppresses a breakout off a flat base", () => {
+  const series=genFlatCoilBreak();
+  const off=backtestPattern(series, {horizon:5, minBars:50, trendFilter:false});
+  const on =backtestPattern(series, {horizon:5, minBars:50, trendFilter:true});
+  assert.ok(off.signals>0, "filter-off should still see the raw breakout, got "+off.signals);
+  assert.ok(on.signals<off.signals, "filter-on must drop flat-base signals: on="+on.signals+" off="+off.signals);
+});
+
+// ─── 5) Custom-target seam — scorer-supplied TP/SL override the ATR default ───
+test("runBacktest: scorer customTp/customSl set the trade's targets (not the ATR fallback)", () => {
+  const data=gen(60);
+  // Fire exactly once (at the first eligible bar, i=30 → slice.length 31) with absolute
+  // custom levels; everything after holds. The fill is at the NEXT bar's open.
+  let injTp=null, injSl=null;
+  const scorer=(slice)=>{
+    if(slice.length!==31) return {signal:"HOLD"};
+    const c=slice[slice.length-1].close;
+    injTp=c+0.5; injSl=c-0.5;
+    return {signal:"BUY", atr:1, score:1, customSl:injSl, customTp:injTp};
+  };
+  const bt=runBacktest(data, scorer, 1.5, 2.0, {slip:0,comm:0}, null, false);
+  assert.ok(bt.trades.length>=1, "expected the BUY to open a trade");
+  const t=bt.trades[0];
+  assert.equal(t.tp, injTp, "tp must equal the injected customTp");
+  assert.equal(t.sl, injSl, "sl must equal the injected customSl");
+  // And it must NOT be the ATR default (entry ± atr*mult with atr=1).
+  assert.notEqual(t.tp, t.entry+1*2.0, "tp should not be the ATR fallback");
+});
+
+test("runBacktest: omitting custom targets keeps the ATR fallback byte-identical", () => {
+  // A BUY with no custom fields → tp/sl are entry ± atr*mult exactly.
+  const data=gen(60);
+  const scorer=(slice)=> slice.length===31 ? {signal:"BUY", atr:2, score:1} : {signal:"HOLD"};
+  const bt=runBacktest(data, scorer, 1.5, 2.0, {slip:0,comm:0}, null, false);
+  assert.ok(bt.trades.length>=1);
+  const t=bt.trades[0];
+  assert.equal(t.tp, t.entry+2*2.0, "ATR tp fallback unchanged");
+  assert.equal(t.sl, t.entry-2*1.5, "ATR sl fallback unchanged");
+});
+
+// ─── 6) avgIndexGainByDate — averaged trailing-window gain, date-aligned ──────
+test("avgIndexGainByDate: averages each index's trailing-window % at aligned dates", () => {
+  const A=[{date:"1",close:100},{date:"2",close:100},{date:"3",close:110}]; // +10% at "3"
+  const B=[{date:"1",close:200},{date:"2",close:200},{date:"3",close:230}]; // +15% at "3"
+  const C=[{date:"1",close:50}, {date:"2",close:50}, {date:"3",close:55}];  // +10% at "3"
+  const m=avgIndexGainByDate([A,B,C],2);
+  assert.ok(Math.abs(m.get("3")-(10+15+10)/3)<1e-9, "avg of 10/15/10 at date 3");
+  assert.equal(m.get("1"), undefined, "no full window at date 1 → omitted");
+  assert.equal(m.get("2"), undefined, "no full window at date 2 → omitted");
+});
+
+test("avgIndexGainByDate: a date missing from any index is dropped (exact alignment)", () => {
+  const A=[{date:"1",close:100},{date:"2",close:100},{date:"3",close:110}];
+  const B=[{date:"1",close:200},{date:"2",close:200},{date:"9",close:230}]; // no date "3"
+  const m=avgIndexGainByDate([A,B],2);
+  assert.equal(m.get("3"), undefined, "date present in A but not B must be omitted");
+  assert.equal(m.size, 0);
+});
+
+// ─── 7) correctionLevels — TP adds the error buffer, SL takes the lesser ──────
+test("correctionLevels: TP = entry + mag + err; SL = entry − min(mag, err)", () => {
+  // err > mag → SL uses mag (the lesser).
+  let lv=correctionLevels({entry:100, gainsPct:2, avgErr:3});
+  assert.equal(lv.mag, 2);
+  assert.equal(lv.tp, 105, "100 + 2 + 3");
+  assert.equal(lv.sl, 98, "100 − min(2,3)=2");
+  // mag > err → SL uses err (the lesser).
+  lv=correctionLevels({entry:100, gainsPct:5, avgErr:2});
+  assert.equal(lv.tp, 107, "100 + 5 + 2");
+  assert.equal(lv.sl, 98, "100 − min(5,2)=2");
+  // delta keeps the sign of the projected gain; mag is absolute.
+  lv=correctionLevels({entry:100, gainsPct:-4, avgErr:1});
+  assert.equal(lv.delta, -4);
+  assert.equal(lv.mag, 4);
+  assert.equal(lv.tp, 105, "100 + 4 + 1");
+  assert.equal(lv.sl, 99, "100 − min(4,1)=1");
+});
+
+// ─── 8) backtestCorrection — full P&L + alpha + alpha-honest proven gate ──────
+test("backtestCorrection: produces stats/alpha and an HONEST proven gate", () => {
+  const data=gen(160);
+  // A positive trailing-gain map over every aligned date (uptrend assumption).
+  const gain=new Map(data.map(d=>[d.date, 1.5]));
+  const r=backtestCorrection(data, gain, {period:20, costs:{slip:0.05,comm:0.05}});
+  assert.ok(r, "expected a result object");
+  assert.equal(typeof r.trades, "number");
+  assert.ok(r.stats && typeof r.stats.expectancy==="number", "carries realized stats");
+  assert.equal(typeof r.proven, "boolean");
+  // The gate is exactly: ≥20 trades AND resolved AND positive mean alpha — never green otherwise.
+  const sig=r.stats.significance;
+  const expectGate = r.trades>=20 && (sig==="SIGNIFICANT"||sig==="SUGGESTIVE") && r.meanAlpha>0;
+  assert.equal(r.proven, expectGate, "proven must equal the alpha-honest gate");
+  if(r.proven){ assert.ok(r.meanAlpha>0, "proven implies positive alpha"); }
+});
+
+test("backtestCorrection: returns null without enough bars, and never trades on a null map", () => {
+  assert.equal(backtestCorrection(gen(10), new Map(), {period:20}), null, "too few bars → null");
+  assert.equal(backtestCorrection(gen(60), null, {period:20}), null, "no gain map → null");
+  // An empty gain map yields no BUYs (every bar is HOLD) → zero trades, proven false.
+  const r=backtestCorrection(gen(60), new Map(), {period:20});
+  assert.ok(r, "empty map still returns a (descriptive) result");
+  assert.equal(r.trades, 0);
+  assert.equal(r.proven, false);
+});
+
+// ─── Market-regime notifier ("read the room") ────────────────────────────────
+
+test("efficiencyRatio: a straight-line trend ≈ 1, a round-trip chop ≈ 0", () => {
+  const up = Array.from({ length: 30 }, (_, i) => 100 + i);           // monotonic
+  assert.ok(efficiencyRatio(up, 21) > 0.99, "clean trend → ER ~1");
+  const chop = Array.from({ length: 30 }, (_, i) => 100 + (i % 2));    // up-down-up-down, no net move
+  assert.ok(efficiencyRatio(chop, 21) < 0.1, "pure chop → ER ~0");
+  assert.equal(efficiencyRatio([1, 2, 3], 21), null, "too few bars → null");
+});
+
+test("marketRegime: a rising trend reads BULL · TRENDING and favors trend-following", () => {
+  const bars = Array.from({ length: 220 }, (_, i) => ({ close: 100 * Math.pow(1.004, i) }));  // steady climb
+  const r = marketRegime(bars);
+  assert.equal(r.direction, "BULL");
+  assert.equal(r.trend, "TRENDING");
+  assert.match(r.favored, /Trend-following/);
+  assert.match(r.label, /BULL/);
+});
+
+test("marketRegime: a choppy, flat market reads RANGING and favors mean-reversion", () => {
+  const bars = Array.from({ length: 220 }, (_, i) => ({ close: 100 + Math.sin(i / 2) * 3 }));  // oscillating, no trend
+  const r = marketRegime(bars);
+  assert.equal(r.trend, "RANGING");
+  assert.match(r.favored, /Mean-reversion/);
+});
+
+test("marketRegime: a falling, volatile tape flags ELEVATED risk; <40 bars → null (honest)", () => {
+  const bars = Array.from({ length: 220 }, (_, i) => ({ close: 200 - i * 0.5 + (i > 180 ? Math.sin(i) * 8 : 0) }));
+  const r = marketRegime(bars);
+  assert.equal(r.direction, "BEAR");
+  assert.ok(r.risk && /headwind|ELEVATED/.test(r.risk));
+  assert.equal(marketRegime(Array.from({ length: 20 }, () => ({ close: 100 }))), null, "too little history → null, not a guess");
+});
+
+// ─── Self-conflict family split (research angles C+F) ─────────────────────────
+
+test("computeSignal exposes the mean-reversion vs trend family split and flags famConflict", () => {
+  const base = { B:{lower:105,upper:110}, last:{close:100}, pats:[], div:null, volSig:"NEUTRAL", ADX:null, OBV:null, VWAP:null };
+  // Mean-reversion camp BUYS (oversold RSI/Stoch + close below lower band) while the TREND camp SELLS
+  // (MACD<0, fast<slow MAs, downtrend) → the engine fighting itself.
+  const conflict = computeSignal({ ...base, R:20, S:10, M:{macd:-0.5}, s5:9, s10:10, s20:19, s50:20, trend:"DOWNTREND" });
+  assert.equal(conflict.meanRevDir, 1, "RSI/Stoch oversold + below-band ⇒ mean-rev camp bullish");
+  assert.equal(conflict.trendDir, -1, "MACD<0 + falling MAs + downtrend ⇒ trend camp bearish");
+  assert.equal(conflict.famConflict, true, "opposite camps ⇒ self-conflict");
+  // Both camps AGREE (everything bullish) → no family conflict.
+  const aligned = computeSignal({ ...base, R:20, S:10, M:{macd:0.5}, s5:11, s10:10, s20:21, s50:20, trend:"UPTREND" });
+  assert.equal(aligned.meanRevDir, 1);
+  assert.equal(aligned.trendDir, 1);
+  assert.equal(aligned.famConflict, false, "same-direction camps ⇒ aligned");
+  // analyze() surfaces it on confluence (engine→app contract).
+  const a = analyze(gen(160), "TST", "Stocks", "Trend Following", 1.5, 2.0);
+  assert.ok("famConflict" in a.confluence && "trendDir" in a.confluence && "meanRevDir" in a.confluence);
+});
+
+test("computeSignal.icBackedShare = proven-vote share of the directional conviction (vote-weight test)", () => {
+  const base = { last:{close:100}, pats:[], div:null, ADX:null, OBV:null, VWAP:null };
+  // All-bullish: Trend (proven, w2) + Vol (proven, w1) vs MACD (dead, w2.5) → proven share = 3/5.5.
+  const s = computeSignal({ ...base, R:null, S:null, M:{macd:0.5}, B:null, s5:11, s10:10, s20:21, s50:20,
+    trend:"UPTREND", volSig:"CONFIRMING" });
+  // Bullish drivers here: MACD(2.5), MA(1.5), MAlong(2), Trend(2), Vol(1) → proven = Trend+Vol = 3 of 9.
+  assert.ok(s.icBackedShare > 0 && s.icBackedShare < 1, "share is a fraction, got " + s.icBackedShare);
+  assert.ok(Math.abs(s.icBackedShare - (3 / 9)) < 1e-3, "Trend+Vol weight / total bullish driver weight (3 of 9, 3dp)");
+  // No proven votes firing the signal's way → share 0.
+  const none = computeSignal({ ...base, R:null, S:null, M:{macd:0.5}, B:null, s5:11, s10:10, s20:21, s50:20,
+    trend:"SIDEWAYS", volSig:"NEUTRAL" });
+  assert.equal(none.icBackedShare, 0, "no Trend/Vol/BB driver ⇒ 0 proven share");
+});
+
+test("computeSignal drop: removing a named vote excludes it from the team; absent vote is a no-op", () => {
+  const base = { last:{close:100}, pats:[], div:null, ADX:null, OBV:null, VWAP:null, S:null, R:null, B:null };
+  const ctx = { ...base, M:{macd:0.5}, s5:11, s10:10, s20:21, s50:20, trend:"UPTREND", volSig:"NEUTRAL" };
+  const full = computeSignal(ctx);
+  const noMacd = computeSignal(ctx, [], { drop:["MACD"] });
+  assert.equal(full.bull - noMacd.bull, 1, "dropping the bullish MACD removes one bull vote");
+  assert.ok(full.score !== noMacd.score, "dropping a contributing vote changes the weighted score");
+  assert.equal(computeSignal(ctx, [], { drop:["NOPE"] }).score, full.score, "dropping an absent vote is a no-op");
+  assert.equal(computeSignal(ctx, []).score, full.score, "empty opts is byte-identical to the default path");
+});
+
+test("analyze shadows: shadowDrops attaches per-config team-minus-vote verdicts; off by default", () => {
+  const cfgs = [{ key:"shadow-noMacd", drop:["MACD"] }, { key:"shadow-noPat", drop:["Pat"] }];
+  const a = analyze(gen(160), "TST", "Stocks", "Trend Following", 1.5, 2.0, { shadowDrops: cfgs });
+  assert.ok(a.shadows, "shadows attached when requested");
+  for (const c of cfgs) assert.ok(["BUY","HOLD","SELL"].includes(a.shadows[c.key]), c.key + " is a decision");
+  assert.equal(analyze(gen(160), "TST", "Stocks", "Trend Following", 1.5, 2.0).shadows, null, "no opts ⇒ no shadows (zero overhead)");
 });

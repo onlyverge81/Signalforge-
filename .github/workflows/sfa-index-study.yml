@@ -1,0 +1,50 @@
+name: SFA12 x Index study (research, on-demand)
+
+# One-off research study answering the SFA12-gap / index-move-realisation / dispersion questions
+# with REAL Polygon daily data (10 US large-caps + SPY/DIA/QQQ). Manual dispatch only — it does NOT
+# commit or deploy; it prints a compact rollup to the job log and uploads sfa-index-study.json as an
+# artifact. In-sample measurement, not a promotion — the OOS ledger remains the only verdict.
+#
+# Requires the repo secret POLYGON_API_KEY (the REST key).
+
+on:
+  workflow_dispatch:
+    inputs:
+      stocks:
+        description: "Comma-separated US tickers (≤ ~15)"
+        required: false
+        default: "AAPL,MSFT,NVDA,AMZN,GOOGL,META,TSLA,JPM,XOM,JNJ"
+      window:
+        description: "Trading days analysed (after warmup)"
+        required: false
+        default: "130"
+
+permissions:
+  contents: read
+
+jobs:
+  study:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 20
+
+      - name: Run offline unit tests
+        run: node --test scripts/*.test.mjs
+
+      - name: Run SFA12 x Index study (Polygon daily)
+        env:
+          POLYGON_API_KEY: ${{ secrets.POLYGON_API_KEY }}
+          SFA_STOCKS: ${{ github.event.inputs.stocks }}
+          SFA_WINDOW: ${{ github.event.inputs.window }}
+        run: node scripts/sfa-index-study.mjs
+
+      - name: Upload sfa-index-study.json
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: sfa-index-study
+          path: sfa-index-study.json
+          if-no-files-found: warn

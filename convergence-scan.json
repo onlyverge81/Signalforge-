@@ -1,0 +1,125 @@
+{
+ "generatedAt": "2026-06-13T16:09:56.238Z",
+ "pattern": "Uptrend Convergence (trend-filtered)",
+ "resolution": "15min",
+ "lookbackDays": 45,
+ "topN": 300,
+ "regularHoursOnly": true,
+ "priceSrc": "Polygon 15min (adjusted, regular hours 09:30–16:00 ET)",
+ "universeSource": "universe.json (dollar-volume ranked, top N)",
+ "scanned": 300,
+ "withData": 295,
+ "skippedCount": 5,
+ "audit": {
+  "note": "rawSuspect = names flagged SEVERE on full-session bars; rthSuspect = still flagged after the regular-hours filter; recoveredByRth = extended-hours artifacts.",
+  "rawSuspect": 32,
+  "rthSuspect": 4,
+  "recoveredByRth": 30,
+  "rawSevereCodeTally": {
+   "frozen": 30,
+   "jump": 2
+  }
+ },
+ "horizons": [
+  {
+   "horizon": 6,
+   "tickersWithSignals": 252,
+   "totalSignals": 4135,
+   "pooledWinRate": 0.4998790810157195,
+   "pooledAvgFwdRet": 0.0012416001844053758,
+   "baselineAvgFwdRet": 0.0005640884183072521,
+   "edge": 0.0006775117660981236,
+   "edgeTStatAcrossTickers": -0.96,
+   "verdict": "NOT SIGNIFICANT"
+  },
+  {
+   "horizon": 12,
+   "tickersWithSignals": 252,
+   "totalSignals": 4092,
+   "pooledWinRate": 0.5371456500488758,
+   "pooledAvgFwdRet": 0.0030551054939214504,
+   "baselineAvgFwdRet": 0.0011493353894716574,
+   "edge": 0.001905770104449793,
+   "edgeTStatAcrossTickers": -1.13,
+   "verdict": "NOT SIGNIFICANT"
+  },
+  {
+   "horizon": 24,
+   "tickersWithSignals": 251,
+   "totalSignals": 4014,
+   "pooledWinRate": 0.5189337319382162,
+   "pooledAvgFwdRet": 0.003191859636726219,
+   "baselineAvgFwdRet": 0.0022931343309397522,
+   "edge": 0.0008987253057864669,
+   "edgeTStatAcrossTickers": -3.9,
+   "verdict": "SIGNIFICANT −"
+  },
+  {
+   "horizon": 48,
+   "tickersWithSignals": 250,
+   "totalSignals": 3875,
+   "pooledWinRate": 0.5065806451612903,
+   "pooledAvgFwdRet": 0.00464176090437136,
+   "baselineAvgFwdRet": 0.004149983110067592,
+   "edge": 0.0004917777943037683,
+   "edgeTStatAcrossTickers": -5.07,
+   "verdict": "SIGNIFICANT −"
+  }
+ ],
+ "best": {
+  "horizon": 12,
+  "edge": 0.001905770104449793,
+  "verdict": "NOT SIGNIFICANT"
+ },
+ "caveats": [
+  "In-sample exploration over ~1 month of intraday bars — a profitable horizon here is a HYPOTHESIS for the OOS ledger, not a proven edge.",
+  "Edge is forward return vs a matched same-window baseline (alpha), not a raw win rate; the t-stat is cross-sectional across names.",
+  "No costs subtracted in this forward-return scan — a positive edge must still clear the 2× round-trip cost gate before it is tradeable."
+ ],
+ "skipped": [
+  {
+   "sym": "SPCX",
+   "reason": "only 33 bars for SPCX @ 15min"
+  },
+  {
+   "sym": "NUVL",
+   "bars": 940,
+   "rthBars": 832,
+   "rawCodes": [
+    "jump"
+   ],
+   "rthCodes": [
+    "jump"
+   ]
+  },
+  {
+   "sym": "POET",
+   "bars": 2048,
+   "rthBars": 832,
+   "rawCodes": [
+    "frozen"
+   ],
+   "rthCodes": [
+    "jump"
+   ]
+  },
+  {
+   "sym": "DOCN",
+   "bars": 1516,
+   "rthBars": 832,
+   "rawCodes": [],
+   "rthCodes": [
+    "jump"
+   ]
+  },
+  {
+   "sym": "STRL",
+   "bars": 1317,
+   "rthBars": 832,
+   "rawCodes": [],
+   "rthCodes": [
+    "jump"
+   ]
+  }
+ ]
+}

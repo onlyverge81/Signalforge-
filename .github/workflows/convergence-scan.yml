@@ -1,0 +1,75 @@
+name: Convergence scan
+
+# Backtests the Uptrend Convergence pattern across the top-N dollar-volume names at an
+# intraday resolution, sweeping forward horizons, and commits convergence-scan.json. This is
+# in-sample EXPLORATION (a hypothesis generator for the OOS ledger), not a tradeable verdict —
+# the script reports edge-vs-baseline + a cross-sectional t-stat, never a bare win rate.
+#
+# Manual dispatch only. Requires the repo secret POLYGON_API_KEY.
+
+on:
+  workflow_dispatch:
+    inputs:
+      top_n:
+        description: "Top N names by dollar volume (from universe.json)"
+        required: false
+        default: "300"
+      resolution:
+        description: "Bar resolution: 1min / 5min / 15min / 30min / 1hour / 1day"
+        required: false
+        default: "15min"
+      lookback_days:
+        description: "Calendar days of history to fetch (~1 month window + pattern warmup)"
+        required: false
+        default: "45"
+      horizons:
+        description: "Comma-separated forward horizons (in bars) to sweep"
+        required: false
+        default: "6,12,24,48"
+      regular_hours:
+        description: "Intraday: keep only 09:30–16:00 ET bars (drop pre/post-market)"
+        required: false
+        default: "true"
+
+permissions:
+  contents: write   # to commit convergence-scan.json
+
+jobs:
+  scan:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Set up Node
+        uses: actions/setup-node@v4
+        with:
+          node-version: 20
+
+      - name: Run offline unit tests
+        run: node --test scripts/*.test.mjs
+
+      - name: Run convergence scan (Polygon intraday)
+        env:
+          POLYGON_API_KEY: ${{ secrets.POLYGON_API_KEY }}
+          SCAN_TOP_N: ${{ inputs.top_n }}
+          SCAN_RESOLUTION: ${{ inputs.resolution }}
+          SCAN_LOOKBACK_DAYS: ${{ inputs.lookback_days }}
+          SCAN_HORIZONS: ${{ inputs.horizons }}
+          SCAN_RTH: ${{ inputs.regular_hours }}
+        run: node scripts/convergence-scan.mjs || echo "scan skipped (set the POLYGON_API_KEY secret to enable)"
+
+      - name: Commit convergence-scan.json if it changed
+        run: |
+          git config user.name "github-actions[bot]"
+          git config user.email "github-actions[bot]@users.noreply.github.com"
+          git add convergence-scan.json
+          if git diff --cached --quiet; then
+            echo "convergence-scan.json unchanged — nothing to commit."
+          else
+            git commit -m "chore: convergence scan (top-${{ inputs.top_n }} @ ${{ inputs.resolution }})"
+            for i in 1 2 3; do
+              git pull --rebase origin "${GITHUB_REF_NAME}" && git push && break
+              echo "push race (attempt $i) — retrying"; sleep 3
+            done
+          fi

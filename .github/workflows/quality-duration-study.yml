@@ -1,0 +1,40 @@
+name: Quality x Duration study (research, on-demand)
+
+# Tests: does owning HIGH-quality (ROE) stocks and holding over a DURATION (3/6/12mo) mature into
+# realized value (hit-rate + alpha vs SPY), vs low-quality? Real Polygon monthly data + SEC ROE.
+# Manual dispatch only — prints a rollup to the job log + uploads quality-duration-study.json.
+# In-sample measurement, not a promotion. Requires the repo secret POLYGON_API_KEY.
+
+on:
+  workflow_dispatch:
+    inputs:
+      stocks:
+        description: "Comma-separated US tickers (quality-varied)"
+        required: false
+        default: ""
+
+permissions:
+  contents: read
+
+jobs:
+  study:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 20
+      - name: Run offline unit tests
+        run: node --test scripts/*.test.mjs
+      - name: Run Quality x Duration study
+        env:
+          POLYGON_API_KEY: ${{ secrets.POLYGON_API_KEY }}
+          QD_STOCKS: ${{ github.event.inputs.stocks }}
+        run: node scripts/quality-duration-study.mjs
+      - name: Upload quality-duration-study.json
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: quality-duration-study
+          path: quality-duration-study.json
+          if-no-files-found: warn

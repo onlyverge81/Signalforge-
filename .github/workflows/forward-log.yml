@@ -6,9 +6,11 @@ name: Forward-test logger
 # forward test the in-sample backtest can't be: no human, settled EOD bars only,
 # git history = the timestamped, tamper-evident record.
 #
-# Requires repo secret TWELVE_DATA_KEY (a free twelvedata.com API key). Self-
-# contained like fundamentals.yml: it commits the ledger and deploys Pages itself,
-# sharing the 'pages' concurrency group so the two workflows never deploy at once.
+# Requires repo secret POLYGON_API_KEY (the REST key) — the SAME feed the app and
+# the backtest studies use, so the forward record is vendor-consistent. Paced for
+# the free tier's 5 req/min (override with POLYGON_PACE_MS). Self-contained like
+# fundamentals.yml: it commits the ledger and deploys Pages itself, sharing the
+# 'pages' concurrency group so the two workflows never deploy at once.
 
 on:
   schedule:
@@ -44,20 +46,32 @@ jobs:
 
       - name: Log live signals to paper-ledger.json
         env:
-          TWELVE_DATA_KEY: ${{ secrets.TWELVE_DATA_KEY }}
+          POLYGON_API_KEY: ${{ secrets.POLYGON_API_KEY }}
         # Non-fatal: if the key isn't set yet or a vendor hiccups, still deploy.
-        run: node scripts/forward-log.mjs || echo "forward-log skipped (set the TWELVE_DATA_KEY secret to enable)"
+        run: node scripts/forward-log.mjs || echo "forward-log skipped (set the POLYGON_API_KEY secret to enable)"
 
-      - name: Commit the ledger if it changed
+      - name: Score alpha and run the promotion engine (propose-only)
+        # Re-scores the refreshed ledger as FDR-corrected alpha vs. buy-&-hold,
+        # then auto-demotes proven losers / freezes on suspect data and FLAGS
+        # promotions for human ratification. Never auto-activates a variant.
+        # Idempotent and offline (reads the committed ledger), so always safe.
+        run: node scripts/promote.mjs
+
+      - name: Commit the ledger and registry if they changed
         run: |
           git config user.name "github-actions[bot]"
           git config user.email "github-actions[bot]@users.noreply.github.com"
-          if ! git diff --quiet -- paper-ledger.json; then
-            git add paper-ledger.json
-            git commit -m "chore: forward-test log — append/close paper trades"
-            git push
+          git add paper-ledger.json strategy-registry.json forward-perf.json
+          if ! git diff --cached --quiet; then
+            git commit -m "chore: forward-test log + alpha/promotion update"
+            # Land on main, rebasing onto any concurrent bot push (the sibling
+            # data workflows can push between our checkout and this step).
+            for i in 1 2 3; do
+              git pull --rebase origin main && git push && break
+              echo "push race (attempt $i) — retrying"; sleep 3
+            done
           else
-            echo "paper-ledger.json unchanged — nothing to commit."
+            echo "ledger, registry and perf unchanged — nothing to commit."
           fi
 
       - name: Configure Pages

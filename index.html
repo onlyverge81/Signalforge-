@@ -2,7 +2,7 @@
 <html lang="en">
 <head>
 <meta charset="UTF-8"/>
-<meta http-equiv="Content-Security-Policy" content="default-src 'self'; script-src 'self' 'unsafe-inline' 'unsafe-eval' https://unpkg.com; style-src 'self' 'unsafe-inline' https://fonts.googleapis.com; font-src 'self' https://fonts.gstatic.com; img-src 'self' data:; connect-src 'self' https://api.twelvedata.com https://api.polygon.io; object-src 'none'; base-uri 'self'; form-action 'self'"/>
+<meta http-equiv="Content-Security-Policy" content="default-src 'self'; script-src 'self' 'unsafe-inline' 'unsafe-eval'; style-src 'self' 'unsafe-inline' https://fonts.googleapis.com; font-src 'self' https://fonts.gstatic.com; img-src 'self' data:; connect-src 'self' https://api.twelvedata.com https://api.polygon.io; object-src 'none'; base-uri 'self'; form-action 'self'"/>
 <meta name="viewport" content="width=device-width,initial-scale=1,maximum-scale=1"/>
 <meta name="theme-color" content="#080b14"/>
 <title>SignalForge — Live Trading Analyzer</title>
@@ -17,48 +17,52 @@ a{text-decoration:none}
 ::-webkit-scrollbar{height:6px;width:6px}
 ::-webkit-scrollbar-thumb{background:#1a2035;border-radius:3px}
 @keyframes spin{to{transform:rotate(360deg)}}
+#boot{position:fixed;inset:0;display:flex;flex-direction:column;align-items:center;justify-content:center;gap:14px;color:#90a4ae;font-size:13px;text-align:center;padding:24px}
+#boot .ring{width:34px;height:34px;border:3px solid #1a2035;border-top-color:#00bcd4;border-radius:50%;animation:spin .9s linear infinite}
+#boot button{margin-top:6px;background:#00bcd4;color:#04222a;border:0;border-radius:6px;padding:9px 18px;font-weight:700;font-size:12px;cursor:pointer}
 </style>
-<script crossorigin src="https://unpkg.com/react@18/umd/react.production.min.js"></script>
-<script crossorigin src="https://unpkg.com/react-dom@18/umd/react-dom.production.min.js"></script>
-<script src="https://unpkg.com/@babel/standalone/babel.min.js"></script>
+<!-- React/ReactDOM/Babel are SELF-HOSTED (same-origin ./vendor) — react 18.3.1, react-dom 18.3.1,
+     @babel/standalone 7.29.7 — so a third-party CDN outage can never blank the app. The app is
+     still transpiled in-browser from the single index.html file (charter-preserved). The boot
+     watchdog below replaces the loader with a visible error if anything fails to load/mount,
+     so a load failure surfaces a Reload prompt instead of a silent black screen. -->
+<script>
+  // Fires on a <script> load error or if the app hasn't mounted within the timeout. Robust to
+  // timing: a <head> script can fail BEFORE <body>/#boot exists, so we stash the reason and render
+  // once the DOM is ready (creating the overlay if #boot isn't there). Idempotent.
+  window.__sfBootFail = function (why) {
+    if (!window.__sfFail) window.__sfFail = why || "load error";
+    var render = function () {
+      if (!document.body) return;
+      var b = document.getElementById("boot");
+      if (!b) { b = document.createElement("div"); b.id = "boot"; document.body.appendChild(b); }
+      if (b.dataset.failed) return;
+      b.dataset.failed = "1";
+      b.innerHTML = '<div style="font-size:30px">📉</div>'
+        + '<div style="color:#ff5252;font-weight:700">SignalForge couldn’t finish loading.</div>'
+        + '<div style="max-width:340px;line-height:1.7">A script failed to load (' + window.__sfFail
+        + '). This is usually a flaky connection — reloading almost always fixes it.</div>'
+        + '<button onclick="location.reload()">↻ Reload</button>';
+    };
+    if (document.readyState === "loading") document.addEventListener("DOMContentLoaded", render);
+    else render();
+  };
+</script>
+<script src="./vendor/react.production.min.js" onerror="__sfBootFail('react')"></script>
+<script src="./vendor/react-dom.production.min.js" onerror="__sfBootFail('react-dom')"></script>
+<script src="./vendor/babel.min.js" onerror="__sfBootFail('babel')"></script>
 </head>
 <body>
-<div id="root"></div>
+<div id="root"><div id="boot"><div class="ring"></div><div>Loading SignalForge…</div></div></div>
+<script>
+  // If the React app hasn't replaced #boot within 20s (slow device, transpile stall, missing
+  // asset), show the failure prompt rather than leaving a black screen. The app removes #boot
+  // on mount (it renders into #root), so a successful mount clears this automatically.
+  setTimeout(function () { if (document.getElementById("boot")) window.__sfBootFail("timed out"); }, 20000);
+</script>
 <script type="text/babel" data-presets="react">
 const { useState, useRef, useEffect, useCallback, useMemo } = React;
 
-// ─── Sample data ───────────────────────────────────────────────────────────
-const SAMPLE = `Date,Open,High,Low,Close,Volume
-2026-04-01,169.20,171.80,168.50,171.25,52000000
-2026-04-02,171.25,173.40,170.10,172.80,48500000
-2026-04-03,172.80,174.20,170.40,170.40,61200000
-2026-04-04,170.40,171.00,166.80,167.25,78900000
-2026-04-05,167.25,168.50,164.60,165.80,92300000
-2026-04-07,165.80,166.20,162.10,163.70,105100000
-2026-04-08,163.70,165.90,162.50,165.30,81400000
-2026-04-09,165.30,169.10,164.80,168.60,74700000
-2026-04-10,168.60,171.50,168.00,170.90,57200000
-2026-04-11,170.90,173.70,170.40,173.20,49800000
-2026-04-12,173.20,176.40,172.90,175.80,54600000
-2026-04-14,175.80,177.10,174.20,174.20,46900000
-2026-04-15,174.20,175.00,171.80,172.50,51300000
-2026-04-16,172.50,174.20,171.10,173.70,48700000
-2026-04-17,173.70,178.50,173.20,177.80,72100000
-2026-04-18,177.80,180.20,177.10,179.40,63400000
-2026-04-21,179.40,181.80,178.90,181.20,58900000
-2026-04-22,181.20,182.50,179.60,180.10,44200000
-2026-04-23,180.10,182.00,179.40,181.60,41700000
-2026-04-24,181.60,184.30,181.00,183.90,55800000
-2026-04-25,183.90,185.70,182.80,185.20,49300000
-2026-04-28,185.20,187.40,184.90,186.80,43100000
-2026-04-29,186.80,188.10,184.20,184.20,56700000
-2026-04-30,184.20,185.00,181.80,182.50,61400000
-2026-05-01,182.50,185.20,181.10,184.75,52000000
-2026-05-02,184.75,186.80,183.40,185.90,38500000
-2026-05-03,185.90,187.50,183.10,183.10,51200000
-2026-05-04,183.10,184.00,179.80,180.25,68900000
-2026-05-05,180.25,181.50,177.60,178.40,72300000
-2026-05-06,178.40,179.20,175.10,176.80,85100000`;
 
 const STRATEGIES = ["Trend Following","Mean Reversion","Breakout","Momentum","Swing Trading","Scalping"];
 // Natural mode for each strategy: P = POSITION (patient), T = TACTICAL (active)
@@ -97,7 +101,7 @@ function parseCSV(raw) {
 // parsed series for the defects real feeds carry and reports them, so the UI can
 // mute a signal built on corrupted inputs — the same principle as edge muting.
 // Pure & defensive: never throws, returns {issues:[{level,code,msg}], suspect}.
-function auditData(rows){
+function auditData(rows, opts){
   const issues=[];
   if(!rows||rows.length<5) return {issues,suspect:false};
   const n=rows.length;
@@ -154,6 +158,21 @@ function auditData(rows){
   for(let i=1;i<n;i++){ if(rows[i].close===rows[i-1].close){ run++; if(run>maxRun)maxRun=run; } else run=1; }
   if(maxRun>=5)      add("SEVERE","frozen","A frozen stretch of "+maxRun+" identical closes — a stale feed; the volatility and signals computed across it are meaningless.");
   else if(maxRun>=3) add("WARN","flat","A flat stretch of "+maxRun+" identical closes — possibly thin or stale data.");
+
+  // 5) Stale SERIES: the NEWEST bar is far older than the timeframe implies. The live quote can be
+  //    current while the chart/signal/ATR levels are anchored to an old bar. Resolution-aware so a
+  //    normal overnight/weekend gap doesn't false-flag. SEVERE → mutes the signal.
+  if(opts && opts.resolution){
+    const lastMs=ts[n-1];
+    if(isFinite(lastMs)){
+      const intraday=["1","5","15","30","60"].includes(opts.resolution);
+      const maxStale=intraday?5*864e5:(opts.resolution==="W"?18*864e5:7*864e5);
+      const age=Date.now()-lastMs;
+      if(age>maxStale){ const d=Math.round(age/864e5);
+        add("SEVERE","stale","Newest bar is ~"+d+" day"+(d>1?"s":"")+" old — the price series is STALE. The live quote may be current, but the chart, signal and ATR levels are anchored to that old bar.");
+      }
+    }
+  }
 
   return {issues, suspect:issues.some(i=>i.level==="SEVERE")};
 }
@@ -315,20 +334,22 @@ function sfa12Series(rows, startIdx=30, lookback=12){
 // feed the live signal; it's surfaced and backtested on its own so its edge can be
 // measured on a big sample. Pure + deterministic; thresholds tunable.
 // PARITY: keep byte-identical with scripts/engine.mjs (engine.test.mjs pins it).
-const CB_DEFAULTS={ coilPct:0.006, gapPct:0.004, coilLookback:8, slopeLookback:3, horizon:20, minBars:60 };
+const CB_DEFAULTS={ coilPct:0.006, gapPct:0.004, coilLookback:8, slopeLookback:3, horizon:20, minBars:60,
+                    trendFilter:true, trendLookback:20, trendMinSlope:0.01 };
 function cbOpts(o){ return Object.assign({}, CB_DEFAULTS, o||{}); }
 function maRibbon(cl){
-  const s5=[],s10=[],s20=[],comp=[]; let a5=0,a10=0,a20=0;
+  const s5=[],s10=[],s20=[],s50=[],comp=[]; let a5=0,a10=0,a20=0,a50=0;
   for(let i=0;i<cl.length;i++){
     a5+=cl[i]; if(i>=5)a5-=cl[i-5]; s5[i]=i>=4?a5/5:null;
     a10+=cl[i]; if(i>=10)a10-=cl[i-10]; s10[i]=i>=9?a10/10:null;
     a20+=cl[i]; if(i>=20)a20-=cl[i-20]; s20[i]=i>=19?a20/20:null;
+    a50+=cl[i]; if(i>=50)a50-=cl[i-50]; s50[i]=i>=49?a50/50:null;
     comp[i]=(s5[i]!=null&&s10[i]!=null&&s20[i]!=null)?(s5[i]+s10[i]+s20[i])/3:null;
   }
-  return {s5,s10,comp};
+  return {s5,s10,s50,comp};
 }
 function cbDetectAt(R, cl, i, P){
-  const s5=R.s5,s10=R.s10,comp=R.comp,k=P.slopeLookback;
+  const s5=R.s5,s10=R.s10,s50=R.s50,comp=R.comp,k=P.slopeLookback;
   if(i<20+k || s5[i]==null||s10[i]==null||comp[i]==null) return {detected:false};
   const price=cl[i];
   const spreadPct=j=>(s5[j]==null||s10[j]==null||comp[j]==null)?null
@@ -341,21 +362,30 @@ function cbDetectAt(R, cl, i, P){
   const gapNow=(s5[i]-s10[i])/price, gapPrev=(s5[i-1]-s10[i-1])/cl[i-1];
   const s5Rising=s5[i]>s5[i-k], s10Rising=s10[i]>s10[i-k], compRising=comp[i]>comp[i-k];
   const gapWidening=gapNow>gapPrev && gapNow>=P.gapPct;
-  const detected=stacked && together && s5Rising && gapWidening && s10Rising && compRising;
+  // Trend filter: only fire inside an established uptrend (price above a rising
+  // 50-day SMA) — a coil/breakout is a momentum setup. Optional (trendFilter:false).
+  let trendOK=true;
+  if(P.trendFilter){
+    const j=i-P.trendLookback;
+    trendOK = s50[i]!=null && j>=0 && s50[j]!=null && cl[i]>s50[i] && (s50[i]-s50[j])/s50[j] >= P.trendMinSlope;
+  }
+  const detected=stacked && together && s5Rising && gapWidening && s10Rising && compRising && trendOK;
   const strength=detected?Math.max(0,Math.min(1,(gapNow/P.gapPct)*0.5+(1-coilSpread/P.coilPct)*0.5)):0;
   return { detected, barsSinceCoil:i-coilIdx, coilSpreadPct:coilSpread, breakoutGapPct:gapNow,
-           strength:parseFloat(strength.toFixed(2)), stacked, together, s5Rising, gapWidening, s10Rising, compRising };
+           strength:parseFloat(strength.toFixed(2)), stacked, together, s5Rising, gapWidening, s10Rising, compRising, trendOK };
 }
 function cbMedian(a){ if(!a.length) return null; const s=a.slice().sort((x,y)=>x-y),m=s.length>>1; return s.length%2?s[m]:(s[m-1]+s[m])/2; }
 function convergenceBreakout(slice, opts){
-  const P=cbOpts(opts); if(!slice||slice.length<21+P.slopeLookback) return null;
+  const P=cbOpts(opts); const need = P.trendFilter ? 50+P.trendLookback : 21+P.slopeLookback;
+  if(!slice||slice.length<need) return null;
   const cl=slice.map(d=>d.close); return cbDetectAt(maRibbon(cl), cl, cl.length-1, P);
 }
 function backtestPattern(data, opts){
   const P=cbOpts(opts), H=P.horizon;
   if(!data||data.length<P.minBars+H+1) return null;
   const cl=data.map(d=>d.close), R=maRibbon(cl), sig=[], all=[];
-  for(let i=Math.max(P.minBars,21+P.slopeLookback);i<data.length-H;i++){
+  const start=Math.max(P.minBars, 21+P.slopeLookback, P.trendFilter ? 49+P.trendLookback : 0);
+  for(let i=start;i<data.length-H;i++){
     const fwd=(cl[i+H]-cl[i])/cl[i]; all.push(fwd);
     if(cbDetectAt(R,cl,i,P).detected) sig.push(fwd);
   }
@@ -371,7 +401,7 @@ function backtestPattern(data, opts){
 // Each indicator casts a directional vote (+1 bullish / -1 bearish / 0 neutral)
 // with a reliability weight. Final signal requires confluence (3+ aligned) AND
 // a strong enough weighted score, with conflicting votes dampening the result.
-function computeSignal(ctx, extraVotes=[]) {
+function computeSignal(ctx, extraVotes=[], opts={}) {
   const {R,M,s5,s10,s20,s50,trend,S,B,last,pats,div,volSig,ADX,OBV,VWAP} = ctx;
   const votes=[];
   if(R!=null)  votes.push({n:"RSI",   dir:R<40?1:R>60?-1:0, w:2});
@@ -396,7 +426,10 @@ function computeSignal(ctx, extraVotes=[]) {
   // Used only for the SFA12 "New Logic" shadow comparison.
   if(extraVotes.length) votes.push(...extraVotes);
 
-  const active=votes.filter(v=>v.dir!==0);
+  // Shadow-engine support: drop named votes to ask "does the TEAM signal score better without this
+  // member?" (the team-minus-nuisance test). Default path (no drop) is byte-identical.
+  const used = (opts.drop && opts.drop.length) ? votes.filter(v=>!opts.drop.includes(v.n)) : votes;
+  const active=used.filter(v=>v.dir!==0);
   const bull=active.filter(v=>v.dir>0).length;
   const bear=active.filter(v=>v.dir<0).length;
   const weighted=active.reduce((a,v)=>a+v.dir*v.w,0);
@@ -414,10 +447,30 @@ function computeSignal(ctx, extraVotes=[]) {
   const agreement=total>0?Math.max(bull,bear)/total:0;
   const confidence=Math.min(95,Math.max(35,Math.round(40+Math.abs(net)*3+agreement*15)));
 
-  return {signal, score:parseFloat(net.toFixed(1)), bull, bear, conflict, confidence};
+  // Family-level conflict (research angles C+F): the generic `conflict` above counts ANY disagreement
+  // equally, but the engine's real split is MEAN-REVERSION (RSI/Stoch/BB, oversold→buy) vs TREND
+  // (MACD/MA/MAlong/Trend). When those two camps point opposite ways the engine is fighting itself —
+  // one camp is right for the regime, the other is noise. Measured here, surfaced as a LABEL only.
+  const famDir=names=>{ const s=active.filter(v=>names.includes(v.n)).reduce((a,v)=>a+v.dir,0); return s>0?1:s<0?-1:0; };
+  const trendDir=famDir(["MACD","MA","MAlong","Trend"]);
+  const meanRevDir=famDir(["RSI","Stoch","BB"]);
+  const famConflict=trendDir!==0 && meanRevDir!==0 && trendDir!==meanRevDir;
+
+  // Vote-weight mis-calibration test (factor-interaction pie): the engine's HAND weights over-weight
+  // empirically-dead votes (ADX is weighted 3 but measured IC ≈ 0; RSI/MACD/Pat ≈ 0/negative) and
+  // under-weight proven ones (Vol IC 0.074 at weight 1; Trend significant). icBackedShare = of the
+  // weighted conviction pushing THIS signal's way, the fraction coming from the PROVEN votes. Low share
+  // ⇒ the call rests on the over-weighted dead votes. A LABEL only (tests OOS whether that costs money).
+  const IC_PROVEN_VOTES=["Trend","Vol","BB"];
+  const sd=net>0?1:net<0?-1:0;
+  let drvW=0, provW=0;
+  for(const v of active){ if(sd!==0 && Math.sign(v.dir)===sd){ drvW+=v.w; if(IC_PROVEN_VOTES.includes(v.n)) provW+=v.w; } }
+  const icBackedShare=drvW>0?parseFloat((provW/drvW).toFixed(3)):0;
+
+  return {signal, score:parseFloat(net.toFixed(1)), bull, bear, conflict, confidence, trendDir, meanRevDir, famConflict, icBackedShare};
 }
 
-function analyze(data, ticker, market, strategy, slMult, tpMult) {
+function analyze(data, ticker, market, strategy, slMult, tpMult, opts={}) {
   const SLM = slMult || 1.5;
   const TPM = tpMult || 2.0;
   const closes=data.map(d=>d.close), vols=data.map(d=>d.volume);
@@ -449,6 +502,14 @@ function analyze(data, ticker, market, strategy, slMult, tpMult) {
   const score=sigResult.score;
   const signal=sigResult.signal;
   const confidence=sigResult.confidence;
+  // Shadow-engine verdicts (team-minus-nuisance): when callers pass shadowDrops, recompute the team
+  // signal with each named vote removed. Decision-only (BUY/HOLD/SELL) — the ledger compares the
+  // shadow team's trades vs the full team's. Off by default (no overhead, no app change).
+  let shadows=null;
+  if(opts.shadowDrops && opts.shadowDrops.length){
+    shadows={};
+    for(const sc of opts.shadowDrops) shadows[sc.key]=computeSignal(ctx,[],{drop:sc.drop}).signal;
+  }
 
   // SFA12 tracker (independent indicator — does NOT affect the live result above).
   const sfa12=sfa12Series(data);
@@ -481,8 +542,8 @@ function analyze(data, ticker, market, strategy, slMult, tpMult) {
     tp1:parseFloat(tp1.toFixed(4)),tp2:parseFloat(tp2.toFixed(4)),rr,
     support:parseFloat(sup.toFixed(4)),resistance:parseFloat(res.toFixed(4)),
     score,
-    sfa12, sfa12Compare, convBreakout, convBreakoutTest,
-    confluence:{bull:sigResult.bull,bear:sigResult.bear,conflict:sigResult.conflict},
+    sfa12, sfa12Compare, convBreakout, convBreakoutTest, shadows,
+    confluence:{bull:sigResult.bull,bear:sigResult.bear,conflict:sigResult.conflict,trendDir:sigResult.trendDir,meanRevDir:sigResult.meanRevDir,famConflict:sigResult.famConflict,icBackedShare:sigResult.icBackedShare},
     indicators:{
       rsi:{v:R,label:rsiLabel},
       stoch:{v:S,label:S>75?"OVERBOUGHT":S<25?"OVERSOLD":"NEUTRAL"},
@@ -564,46 +625,24 @@ function buildOutlook(stock, trend, idx, opts){
     return {sym,label,pct,price:(lm&&lm.value!=null)?lm.value:last.close};
   });
   if(markets.some(m=>m.pct==null)) return null;
+  // `combined` = the SUM of the three indexes' current-session moves. Kept only for the
+  // per-index tiles and the macro-regime sentiment sign — NOT the projection any more.
   const combined=markets.reduce((a,m)=>a+m.pct,0);
   const price=stock[stock.length-1].close;
-  const delta=price*combined/100;
-  // Projection moves in the TREND's direction by the SIZE of the combined market
-  // move — so use |delta|. (delta itself stays signed for the "Dollar delta"
-  // readout.) Building up/down from signed delta double-counts the sign on a down
-  // market, which flipped the downtrend price ABOVE spot. See header copy above.
-  const mag=Math.abs(delta);
-  const up=price+mag, down=price-mag;
-  const active=trend==="UPTREND"?"UP":trend==="DOWNTREND"?"DOWN":"NEUTRAL";
-  const correctionPrice=active==="UP"?up:active==="DOWN"?down:null;
 
-  // ── Backtest: directional accuracy of the projection vs the NEXT bar ──
-  // Per-bar trend = close vs trailing SMA20 (every historical bar gets a
-  // direction). For each bar i that has a combined% for its date, an SMA20, and
-  // a next bar:  predMove = (trendUp?+1:-1) * close[i] * combined/100 ; a hit is
-  // sign(predMove) === sign(close[i+1]-close[i]). Baseline = trend-only direction
-  // (ignores the market overlay) so we can see whether the overlay adds anything.
-  const maps={}; syms.forEach(s=>{maps[s]=new Map(); series[s].forEach(r=>{if(r.pct!=null)maps[s].set(r.date,r.pct);});});
-  const closes=stock.map(d=>d.close);
-  let n=0,hits=0,baseHits=0,errSum=0,pctErrSum=0;
-  for(let i=20;i<stock.length-1;i++){
-    const sma20=sma(closes.slice(0,i+1),20); if(sma20==null) continue;
-    const date=stock[i].date;
-    let comb=0,ok=true;
-    for(const s of syms){ const v=maps[s].get(date); if(v==null){ok=false;break;} comb+=v; }
-    if(!ok) continue;
-    const trendUp=closes[i]>=sma20;
-    const predMove=(trendUp?1:-1)*closes[i]*comb/100;
-    const projected=closes[i]+predMove;
-    const actualMove=closes[i+1]-closes[i];
-    if(predMove===0||actualMove===0) continue;
-    n++;
-    if(Math.sign(predMove)===Math.sign(actualMove)) hits++;
-    if((trendUp?1:-1)===Math.sign(actualMove)) baseHits++;
-    errSum+=Math.abs(projected-closes[i+1]);
-    pctErrSum+=Math.abs(projected-closes[i+1])/closes[i+1]*100;
-  }
-  const acc=n?hits/n*100:null, baseline=n?baseHits/n*100:null;
-  const backtest=n?{n,acc,baseline,edge:acc-baseline,avgErr:errSum/n,avgPctErr:pctErrSum/n}:null;
+  // ── Correction projection: the AVERAGE trailing-20-day gain of the three indexes,
+  //    applied to the stock price, with an error-buffered target (TP) / stop (SL). ──
+  const gainByDate=avgIndexGainByDate(syms.map(s=>idx[s]),20);
+  const gainVals=[...gainByDate.values()];
+  const gainsPct=gainVals.length?gainVals[gainVals.length-1]:null;
+  // Full P&L vs matched buy-&-hold (alpha-honest) — replaces the old directional-only test.
+  const backtest=backtestCorrection(stock, gainByDate, {period:20, costs:{slip:0.05,comm:0.05}});
+  const avgErr=backtest&&backtest.avgErr!=null?backtest.avgErr:0;
+  const lv=correctionLevels({entry:price, gainsPct:gainsPct||0, avgErr});
+  const delta=lv.delta, mag=lv.mag, up=lv.tp, down=lv.sl;
+  const active=trend==="UPTREND"?"UP":trend==="DOWNTREND"?"DOWN":"NEUTRAL";
+  // TP in an uptrend (let it run), the red-flag SL in a downtrend; both shown when sideways.
+  const correctionPrice=active==="UP"?up:active==="DOWN"?down:null;
 
   // Freshness provenance from the live snapshot (drives the Outlook's freshness gate).
   let fresh=null;
@@ -617,7 +656,47 @@ function buildOutlook(stock, trend, idx, opts){
              perIndex:proxies.map(([s,label])=>({sym:s,label,...(liveMoves[s]||{})}))};
     }
   }
-  return {markets,combined,price,delta,up,down,active,trend,correctionPrice,backtest,fresh};
+  // Structural market-regime read (which toolkit fits the room) — from the primary index proxy's
+  // daily bars. Awareness only; it does not touch the projection above or any signal/gate.
+  const regime=marketRegime(idx["SPY"]||idx[syms[0]]);
+  return {markets,combined,gainsPct,price,delta,mag,up,down,active,trend,correctionPrice,backtest,fresh,regime};
+}
+
+// Market-regime notifier — MIRRORS scripts/engine.mjs byte-for-byte (parity). Awareness, NOT a gate:
+// classify the broad market so the human applies the right toolkit (trend-following in TRENDING markets,
+// mean-reversion in RANGING ones — the engine's votes are conditionally valid, per research angles C+F).
+// Kaufman efficiency ratio = |net move| / Σ|bar-to-bar move|: ~1 = clean trend, ~0 = chop. Close-only.
+function efficiencyRatio(closes,n=21){
+  if(!closes||closes.length<n+1) return null;
+  const seg=closes.slice(-(n+1));
+  const net=Math.abs(seg[seg.length-1]-seg[0]);
+  let path=0; for(let i=1;i<seg.length;i++) path+=Math.abs(seg[i]-seg[i-1]);
+  return path>0?net/path:0;
+}
+function marketRegime(bars){
+  const closes=(bars||[]).map(b=>b&&b.close).filter(c=>c>0);
+  if(closes.length<40) return null;                                // need enough for a vol baseline
+  const last=closes[closes.length-1];
+  const win=Math.min(200,closes.length);
+  const ma=closes.slice(-win).reduce((a,b)=>a+b,0)/win;           // proxy 200-DMA (shorter if data is)
+  const approxMA=win<200;
+  const direction=last>ma*1.01?"BULL":last<ma*0.99?"BEAR":"NEUTRAL";
+  const er=efficiencyRatio(closes,21);
+  const trend=er==null?"UNKNOWN":er>=0.45?"TRENDING":er<0.25?"RANGING":"TRANSITIONAL";
+  const rets=[]; for(let i=1;i<closes.length;i++) rets.push(closes[i]/closes[i-1]-1);
+  const stdev=a=>{ if(a.length<2) return null; const m=a.reduce((x,y)=>x+y,0)/a.length; return Math.sqrt(a.reduce((x,y)=>x+(y-m)**2,0)/a.length); };
+  const recentVol=stdev(rets.slice(-21)), baseVol=stdev(rets.slice(-126));
+  const vol=(recentVol==null||baseVol==null||baseVol===0)?"UNKNOWN"
+    :recentVol>baseVol*1.35?"STORMY":recentVol<baseVol*0.75?"CALM":"NORMAL";
+  let favored,cautioned;
+  if(trend==="TRENDING"){ favored="Trend-following — momentum & breakouts (MA / MACD-up) are reliable here"; cautioned="Mean-reversion: 'buy the dip' fights the tape — oversold can keep falling"; }
+  else if(trend==="RANGING"){ favored="Mean-reversion — oversold bounces (RSI / Stoch / BB) are favored"; cautioned="Breakouts: likely bull-traps; trend votes misfire in chop"; }
+  else { favored="Transitional / mixed — demand stronger multi-signal confluence before acting"; cautioned="Single-signal conviction is risky until the regime resolves"; }
+  const risk=(direction==="BEAR"&&vol==="STORMY")?"ELEVATED — bear + high volatility: reduce size. A regime-blind signal fails hardest here."
+    :(vol==="STORMY")?"Volatility is elevated vs its 6-month norm — widen stops or trim size."
+    :(direction==="BEAR")?"Bear trend — long signals face a market headwind.":null;
+  const label=[direction!=="NEUTRAL"?direction:null,trend!=="UNKNOWN"?trend:null].filter(Boolean).join(" · ")||"INDETERMINATE";
+  return { direction, trend, vol, er:er==null?null:+er.toFixed(2), approxMA, favored, cautioned, risk, label };
 }
 
 // ─── Phase-3 macro regime — condition conviction on the market, when earned ───
@@ -679,7 +758,12 @@ function isUsMarketOpen(d){
 const OUTLOOK_INDICES=[["I:DJI","Dow"],["I:SPX","S&P 500"],["I:NDX","Nasdaq"]];
 const POLY_RES={ "1":[1,"minute"],"5":[5,"minute"],"15":[15,"minute"],"30":[30,"minute"],"60":[1,"hour"],"D":[1,"day"],"W":[1,"week"] };
 function polyWindowMs(span){ const D=864e5; return span==="minute"?10*D:span==="hour"?90*D:span==="week"?2500*D:2200*D; }
-function polyBarDate(tMs,span){ const iso=new Date(tMs).toISOString(); return (span==="day"||span==="week")?iso.slice(0,10):iso.slice(0,16).replace("T"," "); }
+// Intraday bar timestamps render in ET (the market's timezone) so the chart x-axis, the SIGNALS
+// hero time, and the LIVE "last trade … ET" line all agree — UTC labels looked ~4-5h "ahead" of
+// the market clock. Daily/weekly stay date-only (the UTC date IS the trading date).
+const ET_DT=new Intl.DateTimeFormat("en-CA",{timeZone:"America/New_York",year:"numeric",month:"2-digit",day:"2-digit",hour:"2-digit",minute:"2-digit",hour12:false});
+function etDateTime(tMs){ const p={}; for(const x of ET_DT.formatToParts(new Date(tMs))) p[x.type]=x.value; const h=p.hour==="24"?"00":p.hour; return p.year+"-"+p.month+"-"+p.day+" "+h+":"+p.minute; }
+function polyBarDate(tMs,span){ return (span==="day"||span==="week") ? new Date(tMs).toISOString().slice(0,10) : etDateTime(tMs); }
 function polyErr(j){
   const m=j&&(j.error||j.message)||"Polygon request failed.";
   if(/not entitled|NOT_AUTHORIZED|isn't included|not included/i.test(m)) return "Your Polygon plan doesn't include this data — real-time/index needs the Developer tier. ("+m+")";
@@ -689,13 +773,70 @@ function polyErr(j){
 }
 async function polyGet(url){ const r=await fetch(url); const j=await r.json(); if(j&&(j.status==="ERROR"||j.error)) throw new Error(polyErr(j)); return j; }
 function polyBars(results,span){ return (results||[]).map(b=>({date:polyBarDate(b.t,span),open:+(+b.o).toFixed(4),high:+(+b.h).toFixed(4),low:+(+b.l).toFixed(4),close:+(+b.c).toFixed(4),volume:+b.v||0})).filter(d=>d.close>0); }
+
+// ─── Intraday regular-hours filter (US EQUITIES only) ────────────────────────
+// Mirrors scripts/pattern-study.mjs (the CI uses it for intraday studies). Thin pre/post-market
+// prints distort the intraday signal, the ATR levels, and the "last close" the verdict anchors
+// to — the 1-hour "price-to-signal" discrepancy. Keep only 09:30–16:00 ET. NEVER applied to
+// crypto/forex (24/7 — they have no regular session) or to daily/weekly bars.
+const ET_HM=new Intl.DateTimeFormat("en-US",{timeZone:"America/New_York",hour:"2-digit",minute:"2-digit",hour12:false});
+function etMinutesMs(ms){ let h=0,m=0; for(const p of ET_HM.formatToParts(new Date(ms))){ if(p.type==="hour")h=+p.value; if(p.type==="minute")m=+p.value; } if(h===24)h=0; return h*60+m; }
+function isIntradaySpan(span){ return span==="minute"||span==="hour"; }
+function filterRthResults(results,span,isEquity){ if(!isEquity||!isIntradaySpan(span)) return results||[]; return (results||[]).filter(b=>{ const t=etMinutesMs(b.t); return t>=570 && t<960; }); }
+// Human label for the active timeframe + an "is this intraday?" test, so the verdict announces
+// its timeframe instead of a 1-hour read masquerading as a daily swing call.
+const RES_LABEL={ "1":"1-min","5":"5-min","15":"15-min","30":"30-min","60":"1-hour","D":"Daily","W":"Weekly" };
+const isIntradayRes=r=>r==="1"||r==="5"||r==="15"||r==="30"||r==="60";
+
+// ─── Live streaming (Polygon WebSocket) ──────────────────────────────────────
+// Mirrors scripts/poly-ws.mjs (the unit-tested protocol). On Stocks Starter the cluster is
+// the DELAYED one (~15-min behind); we NEVER fake real-time — wsBand() labels each streamed
+// bar honestly from its end time. Flip mode:"realtime" on a tier upgrade and nothing else
+// changes. Auto-reconnects; close() stops it for good.
+const POLY_WS_CLUSTERS={ delayed:"wss://delayed.socket.polygon.io/stocks", realtime:"wss://socket.polygon.io/stocks" };
+function wsBand(endMs){ const s=Math.max(0,Math.round((Date.now()-endMs)/1000)); return { band: s<=90?"REALTIME":(s<=1200?"DELAYED":"STALE"), stalenessSec:s }; }
+class PolyLiveSocket{
+  constructor({key, tickers, channel="AM", mode="delayed", onBar, onStatus}){
+    this.key=key; this.tickers=Array.isArray(tickers)?tickers:[tickers]; this.channel=channel;
+    this.url=POLY_WS_CLUSTERS[mode]||POLY_WS_CLUSTERS.delayed;
+    this.onBar=onBar||(()=>{}); this.onStatus=onStatus||(()=>{}); this.ws=null; this.closed=false;
+  }
+  connect(){
+    if(typeof WebSocket==="undefined") return;
+    this.closed=false;
+    const ws=new WebSocket(this.url); this.ws=ws;
+    ws.onopen=()=>ws.send(JSON.stringify({action:"auth",params:String(this.key||"")}));
+    ws.onmessage=(e)=>{
+      let arr; try{ arr=JSON.parse(e.data); }catch{ return; }
+      if(!Array.isArray(arr)) arr=[arr];
+      for(const ev of arr){
+        if(!ev||!ev.ev) continue;
+        if(ev.ev==="status"){
+          this.onStatus(ev);
+          const ok = ev.status==="auth_success" || (ev.status==="success" && /authenticated/i.test(ev.message||""));
+          if(ok) ws.send(JSON.stringify({action:"subscribe",params:this.tickers.map(t=>this.channel+"."+t).join(",")}));
+        } else if(ev.ev==="AM"||ev.ev==="A"){
+          this.onBar({sym:ev.sym, ev:ev.ev, open:+ev.o, high:+ev.h, low:+ev.l, close:+ev.c, volume:+ev.v||0, start:+ev.s, end:+ev.e, vwap:ev.vw!=null?+ev.vw:null});
+        }
+      }
+    };
+    ws.onclose=()=>{ if(!this.closed) setTimeout(()=>{ if(!this.closed) this.connect(); }, 3000); };
+    ws.onerror=()=>{ try{ ws.close(); }catch(_){} };
+  }
+  close(){ this.closed=true; if(this.ws){ try{ this.ws.close(); }catch(_){} this.ws=null; } }
+}
 // Stock OHLC bars + a best-effort freshness quote → {candles, quote:{lastTs,isOpen}}
 async function polyFetchCandles(sym, resolution, key){
   const [mult,span]=POLY_RES[resolution]||[1,"day"];
   const to=new Date(), from=new Date(to.getTime()-polyWindowMs(span)), fmt=d=>d.toISOString().slice(0,10);
-  const j=await polyGet("https://api.polygon.io/v2/aggs/ticker/"+encodeURIComponent(sym)+"/range/"+mult+"/"+span+"/"+fmt(from)+"/"+fmt(to)+"?adjusted=true&sort=asc&limit=5000&apiKey="+encodeURIComponent(key));
+  const j=await polyGet("https://api.polygon.io/v2/aggs/ticker/"+encodeURIComponent(sym)+"/range/"+mult+"/"+span+"/"+fmt(from)+"/"+fmt(to)+"?adjusted=true&sort=desc&limit=5000&apiKey="+encodeURIComponent(key));
   if(!j.results||!j.results.length) throw new Error('No Polygon data for "'+sym+'". US stocks/ETFs only (e.g. AAPL, SPY).');
-  const candles=polyBars(j.results,span).slice(-1500); // bigger sample for pattern backtests
+  // US equities (no "/" in the symbol) → drop pre/post-market intraday bars so the signal/levels
+  // anchor to a real regular-session price. Crypto/forex (BTC/USD, EUR/USD) are 24/7 → untouched.
+  const isEquity=!sym.includes("/");
+  // sort=desc returns the MOST-RECENT bars first (so a large window can't truncate to the oldest
+  // bars and leave the chart ending months in the past); reverse back to chronological for the engine.
+  const candles=polyBars(filterRthResults(j.results,span,isEquity),span).reverse().slice(-1500);
   let quote=null;
   try{
     const sj=await (await fetch("https://api.polygon.io/v2/snapshot/locale/us/markets/stocks/tickers/"+encodeURIComponent(sym)+"?apiKey="+encodeURIComponent(key))).json();
@@ -706,8 +847,8 @@ async function polyFetchCandles(sym, resolution, key){
 // One index's historical daily bars (for the directional backtest alignment).
 async function polyFetchIndexBars(sym, mult, span, key){
   const to=new Date(), from=new Date(to.getTime()-polyWindowMs(span)), fmt=d=>d.toISOString().slice(0,10);
-  const j=await polyGet("https://api.polygon.io/v2/aggs/ticker/"+encodeURIComponent(sym)+"/range/"+mult+"/"+span+"/"+fmt(from)+"/"+fmt(to)+"?sort=asc&limit=5000&apiKey="+encodeURIComponent(key));
-  return polyBars(j.results,span).slice(-300);
+  const j=await polyGet("https://api.polygon.io/v2/aggs/ticker/"+encodeURIComponent(sym)+"/range/"+mult+"/"+span+"/"+fmt(from)+"/"+fmt(to)+"?sort=desc&limit=5000&apiKey="+encodeURIComponent(key));
+  return polyBars(j.results,span).reverse().slice(-300); // desc → most-recent first; reverse to chronological
 }
 // Real-time index session moves + provenance + historical bars for the Outlook.
 async function polyFetchIndexMoves(resolution, key){
@@ -758,21 +899,43 @@ async function polyFetchEtfMoves(resolution, key){
 function scorePosition(slice){
   if(slice.length<30)return null;
   const cl=slice.map(d=>d.close),last=slice[slice.length-1];
-  const s50=sma(cl,Math.min(50,cl.length));
-  const s200=sma(cl,Math.min(200,cl.length));
-  const R=rsi(cl);
-  if(!s50||!s200) return {score:0,signal:"HOLD",atr:atr(slice)};
+  // The long-term trend filter is only meaningful with a TRUE 200-bar window. With less
+  // history we must NOT silently trade a short-SMA proxy (the old Math.min(200,len) bug) —
+  // report "not engaged" honestly so POSITION holds instead of acting on a fake trend.
+  if(cl.length<200) return {score:0, signal:"HOLD", atr:atr(slice), engaged:false,
+    reason:"long-term trend needs 200 bars; have "+cl.length, trendStrength:0, dipDepth:0};
+  const s50=sma(cl,50), s200=sma(cl,200), R=rsi(cl);
+  if(!s50||!s200) return {score:0, signal:"HOLD", atr:atr(slice), engaged:false,
+    reason:"insufficient data", trendStrength:0, dipDepth:0};
   const longUptrend = last.close>s200 && s50>s200;
   const longDowntrend = last.close<s200 && s50<s200;
   let signal="HOLD", score=0;
   if(longUptrend){
     score=3;
-    // buy a pullback within the uptrend
-    if(R!=null && R<45){ signal="BUY"; score=6; }
+    if(R!=null && R<45){ signal="BUY"; score=6; }  // buy a pullback within the uptrend
   } else if(longDowntrend){
-    score=-6; signal="SELL"; // exit/avoid — thesis broken
+    score=-6; signal="SELL";                        // long-term thesis broken — exit/avoid
   }
-  return {score, signal, atr:atr(slice)};
+  // Position-native conviction inputs (used instead of the tactical confluence number):
+  //  trendStrength = how far SMA50 sits above SMA200 (regime conviction);
+  //  dipDepth      = how far RSI is below the 45 buy threshold (entry conviction).
+  return { score, signal, atr:atr(slice), engaged:true,
+    trendStrength: s200>0 ? (s50-s200)/s200 : 0,
+    dipDepth: (longUptrend && R!=null) ? Math.max(0, 45-R) : 0 };
+}
+
+// Display-only (app, not engine): in POSITION mode the verdict comes from scorePosition, so the
+// number beside it must be POSITION's own conviction (regime strength + dip depth) — NOT the
+// tactical confluence confidence (which would cross the wires). Also surfaces the honest
+// "long-term trend filter not engaged" state when there aren't 200 bars yet.
+function positionDisplay(result, liveScore){
+  if(!liveScore) return result;
+  result.positionEngaged = liveScore.engaged!==false;
+  result.positionReason  = liveScore.reason || null;
+  if(!result.positionEngaged){ result.confidence = 0; return result; }      // trend not engaged
+  if(liveScore.signal==="HOLD"){ result.confidence = Math.min(result.confidence, 50); return result; }
+  result.confidence = Math.min(95, Math.round(40 + (liveScore.trendStrength||0)*300 + (liveScore.dipDepth||0)));
+  return result;
 }
 
 function scoreFlat(slice){
@@ -800,7 +963,7 @@ function scoreFlat(slice){
   return{score:s,signal:s>=4?"BUY":s<=-4?"SELL":"HOLD",atr:atr(slice)};
 }
 
-function scoreAt(slice) {
+function scoreAt(slice, drop=null) {
   if (slice.length < 26) return null; // need enough for MACD/SMA
   const closes = slice.map(d=>d.close), vols = slice.map(d=>d.volume);
   const last = slice[slice.length-1];
@@ -813,7 +976,8 @@ function scoreAt(slice) {
   const avgV=vols.slice(0,-3).reduce((a,b)=>a+b,0)/Math.max(vols.length-3,1);
   const recV=vols.slice(-3).reduce((a,b)=>a+b,0)/3;
   const volSig=recV>avgV*1.15?"CONFIRMING":recV<avgV*0.85?"DIVERGING":"NEUTRAL";
-  const r=computeSignal({R,M,s5,s10,s20,s50,trend,S,B,last,pats,div,volSig,ADX,OBV,VWAP});
+  // `drop` (shadow backtests): run the same team signal with named votes removed. Default null = unchanged.
+  const r=computeSignal({R,M,s5,s10,s20,s50,trend,S,B,last,pats,div,volSig,ADX,OBV,VWAP}, [], (drop&&drop.length)?{drop}:{});
   return {score:r.score, signal:r.signal, atr:atr(slice)};
 }
 
@@ -903,12 +1067,31 @@ function realizedStats(trades){
   };
 }
 
+// A backtested edge earns a loud, *actionable* surface only when it is BOTH
+// statistically resolved AND positive. Keying on the t-stat's magnitude alone let
+// a SIGNIFICANT *negative* edge (a proven money-loser) read as "proven" and show
+// loud — this mutes it instead. Mirrored VERBATIM from scripts/engine.mjs.
+function edgeStatus(stats){
+  const verdict  = stats?.significance ?? null;
+  const exp      = stats?.expectancy ?? 0;
+  const resolved = verdict==="SIGNIFICANT" || verdict==="SUGGESTIVE";
+  const positive = exp > 0;
+  return {
+    verdict,
+    proven:       verdict==="SIGNIFICANT" && positive,
+    shown:        resolved && positive,
+    muted:        !(resolved && positive),
+    negativeEdge: resolved && !positive,
+  };
+}
+
 // Walks through history, opens a trade on each BUY/SELL signal, then checks the
 // NEXT candles to see whether TP or SL was hit first. ATR-based SL/TP, same as live.
 function runBacktest(data, scorer, slMult, tpMult, costs, range, holdMode) {
   const scoreFn = scorer || scoreAt;
   const SLM = slMult || 1.5;
   const TPM = tpMult || 2.0;
+  const TRAIL_MULT = 3;               // POSITION trailing-stop width in ATRs (hold mode only)
   const slipPct = costs?.slip || 0;   // % per side
   const commPct = costs?.comm || 0;   // % per side
   const costPerTrade = (slipPct + commPct) * 2; // entry + exit
@@ -928,9 +1111,11 @@ function runBacktest(data, scorer, slMult, tpMult, costs, range, holdMode) {
       const A=pending.atr;
       openTrade={
         dir:pending.dir, entry, openIndex:i, entryDate:candle.date,
-        sl: pending.dir==="BUY"?entry-A*SLM:entry+A*SLM,
-        tp: pending.dir==="BUY"?entry+A*TPM:entry-A*TPM,
-        score:pending.score,
+        // Custom per-trade targets (e.g. the Outlook correction levels) override the ATR
+        // default when the scorer supplies them; otherwise the ATR fallback is unchanged.
+        sl: pending.customSl!=null ? pending.customSl : (pending.dir==="BUY"?entry-A*SLM:entry+A*SLM),
+        tp: pending.customTp!=null ? pending.customTp : (pending.dir==="BUY"?entry+A*TPM:entry-A*TPM),
+        score:pending.score, atr:A, highWater:entry,
       };
       pending=null;
     }
@@ -939,16 +1124,23 @@ function runBacktest(data, scorer, slMult, tpMult, costs, range, holdMode) {
     if (openTrade) {
       const t=openTrade;
       let closed=false;
-      const ex=checkBarExit(t, candle);                 // SL/TP touch, SL-first tie
-      if (ex) { t.exit=ex.exit; t.result=ex.result; closed=true; }
-      // POSITION/hold mode: exit a long when the long-term thesis breaks (scorer flips to SELL)
-      if (!closed && holdMode && t.dir==="BUY") {
-        const sNow=scoreFn(slice);
-        if (sNow && sNow.signal==="SELL") {
-          t.exit=candle.close;
-          t.result = candle.close>=t.entry ? "WIN" : "LOSS";
-          closed=true;
+      if (holdMode && t.dir==="BUY") {
+        // POSITION: a TRAILING stop (let winners run — no fixed TP cap) ratcheting up from the
+        // initial wide stop, plus a thesis-break exit. The trail level uses the high-water mark
+        // as of PRIOR bars (updated only AFTER this bar's exit check → no intrabar lookahead).
+        const trailStop = Math.max(t.sl, t.highWater - t.atr*TRAIL_MULT);
+        if (candle.low <= trailStop) {
+          t.exit=trailStop; t.result = trailStop>=t.entry ? "WIN" : "LOSS"; closed=true;
+        } else {
+          t.highWater = Math.max(t.highWater, candle.high);
+          const sNow=scoreFn(slice);                      // exit if the long-term thesis breaks
+          if (sNow && sNow.signal==="SELL") {
+            t.exit=candle.close; t.result = candle.close>=t.entry ? "WIN" : "LOSS"; closed=true;
+          }
         }
+      } else {
+        const ex=checkBarExit(t, candle);                 // tactical: SL/TP touch, SL-first tie
+        if (ex) { t.exit=ex.exit; t.result=ex.result; closed=true; }
       }
       if (closed) {
         t.exitDate=candle.date;
@@ -964,7 +1156,7 @@ function runBacktest(data, scorer, slMult, tpMult, costs, range, holdMode) {
     if (!openTrade && !pending) {
       const r=scoreFn(slice);
       if (r && (r.signal==="BUY"||r.signal==="SELL") && r.atr>0) {
-        pending={dir:r.signal, atr:r.atr, score:r.score};
+        pending={dir:r.signal, atr:r.atr, score:r.score, customSl:r.customSl, customTp:r.customTp};
       }
     }
   }
@@ -1031,6 +1223,116 @@ function runBacktest(data, scorer, slMult, tpMult, costs, range, holdMode) {
       significance,
     },
     curve,
+  };
+}
+
+// ─── Outlook "market correction period" projection math (mirrors engine.mjs) ──
+// The OUTLOOK tab projects a stock's near-term price from the AVERAGE trailing-window
+// gain of the three major indexes, with an error-buffered target/stop. Pure so the app
+// and the tests share one implementation; kept byte-for-byte with scripts/engine.mjs.
+
+// Average cumulative % move of N index series over a trailing `period`, keyed by date.
+// Point-in-time per index ((close[p]-close[p-period])/close[p-period]); a date is only
+// emitted when EVERY index has a full-window value for it (exact date alignment).
+function avgIndexGainByDate(idxArrays, period=20){
+  const arrs=(idxArrays||[]).filter(a=>Array.isArray(a)&&a.length>period);
+  if(!arrs.length) return new Map();
+  const perIdx=arrs.map(a=>{
+    const m=new Map();
+    for(let p=period;p<a.length;p++){
+      const c0=a[p-period].close, c1=a[p].close;
+      if(c0>0&&c1!=null) m.set(a[p].date,(c1-c0)/c0*100);
+    }
+    return m;
+  });
+  const out=new Map();
+  for(const [date,v0] of perIdx[0]){
+    let sum=v0, ok=true;
+    for(let k=1;k<perIdx.length;k++){ const v=perIdx[k].get(date); if(v==null){ok=false;break;} sum+=v; }
+    if(ok) out.set(date, sum/perIdx.length);
+  }
+  return out;
+}
+
+// Error-buffered target/stop from a projected gain. mag = |entry·gain%|; the target ADDS
+// the average projection error as a buffer (generous — let it run); the stop SUBTRACTS the
+// LESSER of the projection magnitude and the error (tight — an early red-flag exit level).
+function correctionLevels({entry, gainsPct, avgErr=0}){
+  const delta=entry*(gainsPct||0)/100;
+  const mag=Math.abs(delta);
+  const err=Math.abs(avgErr||0);
+  return { delta, mag, tp: entry+mag+err, sl: entry-Math.min(mag,err) };
+}
+
+// Full P&L backtest of the correction projection vs matched buy-&-hold (alpha-honest).
+// Long-only (BUY when close≥SMA20); per bar the projected gain (as-of that date) plus an
+// EXPANDING-window avg projection error (PRIOR bars only → no lookahead) set the custom
+// TP/SL fed through runBacktest. Reports realized stats, directional accuracy, and the
+// per-trade alpha vs a price-only buy-&-hold over the identical entry→exit window. The
+// `proven` gate is alpha-honest: never green without ≥20 trades, significance, AND meanAlpha>0.
+function backtestCorrection(stockData, gainByDate, opts={}){
+  const period=opts.period||20;
+  const costs=opts.costs||{slip:0,comm:0};
+  const data=stockData||[];
+  if(data.length<period+2||!gainByDate) return null;
+  const closes=data.map(d=>d.close);
+
+  // Per-bar projection error (point-in-time): projected = close ± (close·gain%) in the
+  // trend's direction; error vs the NEXT close. Feeds both the accuracy stats and the
+  // expanding avgErr buffer (which only ever reads bars whose outcome is already known).
+  const projErr=new Array(data.length).fill(null);
+  let n=0,hits=0,baseHits=0,errSum=0,pctErrSum=0;
+  for(let i=period;i<data.length-1;i++){
+    const g=gainByDate.get(data[i].date); if(g==null) continue;
+    const sma20=sma(closes.slice(0,i+1),20); if(sma20==null) continue;
+    const trendUp=closes[i]>=sma20;
+    const predMove=(trendUp?1:-1)*closes[i]*g/100;
+    const projected=closes[i]+predMove;
+    const actualMove=closes[i+1]-closes[i];
+    projErr[i]=Math.abs(projected-closes[i+1]);
+    if(predMove!==0&&actualMove!==0){
+      n++;
+      if(Math.sign(predMove)===Math.sign(actualMove)) hits++;
+      if((trendUp?1:-1)===Math.sign(actualMove)) baseHits++;
+      errSum+=projErr[i]; pctErrSum+=projErr[i]/closes[i+1]*100;
+    }
+  }
+  // avgErrBefore[k] = mean projection error over bars strictly before k (no lookahead).
+  const avgErrBefore=new Array(data.length).fill(0);
+  { let s=0,c=0; for(let k=0;k<data.length;k++){ avgErrBefore[k]=c?s/c:0; if(projErr[k]!=null){s+=projErr[k];c++;} } }
+
+  // Long-only correction scorer → custom error-buffered TP/SL via correctionLevels.
+  const scorer=(slice)=>{
+    const i=slice.length-1;
+    const cl=slice.map(d=>d.close);
+    const sma20=sma(cl,20); if(sma20==null) return {signal:"HOLD"};
+    const a=atr(slice,14);
+    const g=gainByDate.get(slice[i].date);
+    if(g==null||g===0||!(cl[i]>=sma20)) return {signal:"HOLD", atr:a};
+    const lv=correctionLevels({entry:cl[i], gainsPct:g, avgErr:avgErrBefore[i]});
+    return {signal:"BUY", atr:a, score:g, customSl:lv.sl, customTp:lv.tp};
+  };
+  const bt=runBacktest(data, scorer, 1.5, 2.0, costs, null, false);
+
+  // Alpha vs matched buy-&-hold: same entry, held to the SAME exit bar's close (price-only;
+  // the forward-perf buyHoldGrossPct pattern, inlined for engine↔app parity).
+  const legs=bt.trades.map(t=>{
+    const exitIdx=t.openIndex+t.barsHeld;
+    const benchClose=data[exitIdx]?data[exitIdx].close:t.exit;
+    const benchPct=(benchClose-t.entry)/t.entry*100;
+    return { stratPct:t.pnlPct, benchPct, alpha:t.pnlPct-benchPct, beat:t.pnlPct>benchPct };
+  });
+  const m=legs.length;
+  const meanAlpha=m?legs.reduce((a,l)=>a+l.alpha,0)/m:null;
+  const beatRate=m?legs.filter(l=>l.beat).length/m*100:null;
+  const sig=bt.stats.significance;
+  const proven=m>=20 && (sig==="SIGNIFICANT"||sig==="SUGGESTIVE") && meanAlpha>0;
+
+  return {
+    n, acc:n?hits/n*100:null, baseline:n?baseHits/n*100:null,
+    edge:n?(hits-baseHits)/n*100:null,
+    avgErr:n?errSum/n:null, avgPctErr:n?pctErrSum/n:null,
+    trades:m, stats:bt.stats, meanAlpha, beatRate, proven,
   };
 }
 
@@ -1300,6 +1602,17 @@ function Chart({rows,analysis,muted}) {
       ctx.fillStyle=up?"#00e676":"#cc3333";
       ctx.fillRect(x-cw*.38,bt,cw*.76,Math.max(bb_-bt,1));
       if(!up){ctx.strokeStyle="#ff5252";ctx.lineWidth=.5;ctx.strokeRect(x-cw*.38,bt,cw*.76,Math.max(bb_-bt,1));}
+      // Live FORMING bar: the streamed price folded into the last visible candle — drawn hollow +
+      // cyan with a "LIVE" tag so it's unmistakably unsettled. Cosmetic only: it never re-runs
+      // analyze(), so the verdict is unchanged (no real-time signal faked on the delayed feed). On
+      // a Polygon tier upgrade the cluster flips to realtime (one-word mode change) and this SAME
+      // bar becomes a genuine real-time forming candle — its future status, revealed automatically.
+      if(d.forming){
+        ctx.fillStyle="#080b14";ctx.fillRect(x-cw*.38+.7,bt+.7,Math.max(cw*.76-1.4,0),Math.max(bb_-bt-1.4,0));
+        ctx.strokeStyle="#00e5ff";ctx.lineWidth=1;ctx.strokeRect(x-cw*.38,bt,cw*.76,Math.max(bb_-bt,1));
+        ctx.fillStyle="#00e5ff";ctx.font="bold 7px monospace";ctx.textAlign="center";
+        ctx.fillText("● LIVE",x,toY(d.high)-4);
+      }
     });
     // Entry/SL lines
     if(analysis){
@@ -1640,6 +1953,39 @@ function App() {
     return ()=>{ alive=false; };
   },[]);
   const meritEdgeProven = !!(study && study.meritEdgeProven);
+  // Cross-sectional momentum study (momentum.json) — same factor-agnostic harness as merit,
+  // pointed at trailing price momentum. Read-only viewer, same-origin.
+  const [momentum, setMomentum] = useState(null);
+  useEffect(()=>{ let alive=true;
+    fetch("./momentum.json").then(r=>r.ok?r.json():null).then(j=>{ if(alive&&j&&j.windows) setMomentum(j); }).catch(()=>{});
+    return ()=>{ alive=false; };
+  },[]);
+  // Sibling cross-sectional studies — same factor-agnostic harness, different factors.
+  // All read-only, same-origin, built weekly in CI. reversal/low-vol are price-only; quality is fundamental.
+  const [reversal, setReversal] = useState(null);
+  const [lowvol,   setLowvol]   = useState(null);
+  const [quality,  setQuality]  = useState(null);
+  useEffect(()=>{ let alive=true;
+    fetch("./reversal.json").then(r=>r.ok?r.json():null).then(j=>{ if(alive&&j&&j.windows) setReversal(j); }).catch(()=>{});
+    fetch("./lowvol.json").then(r=>r.ok?r.json():null).then(j=>{ if(alive&&j&&j.windows) setLowvol(j); }).catch(()=>{});
+    fetch("./quality.json").then(r=>r.ok?r.json():null).then(j=>{ if(alive&&j&&j.windows) setQuality(j); }).catch(()=>{});
+    return ()=>{ alive=false; };
+  },[]);
+  // Factor-interaction "pie chart" study (factor-interaction-study.json) — every tool's measured
+  // weighted data value (|rank-IC| share) + the top interaction lifts. Built on-demand in CI;
+  // read-only, same-origin, display-only (never feeds the signal). In-sample only.
+  const [factorPie, setFactorPie] = useState(null);
+  useEffect(()=>{ let alive=true;
+    fetch("./factor-interaction-study.json").then(r=>r.ok?r.json():null).then(j=>{ if(alive&&j&&j.pie) setFactorPie(j); }).catch(()=>{});
+    return ()=>{ alive=false; };
+  },[]);
+  // Out-of-sample variant scoreboard (forward-perf.json) — the alpha/FDR verdict per
+  // propose-only variant (merits-on, momentum-on, news-*, earnings-recent-on, position).
+  const [forwardPerf, setForwardPerf] = useState(null);
+  useEffect(()=>{ let alive=true;
+    fetch("./forward-perf.json").then(r=>r.ok?r.json():null).then(j=>{ if(alive&&j&&j.variants) setForwardPerf(j); }).catch(()=>{});
+    return ()=>{ alive=false; };
+  },[]);
   // Forward-test paper ledger — the committed, git-versioned track record built by
   // scripts/forward-log.mjs in CI (nightly, on settled EOD bars). Read-only here:
   // the page is a VIEWER of the automated record, never a writer (a static page has
@@ -1665,6 +2011,10 @@ function App() {
   const [resolution,setResolution]= useState("D");
   const [fetching,  setFetching]  = useState(false);
   const [liveMeta,  setLiveMeta]  = useState(null);
+  const [streaming, setStreaming] = useState(false); // Polygon WebSocket on/off
+  const liveSockRef = useRef(null);
+  const liveWatchRef = useRef(null);   // staleness-watchdog interval
+  const liveEndRef = useRef(null);     // end-time (ms) of the last streamed bar
   const [outlook,   setOutlook]   = useState(null); // Market Outlook → correction-period price (live only)
   const [outlookError, setOutlookError] = useState(null); // why the Outlook is empty (vs silent blank)
   const [fundaMeta, setFundaMeta] = useState(null); // provenance of auto-filled fundamentals
@@ -1706,7 +2056,7 @@ function App() {
 
   // Integrity scan of the loaded bars — recomputed whenever the data changes,
   // so it covers every ingest path (CSV, paste, live fetch) without touching them.
-  const dataAudit = useMemo(()=>auditData(rows),[rows]);
+  const dataAudit = useMemo(()=>auditData(rows, {resolution: liveMeta?.resolution}),[rows, liveMeta]);
 
   // When fresh data loads, park the playhead at the latest bar and stop playback.
   useEffect(()=>{
@@ -1725,15 +2075,36 @@ function App() {
   // ─── App-wide transparency rule ────────────────────────────────────────────
   // A persuasive surface (signal badge, chart marker, headline return) earns its
   // loud color ONLY when the backtested edge on THIS instrument is at least
-  // suggestive. Below that we mute to gray — the UI gets quieter exactly when it
-  // knows less. `significance` comes straight from the backtest's t-stat, so the
-  // same evidence gates every surface. No backtest (too little data) ⇒ muted.
-  const edgeVerdict = backtest?.stats?.significance;
-  const edgeProven  = edgeVerdict==="SIGNIFICANT";                 // strong: full color earned
-  const edgeShown   = edgeProven || edgeVerdict==="SUGGESTIVE";    // at least suggestive
-  const edgeMuted   = !edgeShown;                                  // muted because the EDGE is unproven
-  const dataSuspect = !!(dataAudit && dataAudit.suspect);          // muted because the INPUTS are corrupt
-  const signalMuted = edgeMuted || dataSuspect;                    // either reason mutes persuasive surfaces
+  // suggestive AND POSITIVE. A SIGNIFICANT *negative* edge is proof the verdict
+  // LOSES money — it gets muted, not shown loud (edgeStatus encodes the sign).
+  // Below that bar we mute to gray — the UI gets quieter exactly when it knows
+  // less, or knows the edge is against us. No backtest (too little data) ⇒ muted.
+  const edgeInfo    = edgeStatus(backtest?.stats);
+  const edgeVerdict = edgeInfo.verdict;
+  const edgeProven  = edgeInfo.proven;                            // strong AND makes money
+  const edgeShown   = edgeInfo.shown;                            // ≥ suggestive AND makes money
+  const negativeEdge= edgeInfo.negativeEdge;                     // resolved, but a proven loser
+  const edgeMuted   = edgeInfo.muted;                            // unproven OR a proven loser
+  const dataSuspect = !!(dataAudit && dataAudit.suspect);        // muted because the INPUTS are corrupt
+  // Live trading policy: long-only (shorts are a measured, significant money-loser
+  // in this universe) and a cost gate (the target must clear 2× round-trip costs,
+  // or the setup can't pay for itself). Both mute the actionable surface.
+  const roundTripCostPct = (slipPct + commPct) * 2;
+  const expMovePct  = analysis ? Math.abs(analysis.tp1 - analysis.entry) / analysis.entry * 100 : 0;
+  const costMuted   = !!analysis && expMovePct < 2 * roundTripCostPct;
+  const longOnlyMuted = !!analysis && analysis.signal === "SELL";
+  const signalMuted = edgeMuted || dataSuspect || costMuted || longOnlyMuted;
+  // Buy & hold over the loaded window — the benchmark the verdict must beat. Shown
+  // beside the strategy's return so a BUY is never read as "opportunity" when simply
+  // holding did better.
+  const buyHoldRet = rows.length>=2 && rows[0].close>0
+    ? parseFloat((((rows[rows.length-1].close/rows[0].close)-1)*100).toFixed(2)) : null;
+  // One honest reason the actionable surface is muted, most-specific first.
+  const mutedReason = longOnlyMuted ? "SHORT — NOT TAKEN (long-only policy)"
+    : negativeEdge ? "EDGE IS NEGATIVE — backtest loses money"
+    : costMuted ? "TOO THIN — target can't clear 2× costs"
+    : dataSuspect ? "DATA SUSPECT — inputs failed the audit"
+    : "UNCONFIRMED EDGE";
 
   // Phase-2 merit fusion — a DISPLAY overlay only (never touches scoreAt/runBacktest, so the
   // price-only backtest stays honest). Dormant unless fundamentals are verified AND the evidence
@@ -1764,12 +2135,52 @@ function App() {
     }catch(e){ setKeyTest({ok:false,msg:e.message||"Key test failed."}); }
   }
 
+  // ── Live streaming control (Polygon WebSocket) ──
+  function stopLive(){
+    if(liveWatchRef.current){ clearInterval(liveWatchRef.current); liveWatchRef.current=null; }
+    liveEndRef.current=null;
+    if(liveSockRef.current){ liveSockRef.current.close(); liveSockRef.current=null; }
+    // Clear the forming flag so the chart's last bar settles back to a normal candle.
+    setRows(prev=>{ if(!prev||!prev.length||!prev[prev.length-1].forming) return prev;
+      const last={...prev[prev.length-1]}; delete last.forming;
+      return [...prev.slice(0,-1), last]; });
+    setStreaming(false);
+  }
+  function goLive(){
+    const sym=(liveMeta?.sym||ticker||"").trim().toUpperCase();
+    const key=(polyKey||"").trim();
+    if(!sym || provider!=="polygon" || !key){ setError("Streaming needs a Polygon key and a fetched symbol."); return; }
+    stopLive();
+    const sock=new PolyLiveSocket({ key, tickers:[sym], channel:"AM", mode:"delayed",
+      onBar:(b)=>{ liveEndRef.current=b.end; const f=wsBand(b.end);
+        setLiveFreshness(prev=>({ ...(prev||{}), provider:"Polygon", band:f.band, stalenessSec:f.stalenessSec, isOpen:f.band!=="STALE", price:b.close, lastTs:b.end }));
+        // Cosmetic: fold the streamed price into the LAST visible candle (a forming bar). Never
+        // recomputes analyze() — the verdict stays frozen; only the chart breathes with the feed.
+        setRows(prev=>{ if(!prev||!prev.length) return prev;
+          const last={...prev[prev.length-1], close:b.close,
+            high:Math.max(prev[prev.length-1].high, b.high, b.close),
+            low:Math.min(prev[prev.length-1].low, b.low, b.close), forming:true };
+          return [...prev.slice(0,-1), last]; }); },
+      onStatus:(s)=>{ if(s && (s.status==="auth_failed"||/max|error/i.test(s.status||""))){ setError("Polygon stream: "+(s.message||s.status)); stopLive(); } } });
+    liveSockRef.current=sock; sock.connect(); setStreaming(true);
+    // Staleness watchdog: re-age the badge from the LAST bar's end-time even when no new bar
+    // arrives, so a stalled stream (disconnect / lunch lull / market close) honestly decays
+    // toward STALE instead of freezing at "DELAYED". Pure wsBand math on a timer; no fake freshness.
+    liveWatchRef.current=setInterval(()=>{
+      const end=liveEndRef.current; if(end==null) return;
+      const f=wsBand(end);
+      setLiveFreshness(prev=> prev ? { ...prev, band:f.band, stalenessSec:f.stalenessSec, isOpen:f.band!=="STALE" } : prev);
+    }, 15000);
+  }
+  useEffect(()=>()=>stopLive(),[]); // close the socket + watchdog on unmount
+
   async function fetchLive(symOverride){
     const usePoly=provider==="polygon";
     const key=(usePoly?polyKey:apiKey).trim();
     if(!key){setError(usePoly?"Enter your Polygon REST API key first (polygon.io → Accessing the API).":"Enter your free Twelve Data API key first (twelvedata.com).");setTab("live");return;}
     const sym=(typeof symOverride==="string"&&symOverride?symOverride:ticker).trim().toUpperCase();
     if(!sym){setError("Enter a ticker symbol.");return;}
+    stopLive(); // tear down any active stream so it can't fold a stale symbol's bar into the new series
     setFetching(true);setError("");setOutlook(null);setOutlookError(null);setLiveFreshness(null);
     try{localStorage.setItem(usePoly?"sf_polygon_key":"sf_td_key",key);localStorage.setItem("sf_provider",provider);}catch(e){}
     try{
@@ -1810,7 +2221,7 @@ function App() {
       const hold=isPos;
       const SL=isPos?3.0:slMult, TP=isPos?6.0:tpMult, costs={slip:slipPct,comm:commPct};
       const result=analyze(candles,sym,market,strategy,SL,TP);
-      const liveScore=scorer(candles); if(liveScore){result.signal=liveScore.signal;result.modeScore=liveScore.score;}
+      const liveScore=scorer(candles); if(liveScore){result.signal=liveScore.signal;result.modeScore=liveScore.score; if(isPos) positionDisplay(result, liveScore);}
       setRows(candles);setAnalysis(result);
       const liveBt=candles.length>=40?runBacktest(candles,scorer,SL,TP,costs,null,hold):null;
       setBacktest(liveBt);
@@ -1840,14 +2251,25 @@ function App() {
         // which silently produced a null Outlook before. So lead with proxies, and only
         // try true indices as an upgrade if the proxy path fails. A null build is treated
         // as a failure so it actually falls through instead of blanking.
+        // OUTLOOK is a multi-day "correction-period" projection — its trailing-20 window means
+        // 20 DAYS, not 20 bars of the chart timeframe. So it ALWAYS runs on DAILY data: on an
+        // intraday chart we fetch the stock's daily series (+ daily trend) and daily index bars,
+        // so "20-day avg" isn't silently 20 hours. Live session % (liveMoves) is a snapshot —
+        // resolution-independent, so it stays correct either way.
+        let dStock=candles, dTrend=result.trend;
+        if(resolution!=="D"){
+          try{ dStock=(await polyFetchCandles(sym,"D",key)).candles;
+               dTrend=analyze(dStock,sym,market,strategy,SL,TP).trend; }
+          catch(_){ dStock=candles; dTrend=result.trend; }
+        }
         try{
-          const {idx, moves}=await polyFetchEtfMoves(resolution, key);
-          o=buildOutlook(candles, result.trend, idx, {proxies:OUTLOOK_PROXIES, liveMoves:moves}); src="etf";
+          const {idx, moves}=await polyFetchEtfMoves("D", key);
+          o=buildOutlook(dStock, dTrend, idx, {proxies:OUTLOOK_PROXIES, liveMoves:moves}); src="etf";
           if(!o) throw new Error("proxy index bars came back empty");
         }catch(e1){ lastErr=e1;
           try{
-            const {idx, moves}=await polyFetchIndexMoves(resolution, key);
-            o=buildOutlook(candles, result.trend, idx, {proxies:OUTLOOK_INDICES, liveMoves:moves}); src="indices";
+            const {idx, moves}=await polyFetchIndexMoves("D", key);
+            o=buildOutlook(dStock, dTrend, idx, {proxies:OUTLOOK_INDICES, liveMoves:moves}); src="indices";
           }catch(e2){ lastErr=e2; }
         }
         if(o){
@@ -1856,18 +2278,29 @@ function App() {
         }else{ setOutlook(null); setOutlookError(lastErr?(lastErr.message||String(lastErr)):"Outlook unavailable — the Dow/S&P/Nasdaq feeds returned no rows on this Polygon plan. Try Daily resolution, or wait a minute if you hit the free-tier rate limit (5 calls/min)."); }
       }else{
         try{
+          // OUTLOOK is a DAILY projection (see the Polygon branch) — always fetch the stock +
+          // proxies at 1day, regardless of the chart interval, so "20-day" is 20 days not 20 bars.
+          let dStock=candles, dTrend=result.trend;
+          if(resolution!=="D"){
+            const su="https://api.twelvedata.com/time_series?symbol="+encodeURIComponent(sym)+"&interval=1day&outputsize=400&apikey="+encodeURIComponent(key);
+            const sd=await (await fetch(su)).json();
+            if(sd.values&&sd.values.length){ dStock=sd.values.slice().reverse().map(v=>({date:v.datetime,open:+parseFloat(v.open||v.close).toFixed(4),high:+parseFloat(v.high||v.close).toFixed(4),low:+parseFloat(v.low||v.close).toFixed(4),close:+parseFloat(v.close).toFixed(4),volume:parseFloat(v.volume)||0})).filter(x=>x.close>0);
+              dTrend=analyze(dStock,sym,market,strategy,SL,TP).trend; }
+          }
           const proxies=OUTLOOK_PROXIES.map(p=>p[0]);
           const idxArrs=await Promise.all(proxies.map(async ps=>{
-            const u="https://api.twelvedata.com/time_series?symbol="+encodeURIComponent(ps)+"&interval="+interval+"&outputsize=300&apikey="+encodeURIComponent(key);
+            const u="https://api.twelvedata.com/time_series?symbol="+encodeURIComponent(ps)+"&interval=1day&outputsize=300&apikey="+encodeURIComponent(key);
             const r=await fetch(u); const d=await r.json();
             if(!d.values||!d.values.length) throw new Error("no outlook data for "+ps);
             return d.values.slice().reverse().map(v=>({date:v.datetime,close:+parseFloat(v.close).toFixed(4)})).filter(x=>x.close>0);
           }));
           const idx={}; proxies.forEach((ps,i)=>idx[ps]=idxArrs[i]);
-          const o=buildOutlook(candles, result.trend, idx); if(o) o.source="etf"; setOutlook(o);
+          const o=buildOutlook(dStock, dTrend, idx); if(o) o.source="etf"; setOutlook(o);
         }catch(_){ setOutlook(null); }
       }
-      setTab("signals");
+      // Verify-first flow: land on LIVE (chart + freshness/quote) after a fetch — NOT the verdict.
+      // The user walks the verify chain (EVIDENCE → … → SIGNALS) so the signal is seen last, earned.
+      setTab("live");
     }catch(e){setError(e.message||"Live fetch failed.");setTab("live");}
     finally{setFetching(false);}
   }
@@ -1876,7 +2309,7 @@ function App() {
     setError("");
     setOutlook(null);setOutlookError(null); // Outlook needs live market data; not available on the CSV path
     const data = parseCSV(csv);
-    if (data.length < 10) { setError("Need at least 10 rows. Click LOAD SAMPLE to see the expected format."); return; }
+    if (data.length < 10) { setError("No data yet — fetch it on the ⚡ LIVE tab first, then RUN to re-analyze."); return; }
     const isPos = mode==="position";
     const scorer = isPos ? scorePosition : scoreAt;
     const hold = isPos; // position mode holds until thesis break
@@ -1887,7 +2320,7 @@ function App() {
     const result = analyze(data, ticker, market, strategy, SL, TP);
     // Override the live signal with the mode's scorer so the headline matches the mode
     const liveScore = scorer(data);
-    if (liveScore) { result.signal = liveScore.signal; result.modeScore = liveScore.score; }
+    if (liveScore) { result.signal = liveScore.signal; result.modeScore = liveScore.score; if(isPos) positionDisplay(result, liveScore); }
     setRows(data);
     setAnalysis(result);
     // Run backtest if we have enough history
@@ -1977,6 +2410,103 @@ function App() {
   const runBtn={background:"linear-gradient(135deg,#00e676,#00bcd4)",border:"none",color:"#000",padding:"13px 0",fontFamily:"inherit",fontSize:12,fontWeight:700,letterSpacing:3,cursor:"pointer",borderRadius:4,width:"100%"};
   const tBtn=on=>({background:"none",border:"none",cursor:"pointer",padding:"10px 16px",fontFamily:"inherit",fontSize:11,letterSpacing:2,color:on?"#00e676":DIM,borderBottom:"2px solid "+(on?"#00e676":"transparent")});
 
+  // Shared cross-sectional study harness renderer — merit (study.json) and momentum
+  // (momentum.json) share the SAME pack() shape, so one view renders both honestly.
+  const studyHarness = (s, copy) => {
+    const H=s.H, six=s.six;
+    const vCol=v=>v==="SIGNIFICANT"?"#00e676":v==="SUGGESTIVE"?"#ffd740":"#90a4ae";
+    const placeboOk=H.placebo.verdict==="NOT SIGNIFICANT"||H.placebo.verdict==="TOO FEW PERIODS";
+    const proven=!!s.proven;
+    const pctOrDash=v=>v==null?"—":((v>=0?"+":"")+(v*100).toFixed(1)+"%");
+    const wf=H.walkForward||{}, df=H.deflated||{};
+    return (
+      <>
+        <div style={{...card,background:"linear-gradient(135deg,#0e1320,#0b1025)"}}>
+          <span style={lbl}>{copy.title}</span>
+          <div style={{display:"flex",justifyContent:"space-between",flexWrap:"wrap",gap:10,alignItems:"flex-start"}}>
+            <div>
+              <div style={{display:"flex",alignItems:"center",gap:12,flexWrap:"wrap"}}>
+                <span style={{fontSize:22,fontWeight:700,color:vCol(H.significance)}}>{H.significance}</span>
+                <span style={{fontSize:11,color:DIM}}>{s.primaryName} · {H.periods} periods · {H.observations} obs</span>
+              </div>
+              <div style={{fontSize:11,color:"#90a4ae",marginTop:6}}>
+                mean rank-IC <b style={{color:vCol(H.significance)}}>{H.meanIC>=0?"+":""}{H.meanIC}</b> (t {H.icT}) — {H.meanIC>0?copy.posPhrase:copy.negPhrase}.
+              </div>
+            </div>
+            <span style={{fontSize:9,fontWeight:700,letterSpacing:1,padding:"5px 11px",borderRadius:3,textAlign:"right",
+              color:proven?"#00e676":"#90a4ae",
+              background:(proven?"rgba(0,230,118,0.10)":"rgba(144,164,174,0.10)"),
+              border:"1px solid "+(proven?"#00e67644":"#90a4ae44")}}>
+              {proven?copy.provenLabel:copy.notProvenLabel}
+            </span>
+          </div>
+          <div style={{display:"grid",gridTemplateColumns:"repeat(auto-fit,minmax(150px,1fr))",gap:10,marginTop:14}}>
+            {[
+              {l:"OUT-OF-SAMPLE IC",v:(H.oos.outSample.meanIC>=0?"+":"")+H.oos.outSample.meanIC,s:H.oos.outSample.verdict+" · n="+H.oos.outSample.n,c:vCol(H.oos.outSample.verdict)},
+              {l:"IN-SAMPLE IC",v:(H.oos.inSample.meanIC>=0?"+":"")+H.oos.inSample.meanIC,s:H.oos.inSample.verdict+" · n="+H.oos.inSample.n,c:vCol(H.oos.inSample.verdict)},
+              {l:"PLACEBO (shuffled)",v:(H.placebo.meanIC>=0?"+":"")+H.placebo.meanIC,s:placeboOk?"null — as it should be":"⚠ still fires",c:placeboOk?"#00e676":"#ff5252"},
+              {l:"TOP−BOTTOM SPREAD",v:pctOrDash(H.spread.mean),s:H.spread.verdict,c:vCol(H.spread.verdict)},
+              {l:"WALK-FORWARD HIT",v:wf.hitRate==null?"—":(wf.hitRate*100).toFixed(0)+"%",s:(wf.oofVerdict||"—")+" · "+(wf.folds||0)+" folds",c:wf.hitRate>0.5?"#00e676":"#90a4ae"},
+              {l:"DEFLATED t",v:df.tDeflated==null?"—":df.tDeflated,s:(df.verdict||"—")+(df.trials>1?" · "+df.trials+" trials":""),c:vCol(df.verdict)},
+              // Sector-neutral IC — alpha vs disguised sector bet. Only shown once the study carries
+              // sector tags (built once the weekly run resolves SIC divisions); else gracefully hidden.
+              ...((sc=>sc&&sc.available?[{l:"SECTOR-NEUTRAL IC",v:(sc.meanIC>=0?"+":"")+sc.meanIC,
+                s:sc.verdict+(sc.retention!=null?" · keeps "+Math.round(sc.retention*100)+"%":""),
+                c:/^SURVIVES/.test(sc.verdict)?"#00e676":/^PARTLY/.test(sc.verdict)?"#ffd740":"#ff5252"}]:[])(H.sectorControl)),
+            ].map(x=>(
+              <div key={x.l} style={{background:"#060810",padding:12,borderRadius:4}}>
+                <div style={{fontSize:9,color:DIM,letterSpacing:1,marginBottom:4}}>{x.l}</div>
+                <div style={{fontSize:16,fontWeight:700,color:x.c}}>{x.v}</div>
+                <div style={{fontSize:9,color:FADE,marginTop:2}}>{x.s}</div>
+              </div>
+            ))}
+          </div>
+          <div style={{marginTop:12,padding:12,background:"#060810",borderRadius:4,fontSize:11,color:"#90a4ae",lineHeight:1.9}}>
+            {proven?copy.provenNote:copy.notProvenNote}
+          </div>
+        </div>
+
+        <div style={card}>
+          <span style={lbl}>{copy.perPeriodLabel}</span>
+          <div style={{overflowX:"auto"}}>
+            <table style={{width:"100%",borderCollapse:"collapse",fontSize:10}}>
+              <thead><tr style={{color:DIM,textAlign:"left"}}>
+                <th style={{padding:"6px 8px"}}>PERIOD</th><th style={{padding:"6px 8px"}}>NAMES</th>
+                <th style={{padding:"6px 8px"}}>RANK-IC</th><th style={{padding:"6px 8px"}}>TOP−BOTTOM</th>
+              </tr></thead>
+              <tbody>
+                {H.perPeriod.map(p=>(
+                  <tr key={p.period} style={{borderTop:"1px solid "+BG2}}>
+                    <td style={{padding:"6px 8px",color:"#90a4ae"}}>{p.period}</td>
+                    <td style={{padding:"6px 8px",color:"#90a4ae"}}>{p.n}</td>
+                    <td style={{padding:"6px 8px",color:p.ic>=0?"#00e676":"#ff5252"}}>{p.ic>=0?"+":""}{p.ic}</td>
+                    <td style={{padding:"6px 8px",color:"#90a4ae"}}>{pctOrDash(p.spread)}</td>
+                  </tr>
+                ))}
+              </tbody>
+            </table>
+          </div>
+          {six&&six!==H&&(
+          <div style={{marginTop:10,fontSize:10,color:FADE,lineHeight:1.7}}>
+            {s.altName} for comparison: <b style={{color:vCol(six.significance)}}>{six.significance}</b>,
+            mean IC {six.meanIC>=0?"+":""}{six.meanIC} over {six.periods} periods.
+          </div>
+          )}
+        </div>
+
+        <div style={{...card,border:"1px solid rgba(255,215,64,0.20)"}}>
+          <span style={{...lbl,color:"#ffd740"}}>⚠ READ THIS BEFORE TRUSTING THE VERDICT</span>
+          {(s.caveats||[]).map((c,i)=>(
+            <div key={i} style={{fontSize:10,color:"#90a4ae",lineHeight:1.7,marginBottom:4}}>○ {c}</div>
+          ))}
+          <div style={{fontSize:9,color:FADE,marginTop:6}}>
+            Universe {s.universe?.covered}/{s.universe?.requested} names · {copy.sourceLine} · generated {s.generatedAt?new Date(s.generatedAt).toLocaleDateString():"—"}.
+          </div>
+        </div>
+      </>
+    );
+  };
+
   return (
     <div style={{minHeight:"100vh",background:BG,color:"#dce6f0",fontFamily:"'IBM Plex Mono',monospace",paddingBottom:60}}>
       <link href="https://fonts.googleapis.com/css2?family=IBM+Plex+Mono:wght@400;700&family=Bebas+Neue&display=swap" rel="stylesheet"/>
@@ -1993,7 +2523,7 @@ function App() {
 
       {/* Tabs */}
       <div style={{background:BG3,borderBottom:"1px solid "+BORD,padding:"0 20px",display:"flex"}}>
-        {[["live","⚡ LIVE"],["input","▣ DATA"],["signals","◈ SIGNALS"],["outlook","◎ OUTLOOK"],["backtest","⟲ BACKTEST"],["replay","▶ REPLAY"],["value","✚ AUTOPSY"],["contenders","★ CONTENDERS"],["evidence","🔬 EVIDENCE"],["position","⊞ SIZE"],["history","◷ HISTORY"],["paper","📒 FORWARD TEST"]].map(([k,l])=>(
+        {[["input","▣ DATA"],["live","⚡ LIVE"],["evidence","🔬 EVIDENCE"],["paper","📒 FORWARD TEST"],["backtest","⟲ BACKTEST"],["replay","▶ REPLAY"],["value","✚ AUTOPSY"],["contenders","★ CONTENDERS"],["outlook","◎ OUTLOOK"],["signals","◈ SIGNALS"],["position","⊞ SIZE"],["history","◷ HISTORY"]].map(([k,l])=>(
           <button key={k} style={tBtn(tab===k)} onClick={()=>setTab(k)}>{l}</button>
         ))}
       </div>
@@ -2052,7 +2582,13 @@ function App() {
             </div>
             {error&&<div style={{background:"rgba(255,82,82,0.08)",border:"1px solid rgba(255,82,82,0.3)",borderRadius:6,padding:12,color:"#ff8a80",fontSize:11,marginBottom:14,lineHeight:1.7}}>⚠ {error}</div>}
             <button style={{...runBtn,opacity:fetching?0.6:1}} onClick={fetchLive} disabled={fetching}>{fetching?"⏳ FETCHING…":"⬇  FETCH LIVE DATA & ANALYZE"}</button>
-            {liveMeta&&<div style={{textAlign:"center",fontSize:10,marginTop:10}}><span style={{color:"#00e676"}}>✓ {liveMeta.sym} · {liveMeta.count} candles · {liveMeta.when} · {liveMeta.provider}</span>{liveFreshness&&liveFreshness.band&&<span style={{color:freshnessColor(liveFreshness.band),marginLeft:6}}>· {freshnessLabel(liveFreshness)}</span>}</div>}
+            {provider==="polygon"&&liveMeta&&(
+              <button style={{...runBtn,marginTop:8,background:streaming?"#3a1414":"#0d2818",border:"1px solid "+(streaming?"#ff5252":"#00e676")}} onClick={streaming?stopLive:goLive}>
+                {streaming?"⏹  STOP LIVE STREAM":"▶  GO LIVE (stream "+(liveMeta?.sym||"")+" · 15-min delayed)"}
+              </button>
+            )}
+            {streaming&&<div style={{textAlign:"center",fontSize:10,marginTop:6,color:DIM}}>Streaming Polygon minute bars (delayed cluster) — the badge below shows true freshness; real-time needs a Developer+ tier.</div>}
+            {liveMeta&&<div style={{textAlign:"center",fontSize:10,marginTop:10}}><span style={{color:"#00e676"}}>✓ {liveMeta.sym} · {RES_LABEL[liveMeta.resolution]||liveMeta.resolution} · {liveMeta.count} candles · {liveMeta.when} · {liveMeta.provider}</span>{liveFreshness&&liveFreshness.band&&<span style={{color:freshnessColor(liveFreshness.band),marginLeft:6}}>· {freshnessLabel(liveFreshness)}</span>}</div>}
             {liveMeta&&liveFreshness&&liveFreshness.provider==="Polygon"&&liveFreshness.price!=null&&(
               <div style={{textAlign:"center",fontSize:12,marginTop:6}}>
                 <span style={{color:"#fff",fontWeight:800}}>${(+liveFreshness.price).toFixed(2)}</span>
@@ -2090,12 +2626,12 @@ function App() {
                 </button>
                 <button onClick={()=>setMode("position")} style={{textAlign:"left",padding:12,borderRadius:6,cursor:"pointer",background:mode==="position"?"rgba(0,188,212,0.08)":"#060810",border:"1px solid "+(mode==="position"?"#00bcd4":"#1a2035")}}>
                   <div style={{fontSize:13,fontWeight:700,color:mode==="position"?"#00bcd4":"#90a4ae"}}>🐢 POSITION</div>
-                  <div style={{fontSize:9,color:"#546e7a",lineHeight:1.6,marginTop:4}}>Patient long-trend following. Buys dips in uptrends, wide stops, holds for big moves.</div>
+                  <div style={{fontSize:9,color:"#546e7a",lineHeight:1.6,marginTop:4}}>Patient long-trend following. Buys dips in uptrends, wide trailing stops, holds for big moves.</div>
                 </button>
               </div>
               {mode==="position"&&(
                 <div style={{marginTop:10,padding:10,borderRadius:4,background:"rgba(255,215,64,0.05)",border:"1px solid rgba(255,215,64,0.15)",fontSize:9,color:"#90a4ae",lineHeight:1.7}}>
-                  ⚠ POSITION mode is <strong>price-based trend-following, not fundamental value investing.</strong> It captures the behavioral side of long-term investing (patience, buying dips, holding) but cannot see earnings, debt, or business quality — the real core of Buffett's edge. Needs 200+ candles for the long-term trend filter to fully engage.
+                  ⚠ POSITION mode is <strong>price-based trend-following, not fundamental value investing.</strong> It captures the behavioral side of long-term investing (patience, buying dips, holding) but cannot see earnings, debt, or business quality — the real core of Buffett's edge. Needs 200+ candles for the long-term trend filter to engage — with fewer it reports "trend filter not engaged" and holds, rather than acting on a short-history proxy. Wide stops trail up to let winners run; the fixed SL/TP sliders don't apply in this mode.
                 </div>
               )}
             </div>
@@ -2134,56 +2670,13 @@ function App() {
                 <button style={{...pill(slMult===2.0&&tpMult===2.0),marginBottom:0}} onClick={()=>{setSlMult(2.0);setTpMult(2.0);}}>Wide 1:1</button>
               </div>
             </div>
-            <div style={card}>
-              <div style={{display:"flex",justifyContent:"space-between",alignItems:"center",marginBottom:8,flexWrap:"wrap",gap:6}}>
-                <span style={{...lbl,marginBottom:0}}>OHLCV DATA (CSV)</span>
-                <div style={{display:"flex",gap:6}}>
-                  <button style={{...pill(false),marginBottom:0,background:"rgba(0,188,212,0.1)",border:"1px solid #00bcd499",color:"#00bcd4",fontWeight:700}} onClick={async()=>{
-                    try{
-                      const text=await navigator.clipboard.readText();
-                      if(!text.trim()){setError("Clipboard is empty. Copy the CSV from TradingView first.");return;}
-                      setCsv(text);
-                      setError("");
-                      // auto-run after a brief render tick
-                      setTimeout(()=>{
-                        const data=parseCSV(text);
-                        if(data.length>=10){
-                          setRows(data);
-                          const result=analyze(data,ticker,market,strategy);
-                          setAnalysis(result);
-                          setHistory(h=>[{time:new Date().toLocaleTimeString(),ticker,signal:result.signal,confidence:result.confidence,price:data[data.length-1].close,trend:result.trend},...h].slice(0,10));
-                          setTab("signals");
-                        } else {
-                          setError("Clipboard data needs at least 10 rows with a Close column.");
-                        }
-                      },100);
-                    }catch(e){
-                      setError("Clipboard access denied. Please allow clipboard access in your browser, or paste manually.");
-                    }
-                  }}>📋 PASTE &amp; RUN</button>
-                  <button style={{...pill(false),marginBottom:0}} onClick={()=>setCsv(SAMPLE)}>LOAD SAMPLE</button>
-                </div>
+            <div style={{...card,background:"rgba(0,188,212,0.04)",border:"1px solid rgba(0,188,212,0.2)"}}>
+              <span style={lbl}>DATA SOURCE</span>
+              <div style={{fontSize:11,color:"#90a4ae",lineHeight:1.8}}>
+                Market data is pulled live from <b style={{color:"#00bcd4"}}>Polygon</b> on the <b style={{color:"#00e676"}}>⚡ LIVE</b> tab.
+                Fetch there, then return here to tune mode / strategy / risk and press <b>RUN</b> to re-analyze.
               </div>
-              <textarea rows={12} value={csv} onChange={e=>setCsv(e.target.value)}
-                placeholder={"Date,Open,High,Low,Close,Volume\n2026-01-01,100,105,98,103,1000000"}
-                style={{background:BG,border:"1px solid "+BORD,color:"#64b5f6",padding:12,borderRadius:4,fontFamily:"inherit",fontSize:11,lineHeight:1.7,resize:"vertical",width:"100%",outline:"none"}}
-              />
-              <div style={{marginTop:10}}>
-                <div style={{fontSize:10,color:"#00e676",fontWeight:700,marginBottom:8,letterSpacing:1}}>📥 GET REAL MARKET DATA — click a source, download CSV, paste above:</div>
-                <div style={{display:"flex",flexWrap:"wrap",gap:8}}>
-                  <a href={"https://finance.yahoo.com/quote/"+ticker+"/history/"} target="_blank" rel="noreferrer"
-                    style={{background:"rgba(0,230,118,0.08)",border:"1px solid #00e67699",color:"#00e676",padding:"7px 14px",borderRadius:3,fontSize:10,fontWeight:700,letterSpacing:1,textDecoration:"none",cursor:"pointer"}}>
-                    ⬇ YAHOO FINANCE — {ticker}
-                  </a>
-                  <a href={"https://www.tradingview.com/chart/?symbol="+ticker} target="_blank" rel="noreferrer"
-                    style={{background:"rgba(0,188,212,0.08)",border:"1px solid #00bcd499",color:"#00bcd4",padding:"7px 14px",borderRadius:3,fontSize:10,fontWeight:700,letterSpacing:1,textDecoration:"none"}}>
-                    ⬇ TRADINGVIEW — {ticker}
-                  </a>
-                </div>
-                <div style={{fontSize:9,color:FADE,marginTop:8,lineHeight:1.8}}>
-                  Yahoo Finance: Historical Data tab → select date range → Download · TradingView: right-click chart → Export chart data → CSV
-                </div>
-              </div>
+              <button style={{...pill(false),marginTop:8,marginBottom:0,background:"rgba(0,230,118,0.08)",border:"1px solid #00e67699",color:"#00e676",fontWeight:700}} onClick={()=>setTab("live")}>⚡ GO TO LIVE — FETCH DATA</button>
             </div>
             {error&&<div style={{background:"rgba(255,82,82,0.07)",border:"1px solid rgba(255,82,82,0.3)",borderRadius:4,padding:12,color:"#ff8a80",fontSize:11,marginBottom:14,lineHeight:1.7}}>⚠ {error}</div>}
             <button style={runBtn} onClick={run}>▶ RUN SIGNAL ANALYSIS</button>
@@ -2195,7 +2688,7 @@ function App() {
           <div style={{textAlign:"center",padding:"60px 0",color:"#1e2a3a"}}>
             <div style={{fontSize:50}}>◇</div>
             <div style={{letterSpacing:3,fontSize:12,marginTop:14}}>NO ANALYSIS YET</div>
-            <button style={{...runBtn,width:"auto",padding:"10px 30px",marginTop:20}} onClick={()=>setTab("input")}>← LOAD DATA</button>
+            <button style={{...runBtn,width:"auto",padding:"10px 30px",marginTop:20}} onClick={()=>setTab("live")}>⚡ FETCH LIVE DATA</button>
           </div>
         )}
 
@@ -2205,11 +2698,11 @@ function App() {
             <div style={{...card,background:"linear-gradient(135deg,#0e1320,#0b1025)"}}>
               <div style={{display:"flex",justifyContent:"space-between",alignItems:"flex-start",flexWrap:"wrap",gap:10}}>
                 <div>
-                  <div style={{fontSize:10,color:FADE,letterSpacing:1,marginBottom:6}}>{ticker} · {market} · {strategy} · {rows.length} candles</div>
+                  <div style={{fontSize:10,color:FADE,letterSpacing:1,marginBottom:6}}>{ticker} · {market} · {strategy} · {RES_LABEL[liveMeta?.resolution]||liveMeta?.resolution||"—"} · {rows.length} candles</div>
                   <div style={{display:"flex",alignItems:"center",gap:14,flexWrap:"wrap"}}>
                     <Badge signal={displaySignal} muted={signalMuted}/>
                     {signalMuted&&(
-                      <span title="The backtested edge on this instrument isn't statistically established yet, so the signal is shown muted — a call, not a confirmed green light." style={{fontSize:9,fontWeight:700,letterSpacing:1,padding:"4px 10px",borderRadius:3,color:"#90a4ae",background:"rgba(144,164,174,0.10)",border:"1px solid #90a4ae44"}}>⚖ UNCONFIRMED EDGE</span>
+                      <span title="The actionable surface is muted: this signal is a call, not a confirmed green light. The reason is shown — a long-only-blocked short, a backtest that loses money, a target too thin to beat costs, suspect data, or an edge not yet statistically established." style={{fontSize:9,fontWeight:700,letterSpacing:1,padding:"4px 10px",borderRadius:3,color:negativeEdge?"#ff8a80":"#90a4ae",background:negativeEdge?"rgba(255,138,128,0.10)":"rgba(144,164,174,0.10)",border:"1px solid "+(negativeEdge?"#ff8a8044":"#90a4ae44")}}>⚖ {mutedReason}</span>
                     )}
                     {meritFusion&&meritFusion.changed&&(
                       <span title={meritFusion.reason} style={{fontSize:9,fontWeight:700,letterSpacing:1,padding:"4px 10px",borderRadius:3,color:"#00bcd4",background:"rgba(0,188,212,0.10)",border:"1px solid #00bcd444"}}>✚ MERIT-FUSED</span>
@@ -2218,7 +2711,17 @@ function App() {
                       const rc=!macro.proven?"#90a4ae":macro.regime==="RISK-ON"?"#00e676":macro.regime==="RISK-OFF"?"#ff8a80":"#ffd740";
                       return <span title={macro.note} style={{fontSize:9,fontWeight:700,letterSpacing:1,padding:"4px 10px",borderRadius:3,color:rc,background:rc+"1a",border:"1px solid "+rc+"44"}}>🌐 {macro.regime}{macro.proven?"":" · CONTEXT"}</span>;
                     })()}
+                    {outlook&&outlook.regime&&(()=>{
+                      const g=outlook.regime, tc=g.trend==="TRENDING"?"#26c6da":g.trend==="RANGING"?"#ffd740":"#90a4ae";
+                      return <span title={"Market regime (read the room): "+g.label+".\n✓ Favored: "+g.favored+"\n⚠ Fights the room: "+g.cautioned+(g.risk?("\n⚑ "+g.risk):"")+"\nAwareness only — never changes the verdict. See OUTLOOK for detail."} style={{fontSize:9,fontWeight:700,letterSpacing:1,padding:"4px 10px",borderRadius:3,color:tc,background:tc+"1a",border:"1px solid "+tc+"44"}}>🧭 {g.label}</span>;
+                    })()}
+                    {analysis.confluence&&analysis.confluence.famConflict&&(
+                      <span title={"The engine is fighting itself: its MEAN-REVERSION votes (RSI/Stoch/BB) and TREND votes (MACD/MA/MAlong/Trend) point opposite ways. They're each valid in a DIFFERENT regime, so one camp is noise right now. Display only — the verdict is unchanged. Measured OOS via the votes-aligned ledger (Headline #2)."} style={{fontSize:9,fontWeight:700,letterSpacing:1,padding:"4px 10px",borderRadius:3,color:"#ffb74d",background:"rgba(255,183,77,0.10)",border:"1px solid #ffb74d55"}}>⚠ ENGINE DIVIDED</span>
+                    )}
                     <span style={{fontSize:9,fontWeight:700,letterSpacing:1,padding:"4px 10px",borderRadius:3,color:mode==="position"?"#00bcd4":"#00e676",background:(mode==="position"?"#00bcd4":"#00e676")+"15",border:"1px solid "+(mode==="position"?"#00bcd4":"#00e676")+"44"}}>{mode==="position"?"🐢 POSITION":"⚡ TACTICAL"}</span>
+                    {isIntradayRes(liveMeta?.resolution)&&(
+                      <span title={"Intraday timeframe ("+(RES_LABEL[liveMeta?.resolution]||"")+"). This is a short-term read — the signal, ATR levels and indicators are scaled to "+(RES_LABEL[liveMeta?.resolution]||"")+" bars, NOT a daily swing/EOD call. The feed is 15-min delayed, so intraday entries can be stale; treat as context."} style={{fontSize:9,fontWeight:700,letterSpacing:1,padding:"4px 10px",borderRadius:3,color:"#ffb74d",background:"rgba(255,183,77,0.10)",border:"1px solid #ffb74d44"}}>⏱ INTRADAY · {RES_LABEL[liveMeta?.resolution]||liveMeta?.resolution}</span>
+                    )}
                     <span style={{fontSize:11,color:DIM}}>
                       <span style={{color:tCol(analysis.trend)}}>{analysis.trend}</span>{" · "}
                       <span style={{color:"#78909c"}}>{analysis.strength}</span>
@@ -2233,6 +2736,25 @@ function App() {
                   </div>
                 )}
               </div>
+
+              {analysis.confluence&&analysis.confluence.famConflict&&(()=>{
+                const dirWord=d=>d>0?"BUY":d<0?"AVOID":"neutral";
+                const tDir=analysis.confluence.trendDir, mDir=analysis.confluence.meanRevDir;
+                const g=outlook&&outlook.regime;
+                // Regime-aware READ (display only): in a TRENDING market the trend camp is favored; in a
+                // RANGING one the mean-reversion camp is. Never changes the verdict — tells you which camp to weight.
+                const lead=g?(g.trend==="TRENDING"?"trend":g.trend==="RANGING"?"meanrev":null):null;
+                return (
+                  <div style={{marginTop:12,padding:"10px 12px",borderRadius:4,background:"rgba(255,183,77,0.06)",border:"1px solid rgba(255,183,77,0.30)"}}>
+                    <div style={{fontSize:10,fontWeight:700,letterSpacing:1,color:"#ffb74d",marginBottom:6}}>⚠ ENGINE DIVIDED — internal conflict</div>
+                    <div style={{fontSize:11,color:"#cfd8dc",lineHeight:1.7}}>
+                      Mean-reversion votes (RSI/Stoch/BB) say <b style={{color:mDir>0?"#00e676":"#ff8a80"}}>{dirWord(mDir)}</b>, trend votes (MACD/MA/MAlong/Trend) say <b style={{color:tDir>0?"#00e676":"#ff8a80"}}>{dirWord(tDir)}</b> — the confluence is fighting itself. Each camp is valid in a <b>different regime</b>, so one is noise right now.
+                      {lead&&g&&(<><br/><span style={{color:"#26c6da"}}>Room read:</span> the market is <b>{g.trend}</b> → weight the <b>{lead==="trend"?"TREND":"MEAN-REVERSION"}</b> camp; the other is likely chop/trend noise here.</>)}
+                    </div>
+                    <div style={{fontSize:9,color:DIM,marginTop:6}}>Display only — the verdict above is UNCHANGED. Whether resolving this conflict pays is being measured out-of-sample (votes-aligned ledger, EVIDENCE scoreboard). No in-sample re-wire. (Headline #2.)</div>
+                  </div>
+                );
+              })()}
 
               {dataAudit&&dataAudit.issues.length>0&&(
                 <div style={{marginTop:12,padding:"10px 12px",borderRadius:4,
@@ -2450,8 +2972,9 @@ function App() {
                         <b style={{color:"#fff"}}>This series ({t.eligibleBars} bars):</b> {t.signals} signals · win <b>{Math.round(t.winRate*100)}%</b> · avg {pct(t.avgFwdRet)} over {t.horizon} bars · <span style={{color:t.edge>=0?"#00e676":"#ff5252"}}>edge {t.edge>=0?"+":""}{pct(t.edge)}</span> vs {pct(t.baselineAvgFwdRet)} baseline.
                       </div>
                       :<div style={{fontSize:10,color:FADE,borderTop:"1px solid "+BG3,paddingTop:8}}>No historical triggers in this sample yet — fetch on Daily for more history (now up to ~1500 bars).</div>}
-                    {patternStudy&&patternStudy.aggregate&&<div style={{fontSize:10,color:DIM,lineHeight:1.7,marginTop:6}}>
-                      <b style={{color:"#90caf9"}}>Universe ({patternStudy.aggregate.tickers} tickers):</b> {patternStudy.aggregate.signals} signals · win {Math.round(patternStudy.aggregate.winRate*100)}% · <span style={{color:patternStudy.aggregate.edge>=0?"#00e676":"#ff5252"}}>edge {patternStudy.aggregate.edge>=0?"+":""}{pct(patternStudy.aggregate.edge)}</span> over {patternStudy.aggregate.horizon} bars.
+                    {patternStudy&&patternStudy.aggregate&&patternStudy.aggregate.tickers>0&&<div style={{fontSize:10,color:DIM,lineHeight:1.7,marginTop:6}}>
+                      <b style={{color:"#90caf9"}}>Universe ({patternStudy.aggregate.tickers} tickers, trend-filtered):</b> {patternStudy.aggregate.signals} signals · win {Math.round(patternStudy.aggregate.winRate*100)}% · <span style={{color:patternStudy.aggregate.edge>=0?"#00e676":"#ff5252"}}>edge {patternStudy.aggregate.edge>=0?"+":""}{pct(patternStudy.aggregate.edge)}</span> over {patternStudy.aggregate.horizon} bars.
+                      {patternStudy.unfilteredAggregate&&patternStudy.unfilteredAggregate.edge!=null&&<span style={{color:FADE}}> (raw, no filter: {patternStudy.unfilteredAggregate.edge>=0?"+":""}{pct(patternStudy.unfilteredAggregate.edge)})</span>}
                     </div>}
                   </div>);
                 })()}
@@ -2473,7 +2996,7 @@ function App() {
             </div>
 
             <div style={{display:"grid",gridTemplateColumns:"1fr 1fr",gap:14,marginTop:4}}>
-              <button style={runBtn} onClick={()=>setTab("input")}>← LOAD NEW DATA</button>
+              <button style={runBtn} onClick={()=>setTab("live")}>⚡ FETCH NEW DATA</button>
               <button style={{...runBtn,background:"transparent",border:"1px solid "+BORD,color:"#78909c"}} onClick={()=>setTab("position")}>⊞ POSITION CALCULATOR</button>
             </div>
             <div style={{background:"rgba(255,215,64,0.03)",border:"1px solid rgba(255,215,64,0.10)",borderRadius:4,padding:10,fontSize:9,color:FADE,lineHeight:1.8,marginTop:14}}>
@@ -2497,18 +3020,44 @@ function App() {
               const cCol=o.combined>=0?"#00e676":"#ff5252";
               const sgn=v=>(v>=0?"+":"")+v.toFixed(2);
               const bt=o.backtest, MUT="#90a4ae";
-              // Transparency rule: treat the edge as real only with a reasonable
-              // sample that also beats the trend-only baseline. Otherwise muted.
-              const proven=bt&&bt.n>=20&&bt.edge>0&&bt.acc>50, muted=!proven;
+              // Transparency rule (alpha-honest): proven only when the projection beat
+              // buy-&-hold over enough trades AND is statistically resolved (bt.proven).
+              // A high directional accuracy in a rising market is beta, not edge.
+              const proven=!!(bt&&bt.proven), muted=!proven;
+              const dCol=o.delta>=0?"#00e676":"#ff5252";
               // Freshness gate: when the index inputs are closed/stale, the projection
               // is built on last-session data — gray it out so it's never read as live.
               const stale=!!(o.fresh&&(o.fresh.band==="CLOSED"||o.fresh.band==="STALE")), STMUT="#90a4ae";
               return(
                 <>
+                  {o.regime&&(()=>{
+                    const g=o.regime;
+                    const dCol=g.direction==="BULL"?"#00e676":g.direction==="BEAR"?"#ff5252":"#90a4ae";
+                    const tCol=g.trend==="TRENDING"?"#26c6da":g.trend==="RANGING"?"#ffd740":"#90a4ae";
+                    const vCol=g.vol==="STORMY"?"#ff5252":g.vol==="CALM"?"#00e676":"#90a4ae";
+                    return (
+                      <div style={{...card,borderLeft:"3px solid "+tCol}}>
+                        <span style={lbl}>🧭 MARKET REGIME · read the room before you pick the tool</span>
+                        <div style={{display:"flex",gap:8,flexWrap:"wrap",alignItems:"center",marginBottom:10}}>
+                          <span style={{fontSize:20,fontWeight:800,letterSpacing:1,color:tCol}}>{g.label}</span>
+                          <span style={{padding:"2px 8px",borderRadius:4,border:"1px solid "+dCol,color:dCol,fontSize:11,fontWeight:700}}>{g.direction}</span>
+                          <span style={{padding:"2px 8px",borderRadius:4,border:"1px solid "+tCol,color:tCol,fontSize:11,fontWeight:700}}>{g.trend}{g.er!=null?(" · ER "+g.er):""}</span>
+                          <span style={{padding:"2px 8px",borderRadius:4,border:"1px solid "+vCol,color:vCol,fontSize:11,fontWeight:700}}>{g.vol} VOL</span>
+                          {g.approxMA&&<span style={{fontSize:9,color:FADE}}>(trend MA approx — &lt;200 bars)</span>}
+                        </div>
+                        <div style={{fontSize:12,color:"#cfd8dc",lineHeight:1.7}}>
+                          <span style={{color:"#00e676"}}>✓ Favored here:</span> {g.favored}<br/>
+                          <span style={{color:"#ff8a80"}}>⚠ Fights the room:</span> {g.cautioned}
+                        </div>
+                        {g.risk&&<div style={{marginTop:8,fontSize:11,color:g.risk.startsWith("ELEVATED")?"#ff5252":"#ffd740",fontWeight:600}}>⚑ {g.risk}</div>}
+                        <div style={{fontSize:9,color:DIM,marginTop:8}}>Awareness only — this never changes the SIGNALS verdict. It tells you which of the engine's votes to TRUST: the confluence fires trend AND mean-reversion votes at once, so in the wrong regime half of them are noise. (Diagnosis: factor-interaction angles C + F.)</div>
+                      </div>
+                    );
+                  })()}
                   <div style={card}>
                     <span style={lbl}>◎ MARKET CORRECTION PERIOD PRICE</span>
                     <div style={{fontSize:11,color:DIM,lineHeight:1.6,marginBottom:14}}>
-                      Sums the three major US indexes' current-session move — {o.source==="indices"?<b style={{color:"#00e676"}}>true S&amp;P 500 · Dow · Nasdaq values</b>:<b style={{color:"#00bcd4"}}>SPY · DIA · QQQ ETF proxies</b>} — applies that combined % to {(liveMeta?.sym||"the stock")}'s price for a dollar delta, then projects the price for the current phase — <b style={{color:"#00e676"}}>+ delta</b> in an uptrend, <b style={{color:"#ff5252"}}>− delta</b> in a downtrend.
+                      <b>Averages</b> the three major US indexes' move over a trailing <b>20-day correction window</b> — {o.source==="indices"?<b style={{color:"#00e676"}}>true S&amp;P 500 · Dow · Nasdaq values</b>:<b style={{color:"#00bcd4"}}>SPY · DIA · QQQ ETF proxies</b>} — and applies that to {(liveMeta?.sym||"the stock")}'s price. <b style={{color:"#00e676"}}>Target</b> = projection <b>+ the avg projection error</b> (a generous buffer, let it run); <b style={{color:"#ff5252"}}>stop</b> = price <b>− the lesser</b> of the projection and that error (a tight, early red-flag exit). Judged below on <b>P&amp;L vs buy-&amp;-hold</b>, not just direction.
                     </div>
                     {o.fresh&&(
                       <div style={{display:"flex",alignItems:"center",gap:8,flexWrap:"wrap",background:BG3,borderRadius:4,padding:"8px 12px",marginBottom:12,border:"1px solid "+(o.fresh.band==="REALTIME"?"rgba(0,230,118,0.30)":o.fresh.band==="CLOSED"?"rgba(144,164,174,0.30)":"rgba(255,215,64,0.30)")}}>
@@ -2526,9 +3075,13 @@ function App() {
                         </div>
                       ))}
                     </div>
-                    <div style={{display:"flex",justifyContent:"space-between",alignItems:"center",background:BG3,borderRadius:4,padding:"10px 14px",marginBottom:12}}>
-                      <span style={{fontSize:11,color:DIM,letterSpacing:1}}>COMBINED MARKET MOVE (sum)</span>
+                    <div style={{display:"flex",justifyContent:"space-between",alignItems:"center",background:BG3,borderRadius:4,padding:"10px 14px",marginBottom:8}}>
+                      <span style={{fontSize:11,color:DIM,letterSpacing:1}}>COMBINED MARKET MOVE (session sum)</span>
                       <span style={{fontSize:16,fontWeight:700,color:cCol}}>{sgn(o.combined)}%</span>
+                    </div>
+                    <div style={{display:"flex",justifyContent:"space-between",alignItems:"center",background:BG3,borderRadius:4,padding:"10px 14px",marginBottom:12}}>
+                      <span style={{fontSize:11,color:DIM,letterSpacing:1}}>AVG 20-DAY INDEX MOVE <span style={{color:FADE}}>· drives the projection</span></span>
+                      <span style={{fontSize:16,fontWeight:700,color:o.gainsPct==null?MUT:(o.gainsPct>=0?"#00e676":"#ff5252")}}>{o.gainsPct==null?"n/a":sgn(o.gainsPct)+"%"}</span>
                     </div>
                     {macro&&(
                       <div style={{background:BG3,borderRadius:4,padding:"10px 14px",marginBottom:12,
@@ -2542,7 +3095,7 @@ function App() {
                     )}
                     <div style={{display:"flex",gap:10,marginBottom:4,fontSize:11,color:DIM}}>
                       <div style={{flex:1}}>Realtime price<div style={{fontSize:15,color:"#cfd8dc",fontWeight:700,marginTop:2}}>{fmt(o.price)}</div></div>
-                      <div style={{flex:1}}>Dollar delta<div style={{fontSize:15,color:cCol,fontWeight:700,marginTop:2}}>{(o.delta>=0?"+$":"−$")+Math.abs(o.delta).toFixed(2)}</div></div>
+                      <div style={{flex:1}}>Projected Δ (20d avg)<div style={{fontSize:15,color:dCol,fontWeight:700,marginTop:2}}>{(o.delta>=0?"+$":"−$")+Math.abs(o.delta).toFixed(2)}</div></div>
                       <div style={{flex:1}}>Trend<div style={{fontSize:15,color:tCol(o.trend),fontWeight:700,marginTop:2}}>{o.trend}</div></div>
                     </div>
                     <div style={{textAlign:"center",padding:"16px 0 2px",borderTop:"1px solid "+BORD,marginTop:12}}>
@@ -2550,40 +3103,52 @@ function App() {
                       {stale&&<div style={{fontSize:10,color:STMUT,marginTop:4}}>as-of last close — not a live tick</div>}
                       {o.active==="NEUTRAL"?(
                         <>
-                          <div style={{fontSize:12,color:"#ffd740",marginTop:6}}>SIDEWAYS — both scenarios shown</div>
+                          <div style={{fontSize:12,color:"#ffd740",marginTop:6}}>SIDEWAYS — both legs shown</div>
                           <div style={{display:"flex",justifyContent:"center",gap:32,marginTop:8}}>
-                            <div><div style={{fontSize:10,color:DIM}}>uptrend +</div><div style={{fontSize:22,fontWeight:800,color:stale?STMUT:"#00e676"}}>{fmt(o.up)}</div></div>
-                            <div><div style={{fontSize:10,color:DIM}}>downtrend −</div><div style={{fontSize:22,fontWeight:800,color:stale?STMUT:"#ff5252"}}>{fmt(o.down)}</div></div>
+                            <div><div style={{fontSize:10,color:DIM}}>target (TP)</div><div style={{fontSize:22,fontWeight:800,color:stale?STMUT:"#00e676"}}>{fmt(o.up)}</div></div>
+                            <div><div style={{fontSize:10,color:DIM}}>stop (SL)</div><div style={{fontSize:22,fontWeight:800,color:stale?STMUT:"#ff5252"}}>{fmt(o.down)}</div></div>
                           </div>
                         </>
                       ):(
                         <>
                           <div style={{fontSize:34,fontWeight:800,color:stale?STMUT:(o.active==="UP"?"#00e676":"#ff5252"),marginTop:4}}>{fmt(o.correctionPrice)}</div>
-                          <div style={{fontSize:11,color:DIM,marginTop:4}}>{fmt(o.price)+" "+(o.active==="UP"?"+":"−")+" $"+Math.abs(o.delta).toFixed(2)+" delta"}</div>
+                          <div style={{fontSize:11,color:DIM,marginTop:4}}>{o.active==="UP"?("target = "+fmt(o.price)+" + projection + error buffer"):("stop = "+fmt(o.price)+" − lesser of projection / error")}</div>
                         </>
                       )}
                     </div>
                   </div>
 
                   <div style={card}>
-                    <span style={lbl}>⟲ DIRECTIONAL BACKTEST — does the projection point the right way?</span>
+                    <span style={lbl}>⟲ P&amp;L BACKTEST — does the projection beat buy-&amp;-hold?</span>
                     {!bt&&<div style={{fontSize:11,color:DIM}}>Not enough overlapping history to backtest (need ~20+ aligned bars).</div>}
                     {bt&&(
                       <>
-                        {muted&&<div style={{fontSize:10,color:MUT,background:"rgba(144,164,174,0.08)",border:"1px solid rgba(144,164,174,0.25)",borderRadius:4,padding:"8px 10px",marginBottom:12}}>⚠ No demonstrated edge — {bt.n<20?"sample too small ("+bt.n+" bars)":"projection does not beat trend-alone"}. Treat the figures below as descriptive, not predictive.</div>}
+                        {muted&&<div style={{fontSize:10,color:MUT,background:"rgba(144,164,174,0.08)",border:"1px solid rgba(144,164,174,0.25)",borderRadius:4,padding:"8px 10px",marginBottom:12}}>⚠ No proven edge — {bt.trades<20?"too few trades ("+bt.trades+"/20)":(bt.meanAlpha==null||bt.meanAlpha<=0)?"does not beat buy-&-hold":"not statistically resolved ("+bt.stats.significance+")"}. Figures below are descriptive, not predictive — a beta-style projection isn't expected to beat the market.</div>}
+                        <div style={{display:"grid",gridTemplateColumns:"repeat(2,1fr)",gap:10,marginBottom:10}}>
+                          <div style={{background:BG3,borderRadius:4,padding:"12px 14px"}}>
+                            <div style={{fontSize:9,color:DIM,letterSpacing:1}}>ALPHA vs BUY-&amp;-HOLD <span style={{color:FADE}}>· per trade</span></div>
+                            <div style={{fontSize:24,fontWeight:800,color:muted?MUT:(bt.meanAlpha>0?"#00e676":"#ff5252")}}>{bt.meanAlpha==null?"n/a":(bt.meanAlpha>=0?"+":"")+bt.meanAlpha.toFixed(2)+"%"}</div>
+                            <div style={{fontSize:10,color:DIM,marginTop:2}}>{bt.beatRate==null?"—":bt.beatRate.toFixed(0)+"% of trades beat hold"} · n={bt.trades}</div>
+                          </div>
+                          <div style={{background:BG3,borderRadius:4,padding:"12px 14px"}}>
+                            <div style={{fontSize:9,color:DIM,letterSpacing:1}}>EXPECTANCY <span style={{color:FADE}}>· {bt.stats.significance}</span></div>
+                            <div style={{fontSize:24,fontWeight:800,color:muted?MUT:(bt.stats.expectancy>0?"#00e676":"#ff5252")}}>{(bt.stats.expectancy>=0?"+":"")+bt.stats.expectancy.toFixed(2)}%</div>
+                            <div style={{fontSize:10,color:DIM,marginTop:2}}>win {bt.stats.winRate}% · t {bt.stats.tStat}</div>
+                          </div>
+                        </div>
                         <div style={{display:"grid",gridTemplateColumns:"repeat(2,1fr)",gap:10}}>
                           <div style={{background:BG3,borderRadius:4,padding:"12px 14px"}}>
                             <div style={{fontSize:9,color:DIM,letterSpacing:1}}>DIRECTIONAL ACCURACY</div>
-                            <div style={{fontSize:24,fontWeight:800,color:muted?MUT:(bt.acc>50?"#00e676":"#ff5252")}}>{bt.acc.toFixed(1)}%</div>
-                            <div style={{fontSize:10,color:DIM,marginTop:2}}>vs {bt.baseline.toFixed(1)}% trend-only ({(bt.edge>=0?"+":"")+bt.edge.toFixed(1)} pts)</div>
+                            <div style={{fontSize:20,fontWeight:800,color:muted?MUT:((bt.acc||0)>50?"#00e676":"#ff5252")}}>{bt.acc==null?"n/a":bt.acc.toFixed(1)+"%"}</div>
+                            <div style={{fontSize:10,color:DIM,marginTop:2}}>{bt.baseline==null?"":"vs "+bt.baseline.toFixed(1)+"% trend-only ("+(bt.edge>=0?"+":"")+bt.edge.toFixed(1)+" pts)"}</div>
                           </div>
                           <div style={{background:BG3,borderRadius:4,padding:"12px 14px"}}>
                             <div style={{fontSize:9,color:DIM,letterSpacing:1}}>AVG PROJECTION ERROR</div>
-                            <div style={{fontSize:24,fontWeight:800,color:muted?MUT:"#cfd8dc"}}>{fmt(bt.avgErr)}</div>
-                            <div style={{fontSize:10,color:DIM,marginTop:2}}>{bt.avgPctErr.toFixed(2)}% of price · n={bt.n} bars</div>
+                            <div style={{fontSize:20,fontWeight:800,color:muted?MUT:"#cfd8dc"}}>{bt.avgErr==null?"n/a":fmt(bt.avgErr)}</div>
+                            <div style={{fontSize:10,color:DIM,marginTop:2}}>{bt.avgPctErr==null?"":bt.avgPctErr.toFixed(2)+"% of price · "+bt.n+" bars"}</div>
                           </div>
                         </div>
-                        <div style={{fontSize:10,color:FADE,marginTop:12,lineHeight:1.6}}>Per bar: trend = close vs SMA20; projected = close ± (close × that day's combined market %); a "hit" = projection and the next bar moved the same way. 50% ≈ a coin flip.</div>
+                        <div style={{fontSize:10,color:FADE,marginTop:12,lineHeight:1.6}}>Long-only: BUY when close ≥ SMA20, exit at the error-buffered target/stop. Alpha = strategy P&amp;L − a matched buy-&amp;-hold over the same window. A rising-market hit rate is beta; only positive alpha that clears significance counts as edge.</div>
                       </>
                     )}
                   </div>
@@ -2617,7 +3182,7 @@ function App() {
                 <div style={{fontSize:50}}>⟲</div>
                 <div style={{letterSpacing:3,fontSize:12,marginTop:14}}>NO BACKTEST YET</div>
                 <div style={{fontSize:10,color:FADE,marginTop:8,lineHeight:1.7}}>Run an analysis with at least 40 candles of data.<br/>The backtest replays the signal logic across all history.</div>
-                <button style={{...runBtn,width:"auto",padding:"10px 30px",marginTop:20}} onClick={()=>setTab("input")}>← LOAD DATA</button>
+                <button style={{...runBtn,width:"auto",padding:"10px 30px",marginTop:20}} onClick={()=>setTab("live")}>⚡ FETCH LIVE DATA</button>
               </div>
             )}
             {backtest&&(
@@ -2749,6 +3314,7 @@ function App() {
                       {l:"WINS",v:backtest.stats.wins,c:"#00e676"},
                       {l:"LOSSES",v:backtest.stats.losses,c:"#ff5252"},
                       {l:"TOTAL RETURN",v:(backtest.stats.totalReturn>=0?"+":"")+backtest.stats.totalReturn+"%",c:backtest.stats.totalReturn>=0?"#00e676":"#ff5252"},
+                      {l:"vs BUY & HOLD",v:buyHoldRet!=null?(buyHoldRet>=0?"+":"")+buyHoldRet+"%":"—",c:buyHoldRet!=null&&backtest.stats.totalReturn<buyHoldRet?"#ff8a80":"#90a4ae"},
                       {l:"PROFIT FACTOR",v:backtest.stats.profitFactor,c:backtest.stats.profitFactor>=1.5?"#00e676":backtest.stats.profitFactor>=1?"#ffd740":"#ff5252"},
                       {l:"EXPECTANCY",v:(backtest.stats.expectancy>=0?"+":"")+backtest.stats.expectancy+"%",c:backtest.stats.expectancy>=0?"#00e676":"#ff5252"},
                       {l:"AVG WIN / LOSS",v:"+"+backtest.stats.avgWin+"% / -"+backtest.stats.avgLoss+"%",c:"#90a4ae"},
@@ -2765,6 +3331,7 @@ function App() {
                       : "Across "+rows.length+" candles, the strategy took "+backtest.stats.total+" trades with a "+backtest.stats.winRate+"% win rate. "+
                         "Profit factor "+backtest.stats.profitFactor+" ("+(backtest.stats.profitFactor==="∞"||backtest.stats.profitFactor>=1.5?"strong":backtest.stats.profitFactor>=1?"marginally profitable":"unprofitable")+"). "+
                         "Each trade averaged "+(backtest.stats.expectancy>=0?"+":"")+backtest.stats.expectancy+"% expectancy. "+
+                        (buyHoldRet!=null?"Simply buying and holding over the same window returned "+(buyHoldRet>=0?"+":"")+buyHoldRet+"% — "+(backtest.stats.totalReturn>=buyHoldRet?"the strategy beat that benchmark.":"the strategy did NOT beat that benchmark, so trading added cost and risk without adding return.")+" ":"")+
                         (backtest.openTrade?"One trade is still open at period end.":"")}
                   </div>
                 </div>
@@ -2977,7 +3544,7 @@ function App() {
                 <div style={{fontSize:50}}>▶</div>
                 <div style={{letterSpacing:3,fontSize:12,marginTop:14}}>NOTHING TO REPLAY</div>
                 <div style={{fontSize:10,color:FADE,marginTop:8,lineHeight:1.7}}>Load at least {REPLAY_START+1} candles, then scrub the timeline to<br/>watch every signal fire bar-by-bar against the real candles.</div>
-                <button style={{...runBtn,width:"auto",padding:"10px 30px",marginTop:20}} onClick={()=>setTab("input")}>← LOAD DATA</button>
+                <button style={{...runBtn,width:"auto",padding:"10px 30px",marginTop:20}} onClick={()=>setTab("live")}>⚡ FETCH LIVE DATA</button>
               </div>
             );
           }
@@ -3458,101 +4025,324 @@ function App() {
         {/* ── EVIDENCE TAB — merit-evidence harness (does merit predict forward returns?) ── */}
         {tab==="evidence"&&(
           <>
-            {!study&&(
+            {!study&&!momentum&&!reversal&&!lowvol&&!quality&&!forwardPerf&&(
               <div style={card}>
-                <span style={lbl}>🔬 MERIT EVIDENCE</span>
+                <span style={lbl}>🔬 EVIDENCE</span>
                 <div style={{fontSize:11,color:"#90a4ae",lineHeight:1.9}}>
-                  No study loaded. <code>study.json</code> is built nightly in CI (<code>scripts/build-study.mjs</code>):
-                  it reconstructs each name's merit <i>point-in-time</i> from SEC filings and tests whether higher
-                  merit actually predicted higher forward returns across the universe. Check back after the next build.
+                  Nothing loaded yet. The evidence artifacts are built nightly/weekly in CI — <code>study.json</code>
+                  (merit), <code>momentum.json</code> (cross-sectional price momentum), and <code>forward-perf.json</code>
+                  (the out-of-sample variant scoreboard). Check back after the next build.
                 </div>
               </div>
             )}
-            {study&&(()=>{
-              const H=study.horizons[study.primary]||study.horizons["12m"];
-              const six=study.horizons["6m"]||H;
+
+            {/* ── Merit study (study.json) ── */}
+            {study&&studyHarness(
+              { H: study.horizons[study.primary]||study.horizons["12m"], six: study.horizons["6m"]||study.horizons[study.primary],
+                proven: !!study.meritEdgeProven, caveats: study.caveats, universe: study.universe,
+                generatedAt: study.generatedAt, primaryName: study.primary+" horizon", altName: "6-month horizon" },
+              { title:"🔬 MERIT EVIDENCE · does fundamental quality predict forward returns?",
+                posPhrase:"higher merit leaned toward higher forward return", negPhrase:"no positive relationship found",
+                provenLabel:"✓ MERIT EDGE ESTABLISHED", notProvenLabel:"⚖ MERIT EDGE NOT ESTABLISHED",
+                provenNote:"The edge is statistically present, points the same way out-of-sample, and survives the label-shuffle placebo. Merit-fusion is permitted to nudge the signal — still only on fundamentals you've verified.",
+                notProvenNote:"The edge is NOT established on this universe (most likely INCONCLUSIVE by design — see the caveats). Merits therefore do not move the trade signal; the autopsy stays a conviction overlay only. This is the honest gate working, not a failure.",
+                perPeriodLabel:"PER-PERIOD RANK-IC · "+study.primary,
+                sourceLine:"fundamentals "+(study.source?.fundamentals||"—")+" · prices "+(study.source?.prices||"—") })}
+
+            {/* ── Cross-sectional momentum study (momentum.json) ── */}
+            {momentum&&studyHarness(
+              { H: momentum.windows[momentum.primary]||momentum.windows["12-1"], six: momentum.windows["6-1"]||momentum.windows[momentum.primary],
+                proven: !!momentum.momentumEdgeProven, caveats: momentum.caveats, universe: momentum.universe,
+                generatedAt: momentum.generatedAt, primaryName: momentum.primary+" momentum", altName: "6-1 momentum" },
+              { title:"🔬 MOMENTUM EVIDENCE · does trailing price strength predict forward returns?",
+                posPhrase:"higher momentum leaned toward higher forward return", negPhrase:"no positive relationship found",
+                provenLabel:"✓ STRONG IN-SAMPLE — NOT YET OOS-PROVEN", notProvenLabel:"⚖ NOT ESTABLISHED",
+                provenNote:"In-sample the factor is significant, beats the label-shuffle placebo, and survives walk-forward + the trials-deflation. But in-sample is NEVER the verdict here — the time-split 'OOS' is still within-sample, and all periods sit in one recent regime. Only the live momentum-on ledger in the scoreboard below, cleared through FDR, makes it tradeable.",
+                notProvenNote:"Not established on this run — INCONCLUSIVE is an acceptable outcome. The momentum-on label keeps accruing in the out-of-sample scoreboard below; nothing is tradeable until it clears the FDR gate there.",
+                perPeriodLabel:"PER-PERIOD RANK-IC · "+momentum.primary,
+                sourceLine:"prices "+(momentum.source?.prices||"—") })}
+
+            {/* ── Cross-sectional short-term reversal study (reversal.json) ── */}
+            {reversal&&studyHarness(
+              { H: reversal.windows[reversal.primary]||reversal.windows["1mo"], six: reversal.windows[reversal.primary]||reversal.windows["1mo"],
+                proven: !!reversal.reversalEdgeProven, caveats: reversal.caveats, universe: reversal.universe,
+                generatedAt: reversal.generatedAt, primaryName: reversal.primary+" reversal", altName: "single-window study" },
+              { title:"🔬 REVERSAL EVIDENCE · do recent losers bounce next month?",
+                posPhrase:"a bigger recent loss leaned toward a higher forward return", negPhrase:"no reversal relationship found",
+                provenLabel:"✓ STRONG IN-SAMPLE — NOT YET OOS-PROVEN", notProvenLabel:"⚖ NOT ESTABLISHED",
+                provenNote:"In-sample the 1-month reversal factor is significant and beats the label-shuffle placebo. But in-sample is NEVER the verdict here — the time-split 'OOS' is still within-sample, and all periods sit in one recent regime. Reversal is the orthogonal complement to momentum (which skips this month by design); only the live reversal-on ledger in the scoreboard below, cleared through FDR, makes it tradeable.",
+                notProvenNote:"Not established on this run — INCONCLUSIVE is an acceptable outcome. The reversal-on label keeps accruing in the out-of-sample scoreboard below; nothing is tradeable until it clears the FDR gate there.",
+                perPeriodLabel:"PER-PERIOD RANK-IC · "+reversal.primary,
+                sourceLine:"prices "+(reversal.source?.prices||"—") })}
+
+            {/* ── Cross-sectional low-volatility study (lowvol.json) ── */}
+            {lowvol&&studyHarness(
+              { H: lowvol.windows[lowvol.primary]||lowvol.windows["12mo"], six: lowvol.windows["6mo"]||lowvol.windows[lowvol.primary],
+                proven: !!lowvol.lowVolEdgeProven, caveats: lowvol.caveats, universe: lowvol.universe,
+                generatedAt: lowvol.generatedAt, primaryName: lowvol.primary+" low-vol", altName: "6-month window" },
+              { title:"🔬 LOW-VOLATILITY EVIDENCE · do calmer names earn higher forward returns?",
+                posPhrase:"lower realized volatility leaned toward a higher forward return", negPhrase:"no low-volatility relationship found",
+                provenLabel:"✓ STRONG IN-SAMPLE — NOT YET OOS-PROVEN", notProvenLabel:"⚖ NOT ESTABLISHED",
+                provenNote:"In-sample the low-volatility (low-beta) factor is significant and beats the label-shuffle placebo. But in-sample is NEVER the verdict here — the time-split 'OOS' is still within-sample, and realized vol from monthly bars is a coarse risk proxy. Only the live lowvol-on ledger in the scoreboard below, cleared through FDR, makes it tradeable.",
+                notProvenNote:"Not established on this run — INCONCLUSIVE is an acceptable outcome. The lowvol-on label keeps accruing in the out-of-sample scoreboard below; nothing is tradeable until it clears the FDR gate there.",
+                perPeriodLabel:"PER-PERIOD RANK-IC · "+lowvol.primary,
+                sourceLine:"prices "+(lowvol.source?.prices||"—") })}
+
+            {/* ── Cross-sectional quality / profitability study (quality.json) ── */}
+            {quality&&studyHarness(
+              { H: quality.windows[quality.primary]||quality.windows["roe"], six: quality.windows["npm"]||quality.windows[quality.primary],
+                proven: !!quality.qualityEdgeProven, caveats: quality.caveats, universe: quality.universe,
+                generatedAt: quality.generatedAt, primaryName: quality.primary.toUpperCase()+" quality", altName: "net-margin window" },
+              { title:"🔬 QUALITY EVIDENCE · does higher profitability predict forward returns?",
+                posPhrase:"higher profitability leaned toward a higher forward return", negPhrase:"no quality relationship found",
+                provenLabel:"✓ STRONG IN-SAMPLE — NOT YET OOS-PROVEN", notProvenLabel:"⚖ NOT ESTABLISHED",
+                provenNote:"In-sample the profitability (quality) factor is significant and beats the label-shuffle placebo. But in-sample is NEVER the verdict here — and quality SHARES its inputs with the merit grade, so quality-on and merits-on are correlated; lean on the scoreboard's BY (dependence-robust) FDR column, not BH alone. Only the live quality-on ledger, cleared through FDR, makes it tradeable.",
+                notProvenNote:"Not established on this run — INCONCLUSIVE is an acceptable outcome. The quality-on label keeps accruing in the out-of-sample scoreboard below; nothing is tradeable until it clears the FDR gate there.",
+                perPeriodLabel:"PER-PERIOD RANK-IC · "+quality.primary,
+                sourceLine:"fundamentals "+(quality.source?.fundamentals||"—")+" · prices "+(quality.source?.prices||"—") })}
+
+            {/* ── Factor-interaction PIE (factor-interaction-study.json) — weighted data value per tool ── */}
+            {factorPie&&(()=>{
+              const pie=(factorPie.pie||[]).filter(p=>p.weightPct>0);
+              const inter=(factorPie.interactions||[]).slice(0,5);
+              const cc=factorPie.composite&&factorPie.composite.equalWeight;
               const vCol=v=>v==="SIGNIFICANT"?"#00e676":v==="SUGGESTIVE"?"#ffd740":"#90a4ae";
-              const placeboOk=H.placebo.verdict==="NOT SIGNIFICANT"||H.placebo.verdict==="TOO FEW PERIODS";
-              const proven=!!study.meritEdgeProven;
-              const pctOrDash=v=>v==null?"—":((v>=0?"+":"")+(v*100).toFixed(1)+"%");
+              const maxW=pie.length?pie[0].weightPct:1;
               return (
-                <>
-                  <div style={{...card,background:"linear-gradient(135deg,#0e1320,#0b1025)"}}>
-                    <span style={lbl}>🔬 MERIT EVIDENCE · does fundamental quality predict forward returns?</span>
-                    <div style={{display:"flex",justifyContent:"space-between",flexWrap:"wrap",gap:10,alignItems:"flex-start"}}>
-                      <div>
-                        <div style={{display:"flex",alignItems:"center",gap:12,flexWrap:"wrap"}}>
-                          <span style={{fontSize:22,fontWeight:700,color:vCol(H.significance)}}>{H.significance}</span>
-                          <span style={{fontSize:11,color:DIM}}>{study.primary} horizon · {H.periods} periods · {H.observations} obs</span>
+                <div style={card}>
+                  <span style={lbl}>🥧 FACTOR-INTERACTION PIE · factor-interaction-study.json</span>
+                  <div style={{fontSize:11,color:"#90a4ae",lineHeight:1.7,marginBottom:10}}>
+                    Each tool's <b>weighted data value</b> = its forward-return |rank-IC| as a share of the total, measured on Polygon history. Price/risk <b style={{color:"#26c6da"}}>factors</b>, AUTOPSY <b style={{color:"#ab47bc"}}>fundamentals</b> (cheap/healthy/growing/merit, via the app's own valueScore), and the 13 SIGNALS <b style={{color:"#90a4ae"}}>votes</b> (input as the engine's raw vote direction, so the measured weight sits beside the <i>hand-set</i> one). OUTLOOK is excluded by construction — a market-timing projection can't rank names. <b style={{color:"#ffd740"}}>In-sample only — never the verdict.</b> The technical confluence is a measured in-sample loser (baseline t ≈ −12.6), so thin/negative vote slices are the honest finding, not a bug.
+                  </div>
+                  <div style={{fontSize:10,color:DIM,marginBottom:8}}>
+                    {(factorPie.config&&factorPie.config.rows)||0} panel rows · {(factorPie.universe&&factorPie.universe.covered)||0} names · {(factorPie.config&&factorPie.config.rebalance)||"monthly"} rebalance, {(factorPie.config&&factorPie.config.forwardHorizon)||"1mo"} forward
+                  </div>
+                  {pie.map(p=>{
+                    const C=factorPie.contributors||{};
+                    const isVote=(C.votes||[]).includes(p.name);
+                    const isFunda=(C.fundamentals||[]).includes(p.name);
+                    const kindLbl=isVote?"vote":isFunda?"fundamtl":"factor";
+                    const kindCol=isVote?"#90a4ae":isFunda?"#ab47bc":"#26c6da";
+                    return (
+                      <div key={p.name} style={{display:"flex",alignItems:"center",gap:8,fontSize:10,marginBottom:3}}>
+                        <span style={{width:96,color:"#cfd8dc",fontFamily:"monospace"}}>{p.name}</span>
+                        <span style={{width:54,color:kindCol}}>{kindLbl}</span>
+                        <div style={{flex:1,background:"#11161c",borderRadius:3,height:12,position:"relative",minWidth:60}}>
+                          <div style={{width:(100*p.weightPct/maxW)+"%",background:p.sign==="−"?"#ef5350":"#26c6da",height:12,borderRadius:3,opacity:0.85}}/>
                         </div>
-                        <div style={{fontSize:11,color:"#90a4ae",marginTop:6}}>
-                          mean rank-IC <b style={{color:vCol(H.significance)}}>{H.meanIC>=0?"+":""}{H.meanIC}</b> (t {H.icT}) — {H.meanIC>0?"higher merit leaned toward higher forward return":"no positive relationship found"}.
-                        </div>
+                        <span style={{width:46,textAlign:"right",color:"#eceff1"}}>{p.sign}{p.weightPct}%</span>
+                        <span style={{width:108,textAlign:"right",color:vCol(p.verdict)}}>IC {p.meanIC==null?"n/a":p.meanIC} (t {p.t==null?"–":p.t})</span>
+                        <span style={{width:54,textAlign:"right",color:DIM}}>{factorPie.contributors&&factorPie.contributors.voteWeights&&factorPie.contributors.voteWeights[p.name]!=null?("engW "+factorPie.contributors.voteWeights[p.name]):""}</span>
                       </div>
-                      <span style={{fontSize:9,fontWeight:700,letterSpacing:1,padding:"5px 11px",borderRadius:3,
-                        color:proven?"#00e676":"#90a4ae",
-                        background:(proven?"rgba(0,230,118,0.10)":"rgba(144,164,174,0.10)"),
-                        border:"1px solid "+(proven?"#00e67644":"#90a4ae44")}}>
-                        {proven?"✓ MERIT EDGE ESTABLISHED":"⚖ MERIT EDGE NOT ESTABLISHED"}
-                      </span>
-                    </div>
-                    <div style={{display:"grid",gridTemplateColumns:"repeat(auto-fit,minmax(150px,1fr))",gap:10,marginTop:14}}>
-                      {[
-                        {l:"OUT-OF-SAMPLE IC",v:(H.oos.outSample.meanIC>=0?"+":"")+H.oos.outSample.meanIC,s:H.oos.outSample.verdict+" · n="+H.oos.outSample.n,c:vCol(H.oos.outSample.verdict)},
-                        {l:"IN-SAMPLE IC",v:(H.oos.inSample.meanIC>=0?"+":"")+H.oos.inSample.meanIC,s:H.oos.inSample.verdict+" · n="+H.oos.inSample.n,c:vCol(H.oos.inSample.verdict)},
-                        {l:"PLACEBO (merit shuffled)",v:(H.placebo.meanIC>=0?"+":"")+H.placebo.meanIC,s:placeboOk?"null — as it should be":"⚠ still fires",c:placeboOk?"#00e676":"#ff5252"},
-                        {l:"TOP−BOTTOM SPREAD",v:pctOrDash(H.spread.mean),s:H.spread.verdict,c:vCol(H.spread.verdict)},
-                      ].map(x=>(
-                        <div key={x.l} style={{background:"#060810",padding:12,borderRadius:4}}>
-                          <div style={{fontSize:9,color:DIM,letterSpacing:1,marginBottom:4}}>{x.l}</div>
-                          <div style={{fontSize:16,fontWeight:700,color:x.c}}>{x.v}</div>
-                          <div style={{fontSize:9,color:FADE,marginTop:2}}>{x.s}</div>
+                    );
+                  })}
+                  {inter.length>0&&(
+                    <div style={{marginTop:12}}>
+                      <span style={lbl}>TOP INTERACTIONS · IC of A within B's top vs bottom tertile (lift)</span>
+                      {inter.map((x,i)=>(
+                        <div key={i} style={{fontSize:10,color:"#b0bec5",fontFamily:"monospace",marginBottom:2}}>
+                          {x.factor} | {x.conditionedOn} — top {x.topIC} / bottom {x.bottomIC} → <b style={{color:x.lift>0?"#00e676":"#ef5350"}}>lift {x.lift}</b> (n {x.nPeriods})
                         </div>
                       ))}
                     </div>
-                    <div style={{marginTop:12,padding:12,background:"#060810",borderRadius:4,fontSize:11,color:"#90a4ae",lineHeight:1.9}}>
-                      {proven
-                        ? "The edge is statistically present, points the same way out-of-sample, and survives the label-shuffle placebo. Merit-fusion is permitted to nudge the signal — still only on fundamentals you've verified."
-                        : "The edge is NOT established on this universe (most likely INCONCLUSIVE by design — see the caveats). Merits therefore do not move the trade signal; the autopsy stays a conviction overlay only. This is the honest gate working, not a failure."}
+                  )}
+                  {cc&&(
+                    <div style={{marginTop:10,fontSize:10,color:"#90a4ae"}}>
+                      <b>Combined composite</b> (z-scored blend of the price/risk factors): meanIC {cc.meanIC} (t {cc.t}, {cc.verdict}); best single {cc.bestSingle?cc.bestSingle.name+" "+cc.bestSingle.meanIC:"–"}, diversification gain {cc.gain}.
                     </div>
-                  </div>
+                  )}
+                  {factorPie.robustness&&(()=>{
+                    const R=factorPie.robustness, L=R.liquidity||{};
+                    const sel=(factorPie.contributors&&[...(factorPie.contributors.factors||[]),...(factorPie.contributors.fundamentals||[])])||[];
+                    const vcol=v=>!v?"#90a4ae":/SURVIVES/.test(v)?"#00e676":/PARTLY/.test(v)?"#ffd740":"#ef5350";
+                    const ic=x=>x==null?"–":(x>=0?"+":"")+x.toFixed(3);
+                    return (
+                      <div style={{marginTop:12,borderTop:"1px solid "+BORD,paddingTop:10}}>
+                        <span style={lbl}>🧪 ROBUSTNESS · alpha, not artifact (liquidity screen + sector/beta-neutral)</span>
+                        <div style={{fontSize:10,color:DIM,marginBottom:6}}>
+                          Liquid subset: {L.liquidRows}/{L.totalRows} rows · {L.liquidNames}/{L.totalNames} names (≥${L.minPrice}, ${L.minADV?(L.minADV/1e6):"?"}M ADV) · beta vs {R.market||"—"} · {R.sectorsResolved||0} sectors. A slice that craters on liquid names was stale-price micro-cap noise; one that dies sector/beta-neutral was a sector/market bet.
+                        </div>
+                        {sel.map(n=>{
+                          const r=(R.perContributor||[]).find(x=>x.name===n); if(!r) return null;
+                          const raw=(factorPie.standaloneIC||[]).find(x=>x.name===n);
+                          const sv=r.sectorNeutral&&r.sectorNeutral.available?r.sectorNeutral.verdict:"n/a";
+                          const bv=r.betaNeutral&&r.betaNeutral.available?r.betaNeutral.verdict:"n/a";
+                          return (
+                            <div key={n} style={{display:"flex",alignItems:"center",gap:8,fontSize:10,marginBottom:2,fontFamily:"monospace"}}>
+                              <span style={{width:96,color:"#cfd8dc"}}>{n}</span>
+                              <span style={{width:150,color:"#b0bec5"}}>raw {ic(raw&&raw.meanIC)} → liquid {ic(r.liquidIC)}{r.liquidT!=null?(" (t"+r.liquidT.toFixed(1)+")"):""}</span>
+                              <span style={{flex:1,color:vcol(sv)}}>sector: {sv}</span>
+                              <span style={{flex:1,color:vcol(bv)}}>beta: {bv}</span>
+                            </div>
+                          );
+                        })}
+                      </div>
+                    );
+                  })()}
+                  {factorPie.dimensionality&&factorPie.dimensionality.pca&&factorPie.dimensionality.pca.available&&(()=>{
+                    const D=factorPie.dimensionality, P=D.pca;
+                    return (
+                      <div style={{marginTop:12,borderTop:"1px solid "+BORD,paddingTop:10}}>
+                        <span style={lbl}>🧬 DIMENSIONALITY · how few independent bets remain</span>
+                        <div style={{fontSize:11,color:"#90a4ae",marginBottom:6}}>
+                          <b style={{color:"#26c6da"}}>Effective bets ≈ {P.effectiveBets}</b> of {P.names.length} selectors (Kaiser λ&gt;1: {P.kaiser}). The univariate pie overstates breadth when factors overlap; the real signal lives on a handful of axes.
+                        </div>
+                        {(P.components||[]).map(c=>{
+                          const top=Object.entries(c.loadings).sort((a,b)=>Math.abs(b[1])-Math.abs(a[1])).slice(0,4).map(([n,v])=>n+" "+(v>=0?"+":"")+v).join(", ");
+                          return <div key={c.pc} style={{fontSize:10,color:"#b0bec5",fontFamily:"monospace",marginBottom:2}}>PC{c.pc} ({c.varPct}% var, cum {c.cumVarPct}%): {top}</div>;
+                        })}
+                        <div style={{fontSize:10,color:DIM,marginTop:8,marginBottom:4}}>UNIQUE IC — each selector's edge AFTER removing the others (≈0 ⇒ redundant):</div>
+                        {(D.uniqueIC||[]).map(u=>{
+                          const keep=u.retainedShare==null?"–":Math.round(u.retainedShare*100)+"%";
+                          const col=u.retainedShare==null?"#90a4ae":u.retainedShare>=0.5?"#00e676":u.retainedShare>=0.2?"#ffd740":"#ef5350";
+                          return (
+                            <div key={u.name} style={{display:"flex",alignItems:"center",gap:8,fontSize:10,marginBottom:2,fontFamily:"monospace"}}>
+                              <span style={{width:96,color:"#cfd8dc"}}>{u.name}</span>
+                              <span style={{width:180,color:"#b0bec5"}}>raw {u.rawIC==null?"–":u.rawIC.toFixed(3)} → unique {u.uniqueIC==null?"–":u.uniqueIC.toFixed(3)}{u.t!=null?(" (t"+u.t.toFixed(1)+")"):""}</span>
+                              <span style={{color:col}}>keeps {keep}</span>
+                            </div>
+                          );
+                        })}
+                      </div>
+                    );
+                  })()}
+                  {factorPie.termStructure&&factorPie.termStructure.perContributor&&(()=>{
+                    const T=factorPie.termStructure, hs=T.horizons||[];
+                    const ic=x=>x==null?"–":(x>=0?"+":"")+x.toFixed(3);
+                    return (
+                      <div style={{marginTop:12,borderTop:"1px solid "+BORD,paddingTop:10}}>
+                        <span style={lbl}>⏳ IC TERM-STRUCTURE · which holding horizon is the edge strongest at?</span>
+                        <div style={{fontSize:10,color:DIM,marginBottom:6}}>
+                          rank-IC at each forward horizon (monthly rebalanced). Long horizons overlap → naive t inflated; the best-horizon tHAC (Newey–West) deflates it. Momentum should PEAK then DECAY.
+                        </div>
+                        <div style={{display:"flex",gap:8,fontSize:9,color:DIM,fontFamily:"monospace",marginBottom:2}}>
+                          <span style={{width:96}}></span>{hs.map(h=><span key={h.label} style={{width:52,textAlign:"right"}}>{h.label}</span>)}<span style={{width:90,textAlign:"right"}}>best (tHAC)</span>
+                        </div>
+                        {T.perContributor.map(ts=>{
+                          const bc=ts.curve.find(c=>c.horizon===ts.bestHorizon);
+                          return (
+                            <div key={ts.name} style={{display:"flex",gap:8,fontSize:10,marginBottom:2,fontFamily:"monospace",alignItems:"center"}}>
+                              <span style={{width:96,color:"#cfd8dc"}}>{ts.name}</span>
+                              {ts.curve.map(c=>(<span key={c.horizon} style={{width:52,textAlign:"right",color:c.horizon===ts.bestHorizon?"#26c6da":"#90a4ae",fontWeight:c.horizon===ts.bestHorizon?700:400}}>{ic(c.meanIC)}</span>))}
+                              <span style={{width:90,textAlign:"right",color:"#26c6da"}}>{ts.bestHorizon||"–"} ({bc&&bc.tHAC!=null?bc.tHAC:"–"})</span>
+                            </div>
+                          );
+                        })}
+                      </div>
+                    );
+                  })()}
+                  {factorPie.oscillatorTrial&&(()=>{
+                    const O=factorPie.oscillatorTrial;
+                    const col=b=>!b||b.meanExcessPct==null?"#90a4ae":(/SIGNIFICANT|SUGGESTIVE/.test(b.verdict)?(b.meanExcessPct>0?"#00e676":"#ef5350"):"#90a4ae");
+                    return (
+                      <div style={{marginTop:12,borderTop:"1px solid "+BORD,paddingTop:10}}>
+                        <span style={lbl}>🎯 FAIR OSCILLATOR TRIAL · timing tools judged on TIMING, not selection</span>
+                        <div style={{fontSize:10,color:DIM,marginBottom:6}}>
+                          The pie ranks names cross-sectionally — the wrong exam for RSI/MACD/Stoch/BB (timing tools). Here: {O.horizon}-day forward return after each BUY signal MINUS the name's own buy-&-hold, significance across names. Positive+significant = genuine timing alpha; ≈0 = dead even at its real job.
+                        </div>
+                        {["RSI","MACD","Stoch","BB"].map(o=>{
+                          const b=O[o]&&O[o].bull; if(!b) return null;
+                          return (
+                            <div key={o} style={{display:"flex",alignItems:"center",gap:8,fontSize:10,marginBottom:2,fontFamily:"monospace"}}>
+                              <span style={{width:96,color:"#cfd8dc"}}>{o}</span>
+                              <span style={{width:150,color:col(b)}}>buy-excess {b.meanExcessPct==null?"–":(b.meanExcessPct>=0?"+":"")+b.meanExcessPct+"%"} (t{b.t==null?"–":b.t.toFixed(1)})</span>
+                              <span style={{width:120,color:DIM}}>{b.nNames} names / {b.nEvents} events</span>
+                              <span style={{flex:1,color:col(b)}}>{b.verdict}</span>
+                            </div>
+                          );
+                        })}
+                      </div>
+                    );
+                  })()}
+                  {factorPie.regimes&&factorPie.regimes.available&&(()=>{
+                    const G=factorPie.regimes;
+                    const vcol=v=>/DURABLE/.test(v)?"#00e676":/flips\/dies|REGIME-FLIP/.test(v)?"#ef5350":"#ffd740";
+                    const ic=x=>x==null?"–":(x>=0?"+":"")+x.toFixed(3);
+                    return (
+                      <div style={{marginTop:12,borderTop:"1px solid "+BORD,paddingTop:10}}>
+                        <span style={lbl}>🌗 REGIME SPLIT · durable edge, or just a bull-market trend?</span>
+                        <div style={{fontSize:10,color:DIM,marginBottom:6}}>
+                          {G.bullPeriods} bull months vs {G.bearPeriods} bear months (SPY vs its 200-DMA). DURABLE = same-sign edge in both; BULL-ONLY = a trend artifact. All ~5y sit in one macro cycle → read as direction, not proof.
+                        </div>
+                        {(G.perContributor||[]).map(r=>(
+                          <div key={r.name} style={{display:"flex",alignItems:"center",gap:8,fontSize:10,marginBottom:2,fontFamily:"monospace"}}>
+                            <span style={{width:96,color:"#cfd8dc"}}>{r.name}</span>
+                            <span style={{width:118,color:"#b0bec5"}}>bull {ic(r.bull.meanIC)} (t{r.bull.t==null?"–":r.bull.t.toFixed(1)})</span>
+                            <span style={{width:118,color:"#b0bec5"}}>bear {ic(r.bear.meanIC)} (t{r.bear.t==null?"–":r.bear.t.toFixed(1)})</span>
+                            <span style={{flex:1,color:vcol(r.verdict)}}>{r.verdict}</span>
+                          </div>
+                        ))}
+                      </div>
+                    );
+                  })()}
+                  <div style={{fontSize:9,color:DIM,marginTop:8}}>Display-only — never feeds the signal. Only the OOS scoreboard below, cleared through FDR, is tradeable evidence.</div>
+                </div>
+              );
+            })()}
 
-                  <div style={card}>
-                    <span style={lbl}>PER-PERIOD RANK-IC · {study.primary}</span>
-                    <div style={{overflowX:"auto"}}>
-                      <table style={{width:"100%",borderCollapse:"collapse",fontSize:10}}>
-                        <thead><tr style={{color:DIM,textAlign:"left"}}>
-                          <th style={{padding:"6px 8px"}}>PERIOD</th><th style={{padding:"6px 8px"}}>NAMES</th>
-                          <th style={{padding:"6px 8px"}}>RANK-IC</th><th style={{padding:"6px 8px"}}>TOP−BOTTOM</th>
-                        </tr></thead>
-                        <tbody>
-                          {H.perPeriod.map(p=>(
-                            <tr key={p.period} style={{borderTop:"1px solid "+BG2}}>
-                              <td style={{padding:"6px 8px",color:"#90a4ae"}}>{p.period}</td>
-                              <td style={{padding:"6px 8px",color:"#90a4ae"}}>{p.n}</td>
-                              <td style={{padding:"6px 8px",color:p.ic>=0?"#00e676":"#ff5252"}}>{p.ic>=0?"+":""}{p.ic}</td>
-                              <td style={{padding:"6px 8px",color:"#90a4ae"}}>{pctOrDash(p.spread)}</td>
+            {/* ── Out-of-sample variant scoreboard (forward-perf.json) — the verdict that counts ── */}
+            {forwardPerf&&(()=>{
+              const V=forwardPerf.variants||{}, mt=forwardPerf.multipleTesting||{};
+              const rows=[
+                ["all","All tactical longs (baseline)"],
+                ["merits-on","Merit grade ≥ B"],
+                ["quality-on","Top-tertile profitability (ROE)"],
+                ["momentum-on","Top-tertile 12-1 momentum"],
+                ["reversal-on","Top-tertile 1-mo reversal (losers)"],
+                ["lowvol-on","Top-tertile low realized vol (calm)"],
+                ["news-pos-on","Fresh positive news (drift)"],
+                ["news-quiet-on","No fresh negative news"],
+                ["earnings-recent-on","10-Q/10-K filed ≤ 30d"],
+                ["mom-quality-on","Momentum × quality (both top-tertile)"],
+                ["mom-lowvol-on","Momentum × low-vol (both top-tertile)"],
+                ["rev-lowvol-on","Reversal × low-vol (both top-tertile)"],
+                ["momentum-liquid-on","Momentum × liquid (the robust survivor)"],
+                ["votes-aligned-on","Votes aligned (engine not fighting itself)"],
+                ["ic-backed-on","IC-backed conviction (proven votes ≥⅓)"],
+                ["macd-fade-on","MACD faded (bought vs a bearish MACD)"],
+                ["shadow-noMacd","Shadow team — MACD dropped"],
+                ["shadow-noPat","Shadow team — Pattern dropped"],
+                ["shadow-noAdx","Shadow team — ADX dropped"],
+                ["shadow-noMacdPat","Shadow team — MACD+Pat dropped"],
+                ["shadow-noDead","Shadow team — MACD+Pat+ADX dropped"],
+                ["position","POSITION (dip-buy, trailing)"],
+                ["quality-position-on","POSITION · top-tertile ROE × duration"],
+                ["quality-grade-position-on","POSITION · AUTOPSY grade A/B × duration"],
+              ].filter(([k])=>V[k]);
+              const vCol=v=>v==="SIGNIFICANT"?"#00e676":v==="SUGGESTIVE"?"#ffd740":v==="PROVEN LOSER"?"#ff5252":"#90a4ae";
+              return (
+                <div style={card}>
+                  <span style={lbl}>🔬 OUT-OF-SAMPLE VARIANT SCOREBOARD · forward-perf.json</span>
+                  <div style={{fontSize:11,color:"#90a4ae",lineHeight:1.7,marginBottom:10}}>
+                    Every propose-only overlay as an A/B inside the SAME opened-longs population, scored on <b>alpha vs a total-return buy-&amp;-hold</b> and corrected for multiple testing (BH/BY FDR). <b style={{color:"#ffd740"}}>Nothing is tradeable until it clears the gate out-of-sample</b> — an empty or "too few trades" board is the honest current state, not a bug.
+                  </div>
+                  <div style={{overflowX:"auto"}}>
+                    <table style={{width:"100%",borderCollapse:"collapse",fontSize:10}}>
+                      <thead><tr style={{color:DIM,textAlign:"left"}}>
+                        <th style={{padding:"6px 8px"}}>VARIANT</th><th style={{padding:"6px 8px"}}>TRADES</th>
+                        <th style={{padding:"6px 8px"}}>MEAN ALPHA</th><th style={{padding:"6px 8px"}}>BEAT B&amp;H</th>
+                        <th style={{padding:"6px 8px"}}>q (BH)</th><th style={{padding:"6px 8px"}}>VERDICT</th>
+                      </tr></thead>
+                      <tbody>
+                        {rows.map(([k,desc])=>{ const v=V[k]||{}, sg=v.significance||{};
+                          return (
+                            <tr key={k} style={{borderTop:"1px solid "+BG2}}>
+                              <td style={{padding:"6px 8px",color:"#cfd8dc"}}>{k}<div style={{fontSize:8,color:FADE}}>{desc}</div></td>
+                              <td style={{padding:"6px 8px",color:"#90a4ae"}}>{sg.n!=null?sg.n:(v.n||0)}</td>
+                              <td style={{padding:"6px 8px",color:sg.meanAlpha>0?"#00e676":sg.meanAlpha<0?"#ff5252":"#90a4ae"}}>{sg.meanAlpha==null?"—":(sg.meanAlpha>=0?"+":"")+sg.meanAlpha+"%"}</td>
+                              <td style={{padding:"6px 8px",color:"#90a4ae"}}>{v.beatBenchRate==null?"—":v.beatBenchRate+"%"}</td>
+                              <td style={{padding:"6px 8px",color:"#90a4ae"}}>{sg.qBH==null?"—":sg.qBH}</td>
+                              <td style={{padding:"6px 8px",fontWeight:700,color:vCol(sg.verdict)}}>{sg.verdict||"TOO FEW TRADES"}{sg.promotable?" ✓":sg.provenLoser?" ✗":""}</td>
                             </tr>
-                          ))}
-                        </tbody>
-                      </table>
-                    </div>
-                    <div style={{marginTop:10,fontSize:10,color:FADE,lineHeight:1.7}}>
-                      6-month horizon for comparison: <b style={{color:vCol(six.significance)}}>{six.significance}</b>,
-                      mean IC {six.meanIC>=0?"+":""}{six.meanIC} over {six.periods} periods.
-                    </div>
+                          );
+                        })}
+                      </tbody>
+                    </table>
                   </div>
-
-                  <div style={{...card,border:"1px solid rgba(255,215,64,0.20)"}}>
-                    <span style={{...lbl,color:"#ffd740"}}>⚠ READ THIS BEFORE TRUSTING THE VERDICT</span>
-                    {(study.caveats||[]).map((c,i)=>(
-                      <div key={i} style={{fontSize:10,color:"#90a4ae",lineHeight:1.7,marginBottom:4}}>○ {c}</div>
-                    ))}
-                    <div style={{fontSize:9,color:FADE,marginTop:6}}>
-                      Universe {study.universe?.covered}/{study.universe?.requested} names · fundamentals {study.source?.fundamentals} · prices {study.source?.prices} · generated {study.generatedAt?new Date(study.generatedAt).toLocaleDateString():"—"}.
-                    </div>
+                  <div style={{marginTop:10,fontSize:9,color:FADE,lineHeight:1.7}}>
+                    FDR family: {mt.familySize!=null?mt.familySize:"—"} powered variants (n ≥ {mt.minTrades!=null?mt.minTrades:"min"}) · {mt.note||"BH for promotion; BY as the arbitrary-dependence cross-check"} · generated {forwardPerf.generatedAt?new Date(forwardPerf.generatedAt).toLocaleDateString():"—"}. A variant needs ≥10 OOS trades at q≤0.05 to promote — propose-only, human-ratified.
                   </div>
-                </>
+                </div>
               );
             })()}
           </>

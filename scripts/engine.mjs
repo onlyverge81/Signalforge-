@@ -157,6 +157,45 @@ export function adxCalc(data,n=14){
   const pdi=100*pS[li]/(trS[li]||1),mdi=100*mS[li]/(trS[li]||1);
   return{adx:+adx.toFixed(1),plusDI:+pdi.toFixed(1),minusDI:+mdi.toFixed(1)};
 }
+// ─── Market-regime notifier ("read the room") ────────────────────────────────
+// Awareness, NOT a gate: classify the broad-market environment from a daily index series so the human
+// knows which toolkit fits. Research (factor-interaction angles C+F) showed the engine's votes are
+// CONDITIONALLY valid — trend-following works in TRENDING markets, mean-reversion in RANGING ones — and
+// the regime-blind confluence fires them all at once, fighting itself. This surfaces the regime so the
+// verdict can be weighted by it. Close-only (works on any index proxy, incl. close-only feeds).
+// Kaufman efficiency ratio = |net move| / Σ|bar-to-bar move| over n bars: ~1 = clean trend, ~0 = chop.
+export function efficiencyRatio(closes,n=21){
+  if(!closes||closes.length<n+1) return null;
+  const seg=closes.slice(-(n+1));
+  const net=Math.abs(seg[seg.length-1]-seg[0]);
+  let path=0; for(let i=1;i<seg.length;i++) path+=Math.abs(seg[i]-seg[i-1]);
+  return path>0?net/path:0;
+}
+export function marketRegime(bars){
+  const closes=(bars||[]).map(b=>b&&b.close).filter(c=>c>0);
+  if(closes.length<40) return null;                                // need enough for a vol baseline
+  const last=closes[closes.length-1];
+  const win=Math.min(200,closes.length);
+  const ma=closes.slice(-win).reduce((a,b)=>a+b,0)/win;           // proxy 200-DMA (shorter if data is)
+  const approxMA=win<200;
+  const direction=last>ma*1.01?"BULL":last<ma*0.99?"BEAR":"NEUTRAL";
+  const er=efficiencyRatio(closes,21);
+  const trend=er==null?"UNKNOWN":er>=0.45?"TRENDING":er<0.25?"RANGING":"TRANSITIONAL";
+  const rets=[]; for(let i=1;i<closes.length;i++) rets.push(closes[i]/closes[i-1]-1);
+  const stdev=a=>{ if(a.length<2) return null; const m=a.reduce((x,y)=>x+y,0)/a.length; return Math.sqrt(a.reduce((x,y)=>x+(y-m)**2,0)/a.length); };
+  const recentVol=stdev(rets.slice(-21)), baseVol=stdev(rets.slice(-126));
+  const vol=(recentVol==null||baseVol==null||baseVol===0)?"UNKNOWN"
+    :recentVol>baseVol*1.35?"STORMY":recentVol<baseVol*0.75?"CALM":"NORMAL";
+  let favored,cautioned;
+  if(trend==="TRENDING"){ favored="Trend-following — momentum & breakouts (MA / MACD-up) are reliable here"; cautioned="Mean-reversion: 'buy the dip' fights the tape — oversold can keep falling"; }
+  else if(trend==="RANGING"){ favored="Mean-reversion — oversold bounces (RSI / Stoch / BB) are favored"; cautioned="Breakouts: likely bull-traps; trend votes misfire in chop"; }
+  else { favored="Transitional / mixed — demand stronger multi-signal confluence before acting"; cautioned="Single-signal conviction is risky until the regime resolves"; }
+  const risk=(direction==="BEAR"&&vol==="STORMY")?"ELEVATED — bear + high volatility: reduce size. A regime-blind signal fails hardest here."
+    :(vol==="STORMY")?"Volatility is elevated vs its 6-month norm — widen stops or trim size."
+    :(direction==="BEAR")?"Bear trend — long signals face a market headwind.":null;
+  const label=[direction!=="NEUTRAL"?direction:null,trend!=="UNKNOWN"?trend:null].filter(Boolean).join(" · ")||"INDETERMINATE";
+  return { direction, trend, vol, er:er==null?null:+er.toFixed(2), approxMA, favored, cautioned, risk, label };
+}
 export function obvCalc(data){
   if(data.length<16)return null;
   let obv=0;const series=[0];
@@ -243,22 +282,24 @@ export function sfa12Series(rows, startIdx=30, lookback=12){
 // composite climb together (the confirm). Detection only — like SFA12 it does NOT
 // feed the live signal; it's surfaced and backtested on its own so its edge can be
 // measured on a big sample. Pure + deterministic; thresholds tunable.
-const CB_DEFAULTS={ coilPct:0.006, gapPct:0.004, coilLookback:8, slopeLookback:3, horizon:20, minBars:60 };
+const CB_DEFAULTS={ coilPct:0.006, gapPct:0.004, coilLookback:8, slopeLookback:3, horizon:20, minBars:60,
+                    trendFilter:true, trendLookback:20, trendMinSlope:0.01 };
 function cbOpts(o){ return Object.assign({}, CB_DEFAULTS, o||{}); }
-// O(N) rolling SMA5/10/20 + the SFA12 composite (mean of the three), index-aligned.
+// O(N) rolling SMA5/10/20/50 + the SFA12 composite (mean of 5/10/20), index-aligned.
 function maRibbon(cl){
-  const s5=[],s10=[],s20=[],comp=[]; let a5=0,a10=0,a20=0;
+  const s5=[],s10=[],s20=[],s50=[],comp=[]; let a5=0,a10=0,a20=0,a50=0;
   for(let i=0;i<cl.length;i++){
     a5+=cl[i]; if(i>=5)a5-=cl[i-5]; s5[i]=i>=4?a5/5:null;
     a10+=cl[i]; if(i>=10)a10-=cl[i-10]; s10[i]=i>=9?a10/10:null;
     a20+=cl[i]; if(i>=20)a20-=cl[i-20]; s20[i]=i>=19?a20/20:null;
+    a50+=cl[i]; if(i>=50)a50-=cl[i-50]; s50[i]=i>=49?a50/50:null;
     comp[i]=(s5[i]!=null&&s10[i]!=null&&s20[i]!=null)?(s5[i]+s10[i]+s20[i])/3:null;
   }
-  return {s5,s10,comp};
+  return {s5,s10,s50,comp};
 }
 // Evaluate the setup AT bar i from precomputed ribbons (no slicing → cheap to loop).
 function cbDetectAt(R, cl, i, P){
-  const s5=R.s5,s10=R.s10,comp=R.comp,k=P.slopeLookback;
+  const s5=R.s5,s10=R.s10,s50=R.s50,comp=R.comp,k=P.slopeLookback;
   if(i<20+k || s5[i]==null||s10[i]==null||comp[i]==null) return {detected:false};
   const price=cl[i];
   const spreadPct=j=>(s5[j]==null||s10[j]==null||comp[j]==null)?null
@@ -274,15 +315,24 @@ function cbDetectAt(R, cl, i, P){
   const gapNow=(s5[i]-s10[i])/price, gapPrev=(s5[i-1]-s10[i-1])/cl[i-1];
   const s5Rising=s5[i]>s5[i-k], s10Rising=s10[i]>s10[i-k], compRising=comp[i]>comp[i-k];
   const gapWidening=gapNow>gapPrev && gapNow>=P.gapPct;
-  const detected=stacked && together && s5Rising && gapWidening && s10Rising && compRising;
+  // Trend filter: only fire inside an ESTABLISHED uptrend (price above a rising
+  // 50-day SMA) — a coil/breakout is a momentum setup, so it pays where momentum
+  // already exists, not on a pop off a flat base. Optional (trendFilter:false).
+  let trendOK=true;
+  if(P.trendFilter){
+    const j=i-P.trendLookback;
+    trendOK = s50[i]!=null && j>=0 && s50[j]!=null && cl[i]>s50[i] && (s50[i]-s50[j])/s50[j] >= P.trendMinSlope;
+  }
+  const detected=stacked && together && s5Rising && gapWidening && s10Rising && compRising && trendOK;
   const strength=detected?Math.max(0,Math.min(1,(gapNow/P.gapPct)*0.5+(1-coilSpread/P.coilPct)*0.5)):0;
   return { detected, barsSinceCoil:i-coilIdx, coilSpreadPct:coilSpread, breakoutGapPct:gapNow,
-           strength:parseFloat(strength.toFixed(2)), stacked, together, s5Rising, gapWidening, s10Rising, compRising };
+           strength:parseFloat(strength.toFixed(2)), stacked, together, s5Rising, gapWidening, s10Rising, compRising, trendOK };
 }
 function cbMedian(a){ if(!a.length) return null; const s=a.slice().sort((x,y)=>x-y),m=s.length>>1; return s.length%2?s[m]:(s[m-1]+s[m])/2; }
 // Live detection at the latest bar.
 export function convergenceBreakout(slice, opts){
-  const P=cbOpts(opts); if(!slice||slice.length<21+P.slopeLookback) return null;
+  const P=cbOpts(opts); const need = P.trendFilter ? 50+P.trendLookback : 21+P.slopeLookback;
+  if(!slice||slice.length<need) return null;
   const cl=slice.map(d=>d.close); return cbDetectAt(maRibbon(cl), cl, cl.length-1, P);
 }
 // Forward-return edge: at every trigger bar, the H-bar forward return vs the
@@ -291,7 +341,8 @@ export function backtestPattern(data, opts){
   const P=cbOpts(opts), H=P.horizon;
   if(!data||data.length<P.minBars+H+1) return null;
   const cl=data.map(d=>d.close), R=maRibbon(cl), sig=[], all=[];
-  for(let i=Math.max(P.minBars,21+P.slopeLookback);i<data.length-H;i++){
+  const start=Math.max(P.minBars, 21+P.slopeLookback, P.trendFilter ? 49+P.trendLookback : 0);
+  for(let i=start;i<data.length-H;i++){
     const fwd=(cl[i+H]-cl[i])/cl[i]; all.push(fwd);
     if(cbDetectAt(R,cl,i,P).detected) sig.push(fwd);
   }
@@ -303,7 +354,7 @@ export function backtestPattern(data, opts){
 }
 
 // ─── Shared signal logic: weighted votes + confluence + conflict penalty ─────
-export function computeSignal(ctx, extraVotes=[]) {
+export function computeSignal(ctx, extraVotes=[], opts={}) {
   const {R,M,s5,s10,s20,s50,trend,S,B,last,pats,div,volSig,ADX,OBV,VWAP} = ctx;
   const votes=[];
   if(R!=null)  votes.push({n:"RSI",   dir:R<40?1:R>60?-1:0, w:2});
@@ -322,7 +373,10 @@ export function computeSignal(ctx, extraVotes=[]) {
   if(VWAP)votes.push({n:"VWAP",dir:last.close>VWAP?1:-1, w:1.5});
   if(extraVotes.length) votes.push(...extraVotes);
 
-  const active=votes.filter(v=>v.dir!==0);
+  // Shadow-engine support: drop named votes to ask "does the TEAM signal score better without this
+  // member?" (the team-minus-nuisance test). Default path (no drop) is byte-identical.
+  const used = (opts.drop && opts.drop.length) ? votes.filter(v=>!opts.drop.includes(v.n)) : votes;
+  const active=used.filter(v=>v.dir!==0);
   const bull=active.filter(v=>v.dir>0).length;
   const bear=active.filter(v=>v.dir<0).length;
   const weighted=active.reduce((a,v)=>a+v.dir*v.w,0);
@@ -338,10 +392,30 @@ export function computeSignal(ctx, extraVotes=[]) {
   const agreement=total>0?Math.max(bull,bear)/total:0;
   const confidence=Math.min(95,Math.max(35,Math.round(40+Math.abs(net)*3+agreement*15)));
 
-  return {signal, score:parseFloat(net.toFixed(1)), bull, bear, conflict, confidence};
+  // Family-level conflict (research angles C+F): the generic `conflict` above counts ANY disagreement
+  // equally, but the engine's real split is MEAN-REVERSION (RSI/Stoch/BB, oversold→buy) vs TREND
+  // (MACD/MA/MAlong/Trend). When those two camps point opposite ways the engine is fighting itself —
+  // one camp is right for the regime, the other is noise. Measured here, surfaced as a LABEL only.
+  const famDir=names=>{ const s=active.filter(v=>names.includes(v.n)).reduce((a,v)=>a+v.dir,0); return s>0?1:s<0?-1:0; };
+  const trendDir=famDir(["MACD","MA","MAlong","Trend"]);
+  const meanRevDir=famDir(["RSI","Stoch","BB"]);
+  const famConflict=trendDir!==0 && meanRevDir!==0 && trendDir!==meanRevDir;
+
+  // Vote-weight mis-calibration test (factor-interaction pie): the engine's HAND weights over-weight
+  // empirically-dead votes (ADX is weighted 3 but measured IC ≈ 0; RSI/MACD/Pat ≈ 0/negative) and
+  // under-weight proven ones (Vol IC 0.074 at weight 1; Trend significant). icBackedShare = of the
+  // weighted conviction pushing THIS signal's way, the fraction coming from the PROVEN votes. Low share
+  // ⇒ the call rests on the over-weighted dead votes. A LABEL only (tests OOS whether that costs money).
+  const IC_PROVEN_VOTES=["Trend","Vol","BB"];
+  const sd=net>0?1:net<0?-1:0;
+  let drvW=0, provW=0;
+  for(const v of active){ if(sd!==0 && Math.sign(v.dir)===sd){ drvW+=v.w; if(IC_PROVEN_VOTES.includes(v.n)) provW+=v.w; } }
+  const icBackedShare=drvW>0?parseFloat((provW/drvW).toFixed(3)):0;
+
+  return {signal, score:parseFloat(net.toFixed(1)), bull, bear, conflict, confidence, trendDir, meanRevDir, famConflict, icBackedShare};
 }
 
-export function analyze(data, ticker, market, strategy, slMult, tpMult) {
+export function analyze(data, ticker, market, strategy, slMult, tpMult, opts={}) {
   const SLM = slMult || 1.5;
   const TPM = tpMult || 2.0;
   const closes=data.map(d=>d.close), vols=data.map(d=>d.volume);
@@ -369,6 +443,14 @@ export function analyze(data, ticker, market, strategy, slMult, tpMult) {
   const sigResult=computeSignal(ctx);
   const score=sigResult.score;
   const signal=sigResult.signal;
+  // Shadow-engine verdicts (team-minus-nuisance): when callers pass shadowDrops, recompute the team
+  // signal with each named vote removed. Decision-only (BUY/HOLD/SELL) — the ledger compares the
+  // shadow team's trades vs the full team's. Off by default (no overhead, no app change).
+  let shadows=null;
+  if(opts.shadowDrops && opts.shadowDrops.length){
+    shadows={};
+    for(const sc of opts.shadowDrops) shadows[sc.key]=computeSignal(ctx,[],{drop:sc.drop}).signal;
+  }
   const confidence=sigResult.confidence;
 
   const sfa12=sfa12Series(data);
@@ -398,8 +480,8 @@ export function analyze(data, ticker, market, strategy, slMult, tpMult) {
     tp1:parseFloat(tp1.toFixed(4)),tp2:parseFloat(tp2.toFixed(4)),rr,
     support:parseFloat(sup.toFixed(4)),resistance:parseFloat(res.toFixed(4)),
     score,
-    sfa12, sfa12Compare, convBreakout, convBreakoutTest,
-    confluence:{bull:sigResult.bull,bear:sigResult.bear,conflict:sigResult.conflict},
+    sfa12, sfa12Compare, convBreakout, convBreakoutTest, shadows,
+    confluence:{bull:sigResult.bull,bear:sigResult.bear,conflict:sigResult.conflict,trendDir:sigResult.trendDir,meanRevDir:sigResult.meanRevDir,famConflict:sigResult.famConflict,icBackedShare:sigResult.icBackedShare},
     indicators:{
       rsi:{v:R,label:rsiLabel},
       stoch:{v:S,label:S>75?"OVERBOUGHT":S<25?"OVERSOLD":"NEUTRAL"},
@@ -444,20 +526,29 @@ export function analyze(data, ticker, market, strategy, slMult, tpMult) {
 export function scorePosition(slice){
   if(slice.length<30)return null;
   const cl=slice.map(d=>d.close),last=slice[slice.length-1];
-  const s50=sma(cl,Math.min(50,cl.length));
-  const s200=sma(cl,Math.min(200,cl.length));
-  const R=rsi(cl);
-  if(!s50||!s200) return {score:0,signal:"HOLD",atr:atr(slice)};
+  // The long-term trend filter is only meaningful with a TRUE 200-bar window. With less
+  // history we must NOT silently trade a short-SMA proxy (the old Math.min(200,len) bug) —
+  // report "not engaged" honestly so POSITION holds instead of acting on a fake trend.
+  if(cl.length<200) return {score:0, signal:"HOLD", atr:atr(slice), engaged:false,
+    reason:"long-term trend needs 200 bars; have "+cl.length, trendStrength:0, dipDepth:0};
+  const s50=sma(cl,50), s200=sma(cl,200), R=rsi(cl);
+  if(!s50||!s200) return {score:0, signal:"HOLD", atr:atr(slice), engaged:false,
+    reason:"insufficient data", trendStrength:0, dipDepth:0};
   const longUptrend = last.close>s200 && s50>s200;
   const longDowntrend = last.close<s200 && s50<s200;
   let signal="HOLD", score=0;
   if(longUptrend){
     score=3;
-    if(R!=null && R<45){ signal="BUY"; score=6; }
+    if(R!=null && R<45){ signal="BUY"; score=6; }  // buy a pullback within the uptrend
   } else if(longDowntrend){
-    score=-6; signal="SELL";
+    score=-6; signal="SELL";                        // long-term thesis broken — exit/avoid
   }
-  return {score, signal, atr:atr(slice)};
+  // Position-native conviction inputs (used instead of the tactical confluence number):
+  //  trendStrength = how far SMA50 sits above SMA200 (regime conviction);
+  //  dipDepth      = how far RSI is below the 45 buy threshold (entry conviction).
+  return { score, signal, atr:atr(slice), engaged:true,
+    trendStrength: s200>0 ? (s50-s200)/s200 : 0,
+    dipDepth: (longUptrend && R!=null) ? Math.max(0, 45-R) : 0 };
 }
 
 export function scoreFlat(slice){
@@ -485,7 +576,7 @@ export function scoreFlat(slice){
   return{score:s,signal:s>=4?"BUY":s<=-4?"SELL":"HOLD",atr:atr(slice)};
 }
 
-export function scoreAt(slice) {
+export function scoreAt(slice, drop=null) {
   if (slice.length < 26) return null;
   const closes = slice.map(d=>d.close), vols = slice.map(d=>d.volume);
   const last = slice[slice.length-1];
@@ -498,7 +589,8 @@ export function scoreAt(slice) {
   const avgV=vols.slice(0,-3).reduce((a,b)=>a+b,0)/Math.max(vols.length-3,1);
   const recV=vols.slice(-3).reduce((a,b)=>a+b,0)/3;
   const volSig=recV>avgV*1.15?"CONFIRMING":recV<avgV*0.85?"DIVERGING":"NEUTRAL";
-  const r=computeSignal({R,M,s5,s10,s20,s50,trend,S,B,last,pats,div,volSig,ADX,OBV,VWAP});
+  // `drop` (shadow backtests): run the same team signal with named votes removed. Default null = unchanged.
+  const r=computeSignal({R,M,s5,s10,s20,s50,trend,S,B,last,pats,div,volSig,ADX,OBV,VWAP}, [], (drop&&drop.length)?{drop}:{});
   return {score:r.score, signal:r.signal, atr:atr(slice)};
 }
 
@@ -518,6 +610,33 @@ export function checkBarExit(t, candle){
     if(candle.low<=t.tp)   return {exit:t.tp, result:"WIN"};
   }
   return null;
+}
+
+// True when a bar straddles BOTH stop and target — the case where coarse OHLC
+// cannot tell which was hit first, and checkBarExit has to guess (pessimistically).
+export function isAmbiguousBar(t, candle){
+  if(t.dir==="BUY")  return candle.low<=t.sl && candle.high>=t.tp;
+  return candle.high>=t.sl && candle.low<=t.tp;
+}
+
+// Resolve a bar's exit using FINER sub-bars when the coarse bar is ambiguous.
+// On a daily (or any coarse) bar that straddles both SL and TP, the true order is
+// unknowable from OHLC alone — so checkBarExit books a pessimistic LOSS, which
+// systematically understates winners. Given the finer bars that make up the coarse
+// bar (e.g. Polygon minute or second aggregates), we replay them in time order and
+// take the FIRST real touch. Falls back to the pessimistic checkBarExit only when
+// no sub-bars are supplied, so behavior is unchanged unless finer data is provided.
+// `subBars` must be the finer bars within this coarse bar, ascending by time.
+export function checkBarExitFine(t, candle, subBars){
+  if(!isAmbiguousBar(t, candle) || !subBars || !subBars.length){
+    return checkBarExit(t, candle);
+  }
+  for(const sb of subBars){
+    const ex = checkBarExit(t, sb);
+    if(ex) return { ...ex, resolvedBy: "subbars" };
+  }
+  // Sub-bars never tagged a level (gap/rounding) — fall back to the safe convention.
+  return checkBarExit(t, candle);
 }
 
 // Net P&L of a closed trade after round-trip costs (slip+comm, entry+exit).
@@ -588,11 +707,35 @@ export function realizedStats(trades){
   };
 }
 
+// A backtested edge earns a loud, *actionable* surface only when it is BOTH
+// statistically resolved AND positive. The original gate keyed on the t-stat's
+// magnitude alone — so a SIGNIFICANT *negative* edge (t≪0, a proven money-loser)
+// read as "proven" and was shown/traded. It must be muted, not shown. This single
+// predicate gates the live UI and the forward-test logger identically.
+//   proven      — strong (SIGNIFICANT) AND makes money
+//   shown       — at least SUGGESTIVE AND makes money
+//   negativeEdge— resolved (≥SUGGESTIVE) but loses money (the bug this fixes)
+//   muted       — anything not (resolved AND positive): unproven OR a proven loser
+export function edgeStatus(stats){
+  const verdict  = stats?.significance ?? null;
+  const exp      = stats?.expectancy ?? 0;
+  const resolved = verdict==="SIGNIFICANT" || verdict==="SUGGESTIVE";
+  const positive = exp > 0;
+  return {
+    verdict,
+    proven:       verdict==="SIGNIFICANT" && positive,
+    shown:        resolved && positive,
+    muted:        !(resolved && positive),
+    negativeEdge: resolved && !positive,
+  };
+}
+
 // ─── Backtest engine ─────────────────────────────────────────────────────────
 export function runBacktest(data, scorer, slMult, tpMult, costs, range, holdMode) {
   const scoreFn = scorer || scoreAt;
   const SLM = slMult || 1.5;
   const TPM = tpMult || 2.0;
+  const TRAIL_MULT = 3;               // POSITION trailing-stop width in ATRs (hold mode only)
   const slipPct = costs?.slip || 0;   // % per side
   const commPct = costs?.comm || 0;   // % per side
   const costPerTrade = (slipPct + commPct) * 2; // entry + exit
@@ -611,9 +754,11 @@ export function runBacktest(data, scorer, slMult, tpMult, costs, range, holdMode
       const A=pending.atr;
       openTrade={
         dir:pending.dir, entry, openIndex:i, entryDate:candle.date,
-        sl: pending.dir==="BUY"?entry-A*SLM:entry+A*SLM,
-        tp: pending.dir==="BUY"?entry+A*TPM:entry-A*TPM,
-        score:pending.score,
+        // Custom per-trade targets (e.g. the Outlook correction levels) override the ATR
+        // default when the scorer supplies them; otherwise the ATR fallback is unchanged.
+        sl: pending.customSl!=null ? pending.customSl : (pending.dir==="BUY"?entry-A*SLM:entry+A*SLM),
+        tp: pending.customTp!=null ? pending.customTp : (pending.dir==="BUY"?entry+A*TPM:entry-A*TPM),
+        score:pending.score, atr:A, highWater:entry,
       };
       pending=null;
     }
@@ -622,16 +767,23 @@ export function runBacktest(data, scorer, slMult, tpMult, costs, range, holdMode
     if (openTrade) {
       const t=openTrade;
       let closed=false;
-      const ex=checkBarExit(t, candle);                 // SL/TP touch, SL-first tie
-      if (ex) { t.exit=ex.exit; t.result=ex.result; closed=true; }
-      // POSITION/hold mode: exit a long when the long-term thesis breaks (scorer flips to SELL)
-      if (!closed && holdMode && t.dir==="BUY") {
-        const sNow=scoreFn(slice);
-        if (sNow && sNow.signal==="SELL") {
-          t.exit=candle.close;
-          t.result = candle.close>=t.entry ? "WIN" : "LOSS";
-          closed=true;
+      if (holdMode && t.dir==="BUY") {
+        // POSITION: a TRAILING stop (let winners run — no fixed TP cap) ratcheting up from the
+        // initial wide stop, plus a thesis-break exit. The trail level uses the high-water mark
+        // as of PRIOR bars (updated only AFTER this bar's exit check → no intrabar lookahead).
+        const trailStop = Math.max(t.sl, t.highWater - t.atr*TRAIL_MULT);
+        if (candle.low <= trailStop) {
+          t.exit=trailStop; t.result = trailStop>=t.entry ? "WIN" : "LOSS"; closed=true;
+        } else {
+          t.highWater = Math.max(t.highWater, candle.high);
+          const sNow=scoreFn(slice);                      // exit if the long-term thesis breaks
+          if (sNow && sNow.signal==="SELL") {
+            t.exit=candle.close; t.result = candle.close>=t.entry ? "WIN" : "LOSS"; closed=true;
+          }
         }
+      } else {
+        const ex=checkBarExit(t, candle);                 // tactical: SL/TP touch, SL-first tie
+        if (ex) { t.exit=ex.exit; t.result=ex.result; closed=true; }
       }
       if (closed) {
         t.exitDate=candle.date;
@@ -647,13 +799,123 @@ export function runBacktest(data, scorer, slMult, tpMult, costs, range, holdMode
     if (!openTrade && !pending) {
       const r=scoreFn(slice);
       if (r && (r.signal==="BUY"||r.signal==="SELL") && r.atr>0) {
-        pending={dir:r.signal, atr:r.atr, score:r.score};
+        pending={dir:r.signal, atr:r.atr, score:r.score, customSl:r.customSl, customTp:r.customTp};
       }
     }
   }
 
   const {stats,curve}=realizedStats(trades);
   return { trades, openTrade, stats, curve };
+}
+
+// ─── Outlook "market correction period" projection math (pure, app-mirrored) ──
+// The OUTLOOK tab projects a stock's near-term price from the AVERAGE trailing-window
+// gain of the three major indexes, with an error-buffered target/stop. Pure so the app
+// and the tests share one implementation; mirrored byte-for-byte into index.html.
+
+// Average cumulative % move of N index series over a trailing `period`, keyed by date.
+// Point-in-time per index ((close[p]-close[p-period])/close[p-period]); a date is only
+// emitted when EVERY index has a full-window value for it (exact date alignment).
+export function avgIndexGainByDate(idxArrays, period=20){
+  const arrs=(idxArrays||[]).filter(a=>Array.isArray(a)&&a.length>period);
+  if(!arrs.length) return new Map();
+  const perIdx=arrs.map(a=>{
+    const m=new Map();
+    for(let p=period;p<a.length;p++){
+      const c0=a[p-period].close, c1=a[p].close;
+      if(c0>0&&c1!=null) m.set(a[p].date,(c1-c0)/c0*100);
+    }
+    return m;
+  });
+  const out=new Map();
+  for(const [date,v0] of perIdx[0]){
+    let sum=v0, ok=true;
+    for(let k=1;k<perIdx.length;k++){ const v=perIdx[k].get(date); if(v==null){ok=false;break;} sum+=v; }
+    if(ok) out.set(date, sum/perIdx.length);
+  }
+  return out;
+}
+
+// Error-buffered target/stop from a projected gain. mag = |entry·gain%|; the target ADDS
+// the average projection error as a buffer (generous — let it run); the stop SUBTRACTS the
+// LESSER of the projection magnitude and the error (tight — an early red-flag exit level).
+export function correctionLevels({entry, gainsPct, avgErr=0}){
+  const delta=entry*(gainsPct||0)/100;
+  const mag=Math.abs(delta);
+  const err=Math.abs(avgErr||0);
+  return { delta, mag, tp: entry+mag+err, sl: entry-Math.min(mag,err) };
+}
+
+// Full P&L backtest of the correction projection vs matched buy-&-hold (alpha-honest).
+// Long-only (BUY when close≥SMA20); per bar the projected gain (as-of that date) plus an
+// EXPANDING-window avg projection error (PRIOR bars only → no lookahead) set the custom
+// TP/SL fed through runBacktest. Reports realized stats, directional accuracy, and the
+// per-trade alpha vs a price-only buy-&-hold over the identical entry→exit window. The
+// `proven` gate is alpha-honest: never green without ≥20 trades, significance, AND meanAlpha>0.
+export function backtestCorrection(stockData, gainByDate, opts={}){
+  const period=opts.period||20;
+  const costs=opts.costs||{slip:0,comm:0};
+  const data=stockData||[];
+  if(data.length<period+2||!gainByDate) return null;
+  const closes=data.map(d=>d.close);
+
+  // Per-bar projection error (point-in-time): projected = close ± (close·gain%) in the
+  // trend's direction; error vs the NEXT close. Feeds both the accuracy stats and the
+  // expanding avgErr buffer (which only ever reads bars whose outcome is already known).
+  const projErr=new Array(data.length).fill(null);
+  let n=0,hits=0,baseHits=0,errSum=0,pctErrSum=0;
+  for(let i=period;i<data.length-1;i++){
+    const g=gainByDate.get(data[i].date); if(g==null) continue;
+    const sma20=sma(closes.slice(0,i+1),20); if(sma20==null) continue;
+    const trendUp=closes[i]>=sma20;
+    const predMove=(trendUp?1:-1)*closes[i]*g/100;
+    const projected=closes[i]+predMove;
+    const actualMove=closes[i+1]-closes[i];
+    projErr[i]=Math.abs(projected-closes[i+1]);
+    if(predMove!==0&&actualMove!==0){
+      n++;
+      if(Math.sign(predMove)===Math.sign(actualMove)) hits++;
+      if((trendUp?1:-1)===Math.sign(actualMove)) baseHits++;
+      errSum+=projErr[i]; pctErrSum+=projErr[i]/closes[i+1]*100;
+    }
+  }
+  // avgErrBefore[k] = mean projection error over bars strictly before k (no lookahead).
+  const avgErrBefore=new Array(data.length).fill(0);
+  { let s=0,c=0; for(let k=0;k<data.length;k++){ avgErrBefore[k]=c?s/c:0; if(projErr[k]!=null){s+=projErr[k];c++;} } }
+
+  // Long-only correction scorer → custom error-buffered TP/SL via correctionLevels.
+  const scorer=(slice)=>{
+    const i=slice.length-1;
+    const cl=slice.map(d=>d.close);
+    const sma20=sma(cl,20); if(sma20==null) return {signal:"HOLD"};
+    const a=atr(slice,14);
+    const g=gainByDate.get(slice[i].date);
+    if(g==null||g===0||!(cl[i]>=sma20)) return {signal:"HOLD", atr:a};
+    const lv=correctionLevels({entry:cl[i], gainsPct:g, avgErr:avgErrBefore[i]});
+    return {signal:"BUY", atr:a, score:g, customSl:lv.sl, customTp:lv.tp};
+  };
+  const bt=runBacktest(data, scorer, 1.5, 2.0, costs, null, false);
+
+  // Alpha vs matched buy-&-hold: same entry, held to the SAME exit bar's close (price-only;
+  // the forward-perf buyHoldGrossPct pattern, inlined for engine↔app parity).
+  const legs=bt.trades.map(t=>{
+    const exitIdx=t.openIndex+t.barsHeld;
+    const benchClose=data[exitIdx]?data[exitIdx].close:t.exit;
+    const benchPct=(benchClose-t.entry)/t.entry*100;
+    return { stratPct:t.pnlPct, benchPct, alpha:t.pnlPct-benchPct, beat:t.pnlPct>benchPct };
+  });
+  const m=legs.length;
+  const meanAlpha=m?legs.reduce((a,l)=>a+l.alpha,0)/m:null;
+  const beatRate=m?legs.filter(l=>l.beat).length/m*100:null;
+  const sig=bt.stats.significance;
+  const proven=m>=20 && (sig==="SIGNIFICANT"||sig==="SUGGESTIVE") && meanAlpha>0;
+
+  return {
+    n, acc:n?hits/n*100:null, baseline:n?baseHits/n*100:null,
+    edge:n?(hits-baseHits)/n*100:null,
+    avgErr:n?errSum/n:null, avgPctErr:n?pctErrSum/n:null,
+    trades:m, stats:bt.stats, meanAlpha, beatRate, proven,
+  };
 }
 
 // ─── Buffett-style fundamental VALUE score (for the fundamentalGrade tag) ─────

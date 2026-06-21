@@ -1,1 +1,456 @@
-{"latest":null,"history":[]}
+{
+  "latest": {
+    "runAgg": {
+      "probedAt": "2026-06-19T23:49:56.172Z",
+      "marketOpen": false,
+      "nSymbols": 36,
+      "medianStalenessSec": null,
+      "p90StalenessSec": null,
+      "pctRealtime": 0,
+      "pctDelayed": 0,
+      "pctStale": 0,
+      "planInferred": "unknown (market closed)"
+    },
+    "samples": [
+      {
+        "symbol": "AAPL",
+        "venue": "STOCK",
+        "isMarketOpen": false,
+        "lastTs": null,
+        "stalenessSec": null,
+        "freshnessBand": "CLOSED",
+        "value": 0,
+        "pct": 0
+      },
+      {
+        "symbol": "TSLA",
+        "venue": "STOCK",
+        "isMarketOpen": false,
+        "lastTs": null,
+        "stalenessSec": null,
+        "freshnessBand": "CLOSED",
+        "value": 0,
+        "pct": 0
+      },
+      {
+        "symbol": "NVDA",
+        "venue": "STOCK",
+        "isMarketOpen": false,
+        "lastTs": null,
+        "stalenessSec": null,
+        "freshnessBand": "CLOSED",
+        "value": 0,
+        "pct": 0
+      },
+      {
+        "symbol": "CMCSA",
+        "venue": "STOCK",
+        "isMarketOpen": false,
+        "lastTs": null,
+        "stalenessSec": null,
+        "freshnessBand": "CLOSED",
+        "value": 0,
+        "pct": 0
+      },
+      {
+        "symbol": "MSFT",
+        "venue": "STOCK",
+        "isMarketOpen": false,
+        "lastTs": null,
+        "stalenessSec": null,
+        "freshnessBand": "CLOSED",
+        "value": 0,
+        "pct": 0
+      },
+      {
+        "symbol": "GOOGL",
+        "venue": "STOCK",
+        "isMarketOpen": false,
+        "lastTs": null,
+        "stalenessSec": null,
+        "freshnessBand": "CLOSED",
+        "value": 0,
+        "pct": 0
+      },
+      {
+        "symbol": "AMZN",
+        "venue": "STOCK",
+        "isMarketOpen": false,
+        "lastTs": null,
+        "stalenessSec": null,
+        "freshnessBand": "CLOSED",
+        "value": 0,
+        "pct": 0
+      },
+      {
+        "symbol": "META",
+        "venue": "STOCK",
+        "isMarketOpen": false,
+        "lastTs": null,
+        "stalenessSec": null,
+        "freshnessBand": "CLOSED",
+        "value": 0,
+        "pct": 0
+      },
+      {
+        "symbol": "AMD",
+        "venue": "STOCK",
+        "isMarketOpen": false,
+        "lastTs": null,
+        "stalenessSec": null,
+        "freshnessBand": "CLOSED",
+        "value": 0,
+        "pct": 0
+      },
+      {
+        "symbol": "INTC",
+        "venue": "STOCK",
+        "isMarketOpen": false,
+        "lastTs": null,
+        "stalenessSec": null,
+        "freshnessBand": "CLOSED",
+        "value": 0,
+        "pct": 0
+      },
+      {
+        "symbol": "QCOM",
+        "venue": "STOCK",
+        "isMarketOpen": false,
+        "lastTs": null,
+        "stalenessSec": null,
+        "freshnessBand": "CLOSED",
+        "value": 0,
+        "pct": 0
+      },
+      {
+        "symbol": "CSCO",
+        "venue": "STOCK",
+        "isMarketOpen": false,
+        "lastTs": null,
+        "stalenessSec": null,
+        "freshnessBand": "CLOSED",
+        "value": 0,
+        "pct": 0
+      },
+      {
+        "symbol": "ORCL",
+        "venue": "STOCK",
+        "isMarketOpen": false,
+        "lastTs": null,
+        "stalenessSec": null,
+        "freshnessBand": "CLOSED",
+        "value": 0,
+        "pct": 0
+      },
+      {
+        "symbol": "IBM",
+        "venue": "STOCK",
+        "isMarketOpen": false,
+        "lastTs": null,
+        "stalenessSec": null,
+        "freshnessBand": "CLOSED",
+        "value": 0,
+        "pct": 0
+      },
+      {
+        "symbol": "WMT",
+        "venue": "STOCK",
+        "isMarketOpen": false,
+        "lastTs": null,
+        "stalenessSec": null,
+        "freshnessBand": "CLOSED",
+        "value": 0,
+        "pct": 0
+      },
+      {
+        "symbol": "COST",
+        "venue": "STOCK",
+        "isMarketOpen": false,
+        "lastTs": null,
+        "stalenessSec": null,
+        "freshnessBand": "CLOSED",
+        "value": 0,
+        "pct": 0
+      },
+      {
+        "symbol": "KO",
+        "venue": "STOCK",
+        "isMarketOpen": false,
+        "lastTs": null,
+        "stalenessSec": null,
+        "freshnessBand": "CLOSED",
+        "value": 0,
+        "pct": 0
+      },
+      {
+        "symbol": "PEP",
+        "venue": "STOCK",
+        "isMarketOpen": false,
+        "lastTs": null,
+        "stalenessSec": null,
+        "freshnessBand": "CLOSED",
+        "value": 0,
+        "pct": 0
+      },
+      {
+        "symbol": "PG",
+        "venue": "STOCK",
+        "isMarketOpen": false,
+        "lastTs": null,
+        "stalenessSec": null,
+        "freshnessBand": "CLOSED",
+        "value": 0,
+        "pct": 0
+      },
+      {
+        "symbol": "MCD",
+        "venue": "STOCK",
+        "isMarketOpen": false,
+        "lastTs": null,
+        "stalenessSec": null,
+        "freshnessBand": "CLOSED",
+        "value": 0,
+        "pct": 0
+      },
+      {
+        "symbol": "NKE",
+        "venue": "STOCK",
+        "isMarketOpen": false,
+        "lastTs": null,
+        "stalenessSec": null,
+        "freshnessBand": "CLOSED",
+        "value": 0,
+        "pct": 0
+      },
+      {
+        "symbol": "DIS",
+        "venue": "STOCK",
+        "isMarketOpen": false,
+        "lastTs": null,
+        "stalenessSec": null,
+        "freshnessBand": "CLOSED",
+        "value": 0,
+        "pct": 0
+      },
+      {
+        "symbol": "SBUX",
+        "venue": "STOCK",
+        "isMarketOpen": false,
+        "lastTs": null,
+        "stalenessSec": null,
+        "freshnessBand": "CLOSED",
+        "value": 0,
+        "pct": 0
+      },
+      {
+        "symbol": "JPM",
+        "venue": "STOCK",
+        "isMarketOpen": false,
+        "lastTs": null,
+        "stalenessSec": null,
+        "freshnessBand": "CLOSED",
+        "value": 0,
+        "pct": 0
+      },
+      {
+        "symbol": "BAC",
+        "venue": "STOCK",
+        "isMarketOpen": false,
+        "lastTs": null,
+        "stalenessSec": null,
+        "freshnessBand": "CLOSED",
+        "value": 0,
+        "pct": 0
+      },
+      {
+        "symbol": "V",
+        "venue": "STOCK",
+        "isMarketOpen": false,
+        "lastTs": null,
+        "stalenessSec": null,
+        "freshnessBand": "CLOSED",
+        "value": 0,
+        "pct": 0
+      },
+      {
+        "symbol": "MA",
+        "venue": "STOCK",
+        "isMarketOpen": false,
+        "lastTs": null,
+        "stalenessSec": null,
+        "freshnessBand": "CLOSED",
+        "value": 0,
+        "pct": 0
+      },
+      {
+        "symbol": "JNJ",
+        "venue": "STOCK",
+        "isMarketOpen": false,
+        "lastTs": null,
+        "stalenessSec": null,
+        "freshnessBand": "CLOSED",
+        "value": 0,
+        "pct": 0
+      },
+      {
+        "symbol": "UNH",
+        "venue": "STOCK",
+        "isMarketOpen": false,
+        "lastTs": null,
+        "stalenessSec": null,
+        "freshnessBand": "CLOSED",
+        "value": 0,
+        "pct": 0
+      },
+      {
+        "symbol": "PFE",
+        "venue": "STOCK",
+        "isMarketOpen": false,
+        "lastTs": null,
+        "stalenessSec": null,
+        "freshnessBand": "CLOSED",
+        "value": 0,
+        "pct": 0
+      },
+      {
+        "symbol": "CAT",
+        "venue": "STOCK",
+        "isMarketOpen": false,
+        "lastTs": null,
+        "stalenessSec": null,
+        "freshnessBand": "CLOSED",
+        "value": 0,
+        "pct": 0
+      },
+      {
+        "symbol": "BA",
+        "venue": "STOCK",
+        "isMarketOpen": false,
+        "lastTs": null,
+        "stalenessSec": null,
+        "freshnessBand": "CLOSED",
+        "value": 0,
+        "pct": 0
+      },
+      {
+        "symbol": "XOM",
+        "venue": "STOCK",
+        "isMarketOpen": false,
+        "lastTs": null,
+        "stalenessSec": null,
+        "freshnessBand": "CLOSED",
+        "value": 0,
+        "pct": 0
+      },
+      {
+        "symbol": "CVX",
+        "venue": "STOCK",
+        "isMarketOpen": false,
+        "lastTs": null,
+        "stalenessSec": null,
+        "freshnessBand": "CLOSED",
+        "value": 0,
+        "pct": 0
+      },
+      {
+        "symbol": "T",
+        "venue": "STOCK",
+        "isMarketOpen": false,
+        "lastTs": null,
+        "stalenessSec": null,
+        "freshnessBand": "CLOSED",
+        "value": 0,
+        "pct": 0
+      },
+      {
+        "symbol": "VZ",
+        "venue": "STOCK",
+        "isMarketOpen": false,
+        "lastTs": null,
+        "stalenessSec": null,
+        "freshnessBand": "CLOSED",
+        "value": 0,
+        "pct": 0
+      }
+    ]
+  },
+  "history": [
+    {
+      "probedAt": "2026-06-12T21:06:13.737Z",
+      "marketOpen": true,
+      "nSymbols": 36,
+      "medianStalenessSec": 984.3,
+      "p90StalenessSec": 1582.7,
+      "pctRealtime": 0,
+      "pctDelayed": 69.4,
+      "pctStale": 30.6,
+      "planInferred": "delayed ~15min (Free/Starter)"
+    },
+    {
+      "probedAt": "2026-06-15T22:30:31.348Z",
+      "marketOpen": true,
+      "nSymbols": 36,
+      "medianStalenessSec": 1000.6,
+      "p90StalenessSec": 2617.4,
+      "pctRealtime": 0,
+      "pctDelayed": 66.7,
+      "pctStale": 33.3,
+      "planInferred": "delayed ~15min (Free/Starter)"
+    },
+    {
+      "probedAt": "2026-06-16T22:22:04.971Z",
+      "marketOpen": true,
+      "nSymbols": 36,
+      "medianStalenessSec": 1155.2,
+      "p90StalenessSec": 3552.4,
+      "pctRealtime": 0,
+      "pctDelayed": 50,
+      "pctStale": 50,
+      "planInferred": "delayed ~15min (Free/Starter)"
+    },
+    {
+      "probedAt": "2026-06-17T21:30:00.953Z",
+      "marketOpen": true,
+      "nSymbols": 36,
+      "medianStalenessSec": 910.9,
+      "p90StalenessSec": 1511.5,
+      "pctRealtime": 0,
+      "pctDelayed": 80.6,
+      "pctStale": 19.4,
+      "planInferred": "delayed ~15min (Free/Starter)"
+    },
+    {
+      "probedAt": "2026-06-18T21:35:27.722Z",
+      "marketOpen": true,
+      "nSymbols": 36,
+      "medianStalenessSec": 939.3,
+      "p90StalenessSec": 1776.3,
+      "pctRealtime": 0,
+      "pctDelayed": 66.7,
+      "pctStale": 33.3,
+      "planInferred": "delayed ~15min (Free/Starter)"
+    },
+    {
+      "probedAt": "2026-06-19T19:19:25.351Z",
+      "marketOpen": false,
+      "nSymbols": 36,
+      "medianStalenessSec": null,
+      "p90StalenessSec": null,
+      "pctRealtime": 0,
+      "pctDelayed": 0,
+      "pctStale": 0,
+      "planInferred": "unknown (market closed)"
+    },
+    {
+      "probedAt": "2026-06-19T23:49:56.172Z",
+      "marketOpen": false,
+      "nSymbols": 36,
+      "medianStalenessSec": null,
+      "p90StalenessSec": null,
+      "pctRealtime": 0,
+      "pctDelayed": 0,
+      "pctStale": 0,
+      "planInferred": "unknown (market closed)"
+    }
+  ]
+}

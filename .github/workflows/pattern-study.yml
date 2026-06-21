@@ -1,20 +1,27 @@
 name: Build pattern study
 
 # Measures the "Uptrend Convergence with Breakout" pattern's edge across the whole
-# ticker universe using KEYLESS Stooq daily bars (no secret needed), writes
+# ticker universe using Polygon daily bars — the SAME vendor the live app fetches
+# with, so the historical edge matches what the in-app detector signals on. Writes
 # pattern-study.json, commits it, and deploys Pages so the app can read it
 # same-origin. Self-contained like fundamentals.yml.
+#
+# Requires the repo secret POLYGON_API_KEY (the REST key). No fallback vendor by
+# design: if the key is unset or the fetch fails for every ticker, the build errors
+# rather than overwriting a good study with an empty one. Paced for the free tier's
+# 5 req/min (override with POLYGON_PACE_MS on a higher-rate plan).
+#
+# Runs on a weekly cron + manual dispatch only — deliberately NOT on push. All the
+# data-builder workflows share the 'pages' concurrency group, and a single merge
+# that triggers several at once leaves only the latest queued run alive (the others
+# are cancelled while pending). Keeping this off `push` means a merge never bumps
+# it; its weekly slot (Sun 07:23) is clear of fundamentals' daily 06:17 run. After
+# a change to the study, trigger it once via `workflow_dispatch`.
 
 on:
   schedule:
-    - cron: "23 7 * * 0"   # weekly, Sunday 07:23 UTC
+    - cron: "23 7 * * 0"   # weekly, Sunday 07:23 UTC (clear of fundamentals' 06:17)
   workflow_dispatch:
-  push:
-    branches: [main]
-    paths:
-      - "scripts/pattern-study.mjs"
-      - "scripts/engine.mjs"
-      - ".github/workflows/pattern-study.yml"
 
 permissions:
   contents: write   # to commit pattern-study.json
@@ -44,21 +51,38 @@ jobs:
       - name: Run offline unit tests
         run: node --test scripts/*.test.mjs
 
-      - name: Build pattern-study.json (Stooq daily, keyless)
+      - name: Build pattern-study.json (Polygon daily)
+        env:
+          POLYGON_API_KEY: ${{ secrets.POLYGON_API_KEY }}
         run: node scripts/pattern-study.mjs
 
-      - name: Commit pattern-study.json if it changed
+      - name: Build intraday pattern studies (Polygon) — the intraday edge search
+        env:
+          POLYGON_API_KEY: ${{ secrets.POLYGON_API_KEY }}
+        # Mine the same pattern at finer resolutions to test whether any edge survives costs
+        # intraday (daily bars may be too coarse). Each writes a sibling pattern-study-<res>.json;
+        # non-fatal so a thin intraday name never fails the daily study.
+        run: |
+          node scripts/pattern-study.mjs --resolution 1hour || echo "1hour study skipped"
+          node scripts/pattern-study.mjs --resolution 15min || echo "15min study skipped"
+
+      - name: Commit pattern studies if they changed
         run: |
           git config user.name "github-actions[bot]"
           git config user.email "github-actions[bot]@users.noreply.github.com"
           # Stage first, THEN check the staged diff — `git diff --quiet` alone ignores
           # untracked files, so a never-before-committed file would never persist.
-          git add pattern-study.json
+          git add pattern-study*.json   # daily + any intraday siblings that were produced
           if git diff --cached --quiet; then
-            echo "pattern-study.json unchanged — nothing to commit."
+            echo "pattern studies unchanged — nothing to commit."
           else
-            git commit -m "chore: refresh pattern-study.json"
-            git push
+            git commit -m "chore: refresh pattern studies (daily + intraday)"
+            # Land on main, rebasing onto any concurrent bot push (the sibling
+            # data workflows can push between our checkout and this step).
+            for i in 1 2 3; do
+              git pull --rebase origin main && git push && break
+              echo "push race (attempt $i) — retrying"; sleep 3
+            done
           fi
 
       - name: Configure Pages
