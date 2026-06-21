@@ -1346,7 +1346,9 @@ function valueScore(m){
   let cheap=0, healthy=0, growing=0;
   const num=v=>(v==null||isNaN(v))?null:Number(v);
   const pe=num(m.peTTM), pb=num(m.pbAnnual), de=num(m["totalDebt/totalEquityAnnual"]);
-  const roe=num(m.roeTTM), npm=num(m.netProfitMarginTTM), cr=num(m.currentRatioAnnual);
+  const roe=num(m.roeTTM), cr=num(m.currentRatioAnnual);
+  let npm=num(m.netProfitMarginTTM);
+  if(npm!=null&&Math.abs(npm)>1.5){flags.push("Net margin "+(npm*100).toFixed(0)+"% implausible — likely a filing-data error, ignored"); npm=null;}
   const revG=num(m.revenueGrowthTTMYoy), epsG=num(m.epsGrowthTTMYoy);
 
   if(pe!=null){
@@ -3940,10 +3942,17 @@ function App() {
 
                     <div style={{display:"grid",gridTemplateColumns:"1fr 1fr",gap:8,marginTop:8}}>
                       <div style={{background:"#060810",padding:"8px 10px",borderRadius:4}}>
-                        <div style={{fontSize:8,color:DIM,letterSpacing:1,marginBottom:3}}>TECHNICAL EDGE</div>
-                        <div style={{fontSize:11,color:c.tech&&c.tech.pass?"#00e676":"#ff8a80",fontWeight:700}}>
-                          {c.tech&&c.tech.pass?"✓ ":"· "}pattern edge {pctEdge(c.tech&&c.tech.patternEdge)}
-                          {c.tech&&c.tech.trendPF!=null?<span style={{color:FADE,fontWeight:400}}> · trend PF {c.tech.trendPF.toFixed(2)}</span>:null}
+                        <div style={{fontSize:8,color:DIM,letterSpacing:1,marginBottom:3}}>12-1 MOMENTUM</div>
+                        {c.tech&&c.tech.box==="nodata"?(
+                          <div style={{fontSize:11,color:FADE,fontWeight:700}}>· no price history</div>
+                        ):(
+                          <div style={{fontSize:11,color:c.tech&&c.tech.box==="pass"?"#00e676":"#ff8a80",fontWeight:700}}>
+                            {c.tech&&c.tech.box==="pass"?"✓ ":"· "}momentum {pctEdge(c.tech&&c.tech.momo)}
+                          </div>
+                        )}
+                        <div style={{fontSize:9,color:FADE,fontWeight:400,marginTop:3}}>
+                          experimental: pattern edge {pctEdge(c.tech&&c.tech.patternEdge)}
+                          {c.tech&&c.tech.trendPF!=null?<span> · trend PF {c.tech.trendPF.toFixed(2)}</span>:null}
                         </div>
                       </div>
                       <div style={{background:"#060810",padding:"8px 10px",borderRadius:4}}>
@@ -4300,6 +4309,8 @@ function App() {
                 ["votes-aligned-on","Votes aligned (engine not fighting itself)"],
                 ["ic-backed-on","IC-backed conviction (proven votes ≥⅓)"],
                 ["macd-fade-on","MACD faded (bought vs a bearish MACD)"],
+                ["contenders-on","Contenders shortlist (all boxes)"],
+                ["contenders-ab-on","Contenders A/B grade tier"],
                 ["shadow-noMacd","Shadow team — MACD dropped"],
                 ["shadow-noPat","Shadow team — Pattern dropped"],
                 ["shadow-noAdx","Shadow team — ADX dropped"],

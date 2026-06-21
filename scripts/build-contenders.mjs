@@ -122,18 +122,34 @@ export function crossCheck(rec, fin){
   };
 }
 
-// Technical box. patternRow = pattern-study universe entry (convergence-breakout
-// edge). signalRow = optional signal-study entry (trend-hold backtest); when present
-// its trend profit-factor ≥ 1 also passes. The name clears the box if EITHER read is
-// positive. Pure, and null-safe so it works with the pattern study alone.
-export function techVerdict(signalRow, patternRow){
+// 12-1 momentum from monthly closes (oldest→newest), skipping the most recent month to
+// dodge short-term reversal — the SAME definition as build-momentum.mjs / forward-log's
+// momentumValue: merit = price(rb−1mo) / price(rb−13mo) − 1. Pure; null when too short.
+export function momentumFromMonthly(closes, { lookbackM = 12, skip = 1 } = {}){
+  const c = (closes || []).filter(v => v > 0);
+  const need = lookbackM + skip + 1;
+  if (c.length < need) return null;
+  const last = c.length - 1;
+  const sig = c[last - skip], back = c[last - skip - lookbackM];
+  if (!(sig > 0) || !(back > 0)) return null;
+  return sig / back - 1;
+}
+
+// Technical box. The convergence PATTERN edge is a MEASURED LOSER (CLAUDE.md), so it no
+// longer gates the box — it would make ALL-BOXES a coin-flip dressed as confirmation.
+// Instead the box reads 12-1 MOMENTUM (`momo`), the one cross-sectional factor whose edge
+// survived the liquidity/robustness probes. Tri-state, so we never conflate "no data" with
+// "negative": box = "pass" (momentum>0) / "fail" (≤0) / "nodata" (insufficient history).
+// patternEdge/trendPF are kept as a secondary, clearly-labelled EXPERIMENTAL read. Pure.
+export function techVerdict(signalRow, patternRow, momo = null){
   const patternEdge = patternRow && typeof patternRow.edge === "number" ? patternRow.edge : null;
   const patternWin  = patternRow && typeof patternRow.winRate === "number" ? patternRow.winRate : null;
   const th = signalRow && signalRow.trendHold;
   const trendPF = th && typeof th.profitFactor === "number" ? th.profitFactor : null;
   const trendExpectancy = th && typeof th.expectancy === "number" ? th.expectancy : null;
-  const pass = (patternEdge != null && patternEdge > 0) || (trendPF != null && trendPF >= 1);
-  return { patternEdge, patternWin, trendPF, trendExpectancy, pass };
+  const m = (momo != null && isFinite(momo)) ? momo : null;
+  const box = m == null ? "nodata" : (m > 0 ? "pass" : "fail");
+  return { momo: m, box, pass: box === "pass", patternEdge, patternWin, trendPF, trendExpectancy };
 }
 
 // Index a study's universe[] by uppercase symbol. Pure.
@@ -146,17 +162,17 @@ export function indexUniverse(study){
 
 // Assemble one contender record from already-fetched inputs. Pure — the network is
 // done by the caller, so this (grade + all-boxes logic) is fully unit-tested.
-export function buildContender({ sym, rec, price, patternRow, signalRow, fin, now = new Date() }){
+export function buildContender({ sym, rec, price, patternRow, signalRow, fin, momo = null, now = new Date() }){
   const map = metricMap(rec, price);
   const vs = valueScore(map);
   if (!vs) return null;
-  const tech = techVerdict(signalRow, patternRow);
+  const tech = techVerdict(signalRow, patternRow, momo);
   const cc = crossCheck(rec, fin);
   const filing = fin ? {
     date: fin.filingDate, period: fin.fiscalPeriod, fiscalYear: fin.fiscalYear,
     daysAgo: fin.filingDate ? Math.round((now - Date.parse(fin.filingDate)) / 864e5) : null,
   } : null;
-  const allBoxes = (vs.grade === "A" || vs.grade === "B") && tech.pass && cc.ok;
+  const allBoxes = (vs.grade === "A" || vs.grade === "B") && tech.box === "pass" && cc.ok;
   return {
     sym, entity: rec.entity || null,
     grade: vs.grade, total: vs.total, cheap: vs.cheap, healthy: vs.healthy, growing: vs.growing,
@@ -208,8 +224,10 @@ export function rankWatchlist(list){
 // ─── Network (not unit-tested; the container blocks api.polygon.io) ───────────
 
 async function fetchSnapshotPrices(syms, key){
-  // ONE grouped snapshot for every ticker — keeps the daily call budget tiny.
-  const u = `${POLY}/v2/snapshot/locale/us/markets/stocks/tickers?tickers=${encodeURIComponent(syms.join(","))}&apiKey=${encodeURIComponent(key)}`;
+  // ONE full-market grouped snapshot — a single call covers all ~500 names without a
+  // long tickers= query string. We index by symbol from the result; misses fall through
+  // to the per-ticker prev-close path. (`syms` is unused now but kept for signature stability.)
+  const u = `${POLY}/v2/snapshot/locale/us/markets/stocks/tickers?apiKey=${encodeURIComponent(key)}`;
   try{
     const r = await fetch(u);
     if (!r.ok) return {};
@@ -237,6 +255,19 @@ async function fetchFinancials(sym, key){
   return parsePolygonFinancials(await r.json());
 }
 
+async function fetchMonthlyCloses(sym, key, months = 16){
+  // ~16 months of adjusted monthly closes → enough for 12-1 momentum (needs 14). Non-fatal:
+  // a miss just leaves the technical box as "nodata" (never a false negative).
+  const to = new Date(), from = new Date(); from.setUTCMonth(from.getUTCMonth() - months);
+  const d = x => x.toISOString().slice(0, 10);
+  const u = `${POLY}/v2/aggs/ticker/${encodeURIComponent(sym)}/range/1/month/${d(from)}/${d(to)}?adjusted=true&sort=asc&limit=400&apiKey=${encodeURIComponent(key)}`;
+  const r = await fetch(u);
+  if (r.status === 429) throw new Error("rate limited (429) — raise --pace / POLYGON_PACE_MS");
+  if (!r.ok) throw new Error("HTTP " + r.status);
+  const j = await r.json();
+  return Array.isArray(j.results) ? j.results.map(b => b.c).filter(c => c > 0) : [];
+}
+
 function parseArgs(argv){
   const a = { preview:false, dryRun:false, tickersFile:null,
               pace: +(process.env.POLYGON_PACE_MS || 13000) }; // 5 req/min free tier
@@ -261,7 +292,13 @@ async function main(){
   const patternMap = indexUniverse(readJSON(path.join(ROOT, "pattern-study.json")));
   const signalMap  = indexUniverse(readJSON(path.join(ROOT, "signal-study.json"))); // optional
 
-  const syms = readTickers(args.tickersFile).filter(s => funda[s]); // only names we can grade
+  // Grade every name we have fundamentals for — the universe auto-widens with
+  // fundamentals.json (now ~500 active-liquid names). An explicit --tickers file still
+  // narrows it (intersected with what we can grade) for ad-hoc runs.
+  const have = Object.keys(funda).filter(s => funda[s] && typeof funda[s] === "object");
+  const syms = args.tickersFile
+    ? readTickers(args.tickersFile).filter(s => funda[s])
+    : have.sort();
   const prices = await fetchSnapshotPrices(syms, key);
 
   const graded = [];
@@ -279,17 +316,23 @@ async function main(){
       try{ fin = await fetchFinancials(sym, key); }
       catch(e){ if (/429/.test(e.message)) console.log("  (financials rate-limited for " + sym + " — skipping its filing box)"); }
 
-      const c = buildContender({ sym, rec, price, patternRow: patternMap[sym], signalRow: signalMap[sym], fin });
+      // 12-1 momentum (the technical box). Non-fatal: a miss leaves the box "nodata".
+      let momo = null;
+      try{ momo = momentumFromMonthly(await fetchMonthlyCloses(sym, key)); }
+      catch(e){ if (/429/.test(e.message)) console.log("  (monthly bars rate-limited for " + sym + " — technical box nodata)"); }
+
+      const c = buildContender({ sym, rec, price, patternRow: patternMap[sym], signalRow: signalMap[sym], fin, momo });
       if (!c) continue;
       graded.push(c);
+      const momoStr = c.tech.box === "nodata" ? "momo n/a" : "momo " + pct(c.tech.momo);
       if (c.grade === "A" || c.grade === "B"){
         console.log("✓ " + sym.padEnd(6) + " " + c.grade + " total " + String(c.total).padStart(3) +
           (c.allBoxes ? "  ★ ALL BOXES" : "            ") +
-          "  edge " + pct(c.tech.patternEdge) + "  filed " + (c.filing && c.filing.date || "—"));
+          "  " + momoStr + "  filed " + (c.filing && c.filing.date || "—"));
       } else if (c.grade === "C"){
         const tags = classifyWatch(c);
         console.log("◦ " + sym.padEnd(6) + " C total " + String(c.total).padStart(3) +
-          (tags.length ? "  💎 " + tags.join("/") : "") + "  edge " + pct(c.tech.patternEdge));
+          (tags.length ? "  💎 " + tags.join("/") : "") + "  " + momoStr);
       } else if (args.preview){
         console.log("· " + sym.padEnd(6) + " " + c.grade + " total " + c.total + " (below watch tier)");
       }
@@ -307,9 +350,9 @@ async function main(){
     priceSrc: "Polygon snapshot (live last/close)",
     criteria: {
       grade: "A or B — valueScore over SEC fundamentals at the live price",
-      technical: "pattern-study convergence-breakout edge > 0 (or trend profit-factor ≥ 1 when signal-study is present)",
+      technical: "positive 12-1 momentum (the one cross-sectional factor that survived the robustness probes); the convergence pattern is a measured loser and is shown only as an experimental secondary read",
       filing: "SEC & Polygon agree on the latest reporting period (within ~one quarter)",
-      allBoxes: "grade A/B AND a positive technical edge AND the filing cross-check passes",
+      allBoxes: "grade A/B AND positive 12-1 momentum AND the filing cross-check passes",
       watch: "grade C kept as a watch-later tier; tags flag the upside angle (borderline / techEdge / deepValue / highGrowth)",
     },
     counts: { universe: syms.length, aOrB: ranked.length, allBoxes: allBoxesN, watch: watch.length },
