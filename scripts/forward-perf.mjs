@@ -228,6 +228,15 @@ export function defaultVariants() {
     //   to flip/drop the MACD vote (never in-sample). Rows with no MACD (null) fall in neither.
     { label: "macd-fade-on", where: t => tac(t) && t.tags && t.tags.macdBull === false },
     { label: "macd-fade-off", where: t => tac(t) && t.tags && t.tags.macdBull === true },
+    //   contenders — the daily A/B research shortlist (build-contenders.mjs) judged OOS. allBoxes =
+    //   grade A/B AND positive 12-1 momentum AND the SEC↔Polygon filing cross-check passes; contenderAB =
+    //   the broader A/B grade tier. The A/B: do the tactical BUYs the engine took on shortlisted names beat
+    //   a matched total-return buy-&-hold by more than its BUYs elsewhere? If on > off under FDR, the
+    //   shortlist is adding selection value (never in-sample). Propose-only; the list never enters the gate.
+    { label: "contenders-on", where: t => tac(t) && !!(t.tags && t.tags.contenderAllBoxes) },
+    { label: "contenders-off", where: t => tac(t) && !(t.tags && t.tags.contenderAllBoxes) },
+    { label: "contenders-ab-on", where: t => tac(t) && !!(t.tags && t.tags.contenderAB) },
+    { label: "contenders-ab-off", where: t => tac(t) && !(t.tags && t.tags.contenderAB) },
     // SHADOW ENGINES (team-minus-nuisance): each scores the trades the TEAM took WITHOUT a suspect vote
     // (mirrors forward-log's SHADOW_CONFIGS). The A/B is each shadow stream vs the full team's `all`: if a
     // shadow team's alpha beats `all` under FDR, that vote is a net NUISANCE — evidence to demote it
