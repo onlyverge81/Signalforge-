@@ -7,6 +7,7 @@ import assert from "node:assert/strict";
 import {
   metricMap, parseSnapshotPrices, parsePolygonFinancials, crossCheck,
   techVerdict, indexUniverse, buildContender, rankContenders,
+  classifyWatch, rankWatchlist,
 } from "./build-contenders.mjs";
 
 const REC = { entity:"Apple Inc.", asof:"2026-03-28", epsTTM:8.26, bvps:7.25, de:0.78, roe:1.15, npm:0.27, cr:1.07, revG:0.17, epsG:0.22 };
@@ -124,4 +125,24 @@ test("rankContenders: drops non-A/B, orders all-boxes then total then symbol", (
   ];
   const r = rankContenders(list);
   assert.deepEqual(r.map(c => c.sym), ["A1", "A2", "B1"]); // C1 dropped; all-boxes first, then total
+});
+
+test("classifyWatch: tags the C-grade upside angles", () => {
+  assert.deepEqual(classifyWatch({ total:5, cheap:1, growing:1, tech:{ pass:false } }), ["borderline"]);
+  assert.deepEqual(classifyWatch({ total:2, cheap:4, growing:0, tech:{ pass:true } }), ["techEdge", "deepValue"]);
+  assert.deepEqual(classifyWatch({ total:3, cheap:0, growing:3, tech:{ pass:false } }), ["highGrowth"]);
+  assert.deepEqual(classifyWatch({ total:2, cheap:1, growing:1, tech:{ pass:false } }), []);
+});
+
+test("rankWatchlist: only C-grade, tagged float above plain, attaches watchTags", () => {
+  const list = [
+    { sym:"A1", grade:"A", total:12, cheap:4, growing:4, tech:{ pass:true } }, // excluded
+    { sym:"PLAIN", grade:"C", total:2, cheap:0, growing:0, tech:{ pass:false } },
+    { sym:"GEM", grade:"C", total:5, cheap:1, growing:1, tech:{ pass:true } },  // borderline + techEdge
+    { sym:"D1", grade:"D", total:-3, cheap:0, growing:0, tech:{ pass:false } }, // excluded
+  ];
+  const r = rankWatchlist(list);
+  assert.deepEqual(r.map(c => c.sym), ["GEM", "PLAIN"]);
+  assert.deepEqual(r[0].watchTags, ["borderline", "techEdge"]);
+  assert.deepEqual(r[1].watchTags, []);
 });

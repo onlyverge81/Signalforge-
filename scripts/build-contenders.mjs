@@ -180,6 +180,31 @@ export function rankContenders(list){
       a.sym.localeCompare(b.sym));
 }
 
+// Why a C-grade name is still worth a look later — the "diamond in the rough"
+// angles. A C that just missed the B cutoff, or whose chart is already working, or
+// that's a standout in one category (deep value / high growth), is a watchlist
+// candidate even if the blended grade isn't there yet. Pure.
+export function classifyWatch(c){
+  const tags = [];
+  if (c.total >= 4) tags.push("borderline");        // within 2 of the B cutoff (6)
+  if (c.tech && c.tech.pass) tags.push("techEdge");  // the chart is already working
+  if (c.cheap >= 3) tags.push("deepValue");          // standout on valuation
+  if (c.growing >= 3) tags.push("highGrowth");       // standout on growth → could re-rate
+  return tags;
+}
+
+// The "watch later" tier: grade-C names, each tagged with its upside angle, ranked
+// so the genuinely interesting ones (tagged) float above the plain C's. Pure.
+export function rankWatchlist(list){
+  return list
+    .filter(c => c.grade === "C")
+    .map(c => ({ ...c, watchTags: classifyWatch(c) }))
+    .sort((a, b) =>
+      (Number(b.watchTags.length > 0) - Number(a.watchTags.length > 0)) ||
+      (b.total - a.total) ||
+      a.sym.localeCompare(b.sym));
+}
+
 // ─── Network (not unit-tested; the container blocks api.polygon.io) ───────────
 
 async function fetchSnapshotPrices(syms, key){
@@ -239,7 +264,7 @@ async function main(){
   const syms = readTickers(args.tickersFile).filter(s => funda[s]); // only names we can grade
   const prices = await fetchSnapshotPrices(syms, key);
 
-  const contenders = [];
+  const graded = [];
   for (let i = 0; i < syms.length; i++){
     const sym = syms[i];
     const rec = funda[sym];
@@ -255,13 +280,18 @@ async function main(){
       catch(e){ if (/429/.test(e.message)) console.log("  (financials rate-limited for " + sym + " — skipping its filing box)"); }
 
       const c = buildContender({ sym, rec, price, patternRow: patternMap[sym], signalRow: signalMap[sym], fin });
-      if (c && (c.grade === "A" || c.grade === "B")){
-        contenders.push(c);
+      if (!c) continue;
+      graded.push(c);
+      if (c.grade === "A" || c.grade === "B"){
         console.log("✓ " + sym.padEnd(6) + " " + c.grade + " total " + String(c.total).padStart(3) +
           (c.allBoxes ? "  ★ ALL BOXES" : "            ") +
           "  edge " + pct(c.tech.patternEdge) + "  filed " + (c.filing && c.filing.date || "—"));
-      } else if (c && args.preview){
-        console.log("· " + sym.padEnd(6) + " " + c.grade + " total " + c.total + " (not A/B)");
+      } else if (c.grade === "C"){
+        const tags = classifyWatch(c);
+        console.log("◦ " + sym.padEnd(6) + " C total " + String(c.total).padStart(3) +
+          (tags.length ? "  💎 " + tags.join("/") : "") + "  edge " + pct(c.tech.patternEdge));
+      } else if (args.preview){
+        console.log("· " + sym.padEnd(6) + " " + c.grade + " total " + c.total + " (below watch tier)");
       }
     }catch(e){
       console.log("✗ " + sym.padEnd(6) + " " + e.message);
@@ -269,7 +299,8 @@ async function main(){
     if (i < syms.length - 1) await sleep(args.pace); // stay under Polygon's rate limit
   }
 
-  const ranked = rankContenders(contenders);
+  const ranked = rankContenders(graded);
+  const watch = rankWatchlist(graded);
   const allBoxesN = ranked.filter(c => c.allBoxes).length;
   const out = {
     generatedAt: new Date().toISOString(),
@@ -279,19 +310,21 @@ async function main(){
       technical: "pattern-study convergence-breakout edge > 0 (or trend profit-factor ≥ 1 when signal-study is present)",
       filing: "SEC & Polygon agree on the latest reporting period (within ~one quarter)",
       allBoxes: "grade A/B AND a positive technical edge AND the filing cross-check passes",
+      watch: "grade C kept as a watch-later tier; tags flag the upside angle (borderline / techEdge / deepValue / highGrowth)",
     },
-    counts: { universe: syms.length, aOrB: ranked.length, allBoxes: allBoxesN },
+    counts: { universe: syms.length, aOrB: ranked.length, allBoxes: allBoxesN, watch: watch.length },
     contenders: ranked,
+    watchlist: watch,
   };
 
   if (args.preview || args.dryRun){
-    console.log("\nA/B contenders: " + ranked.length + " · all boxes checked: " + allBoxesN);
+    console.log("\nA/B contenders: " + ranked.length + " · all boxes checked: " + allBoxesN + " · watch-later (C): " + watch.length);
     return;
   }
   // Never clobber a good list with an empty one (bad key, outage, or stale inputs).
-  if (ranked.length === 0){ console.error("No A/B contender produced — refusing to overwrite contenders.json."); process.exit(1); }
+  if (ranked.length === 0 && watch.length === 0){ console.error("No A/B or watch-tier name produced — refusing to overwrite contenders.json."); process.exit(1); }
   fs.writeFileSync(path.join(ROOT, "contenders.json"), JSON.stringify(out) + "\n");
-  console.log("\nWrote contenders.json — " + ranked.length + " A/B names, " + allBoxesN + " with all boxes checked.");
+  console.log("\nWrote contenders.json — " + ranked.length + " A/B names (" + allBoxesN + " all boxes), " + watch.length + " watch-later (C).");
 }
 
 if (process.argv[1] && path.resolve(process.argv[1]) === fileURLToPath(import.meta.url)){
