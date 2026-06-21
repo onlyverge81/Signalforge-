@@ -21,6 +21,52 @@ export function readTickers(file){
     .filter(Boolean);
 }
 
+const FUND_MAX = +(process.env.FUND_MAX || 500);
+
+// Full-market grouped-snapshot JSON → { SYM: dollarVolume } (price × day volume).
+// Used to rank the active roster by liquidity, so the fundamentals universe is the
+// ~500 most-traded names (a sensible "research today" set), not an alphabetical slice.
+// Falls back to prevDay when the session hasn't opened. Pure.
+export function parseSnapshotDollarVol(j){
+  const arr = j && j.tickers;
+  const out = {};
+  if (!Array.isArray(arr)) return out;
+  for (const t of arr){
+    if (!t || !t.ticker) continue;
+    const px  = (t.day && t.day.c) || (t.prevDay && t.prevDay.c) || (t.lastTrade && t.lastTrade.p) || 0;
+    const vol = (t.day && t.day.v) || (t.prevDay && t.prevDay.v) || 0;
+    const dv = px * vol;
+    if (dv > 0) out[String(t.ticker).toUpperCase()] = dv;
+  }
+  return out;
+}
+
+// Pure: pick the top `cap` ACTIVE, CIK-bearing roster names by dollar volume. Active
+// only (this is a "buy/research today" universe — de-listed names don't belong), and
+// names with no liquidity reading sort to the bottom. Ticker tie-break for determinism.
+export function selectLiquidUniverse(companies, dollarVol, cap = FUND_MAX){
+  const dv = dollarVol || {};
+  const scored = (companies || [])
+    .filter(c => c && c.ticker && c.cik && c.active !== false)
+    .map(c => ({ sym: String(c.ticker).toUpperCase(), cik: c.cik, dv: dv[String(c.ticker).toUpperCase()] || 0 }));
+  scored.sort((a, b) => (b.dv - a.dv) || (a.sym < b.sym ? -1 : a.sym > b.sym ? 1 : 0));
+  return scored.slice(0, cap).map(({ sym, cik }) => ({ sym, cik }));
+}
+
+// Prefer the survivorship-free roster.json ranked by live dollar volume (top ~500
+// active names with a CIK); fall back to the legacy tickers.txt + secCik when the
+// roster or the snapshot is unavailable (CI-safe). Returns { entries:[{sym,cik}], source }.
+export function resolveFundamentalsUniverse(snapshotJson){
+  try{
+    const r = JSON.parse(fs.readFileSync(path.join(ROOT, "roster.json"), "utf8"));
+    if (Array.isArray(r.companies) && r.companies.length && snapshotJson){
+      const picked = selectLiquidUniverse(r.companies, parseSnapshotDollarVol(snapshotJson), FUND_MAX);
+      if (picked.length) return { entries: picked, source: `roster.json top-${picked.length} active by dollar volume (cap ${FUND_MAX})` };
+    }
+  }catch{ /* no roster.json yet → fall back */ }
+  return { entries: readTickers().map(sym => ({ sym, cik: null })), source: "tickers.txt (legacy survivor set — run universe-build for roster.json)" };
+}
+
 // Distill one companyfacts JSON into the stored record. Pure — unit-tested.
 // Optional `asOf` (ISO date) makes the whole record POINT-IN-TIME — only figures
 // knowable on that date are used — which is what the merit-evidence study needs
@@ -62,8 +108,8 @@ export function distill(j, asOf){
   return { rec, asof, basis, lastFiled };
 }
 
-async function buildOne(sym){
-  const cik=await secCik(sym);
+async function buildOne(sym, cik){
+  cik = cik || await secCik(sym); // roster supplies the CIK; fall back to the SEC map
   if(!cik) return { sym, error:"not in SEC EDGAR" };
   const r=await secFetch("https://data.sec.gov/api/xbrl/companyfacts/CIK"+cik+".json");
   const j=await r.json();
@@ -74,12 +120,29 @@ async function buildOne(sym){
 
 const sleep=ms=>new Promise(r=>setTimeout(r,ms));
 
+const POLY = "https://api.polygon.io";
+// ONE full-market grouped snapshot → liquidity ranking input. No tickers filter, so a
+// single call covers the whole market. Polygon is the only price vendor by charter;
+// returns null (→ legacy fallback) without a key or on any error. Not unit-tested
+// (the container blocks api.polygon.io); the parsing helper above is.
+async function fetchFullSnapshot(key){
+  if(!key) return null;
+  try{
+    const r = await fetch(`${POLY}/v2/snapshot/locale/us/markets/stocks/tickers?apiKey=${encodeURIComponent(key)}`);
+    if(!r.ok) return null;
+    return await r.json();
+  }catch{ return null; }
+}
+
 async function main(){
-  const tickers=readTickers();
+  const key = process.env.POLYGON_API_KEY || process.env.POLYGON_KEY || "";
+  const snap = await fetchFullSnapshot(key);
+  const { entries, source } = resolveFundamentalsUniverse(snap);
+  console.log("fundamentals universe: "+source+" ("+entries.length+" names)");
   const out={}, errors=[];
-  for(const sym of tickers){
+  for(const { sym, cik } of entries){
     try{
-      const res=await buildOne(sym);
+      const res=await buildOne(sym, cik);
       if(res.data){ out[sym]=res.data; console.log("✓ "+sym.padEnd(6)+" "+res.data.entity+" (as of "+res.data.asof+", "+res.data.basis+")"); }
       else { errors.push(sym+": "+res.error); console.warn("✗ "+sym.padEnd(6)+" — "+res.error); }
     }catch(e){ errors.push(sym+": "+(e.message||e)); console.warn("✗ "+sym.padEnd(6)+" — "+(e.message||e)); }

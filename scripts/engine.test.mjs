@@ -11,7 +11,7 @@
 
 import { test } from "node:test";
 import assert from "node:assert/strict";
-import { analyze, runBacktest, scoreAt, scorePosition, checkBarExit, checkBarExitFine, isAmbiguousBar, tradeNet, realizedStats, convergenceBreakout, backtestPattern, edgeStatus, avgIndexGainByDate, correctionLevels, backtestCorrection, efficiencyRatio, marketRegime, computeSignal } from "./engine.mjs";
+import { analyze, runBacktest, scoreAt, scorePosition, checkBarExit, checkBarExitFine, isAmbiguousBar, tradeNet, realizedStats, convergenceBreakout, backtestPattern, edgeStatus, avgIndexGainByDate, correctionLevels, backtestCorrection, efficiencyRatio, marketRegime, computeSignal, valueScore } from "./engine.mjs";
 
 // ─── Helper: deterministic OHLC series (no RNG, fixed formula) ───────────────
 function gen(n){
@@ -466,4 +466,26 @@ test("analyze shadows: shadowDrops attaches per-config team-minus-vote verdicts;
   assert.ok(a.shadows, "shadows attached when requested");
   for (const c of cfgs) assert.ok(["BUY","HOLD","SELL"].includes(a.shadows[c.key]), c.key + " is a decision");
   assert.equal(analyze(gen(160), "TST", "Stocks", "Trend Following", 1.5, 2.0).shadows, null, "no opts ⇒ no shadows (zero overhead)");
+});
+
+// ─── valueScore: implausible-net-margin sanity guard (data-quality net) ──────
+test("valueScore: drops an impossible net margin (>150%) and flags it, instead of scoring it as elite", () => {
+  // NVDA-style bad TTM assembly produced npm ≈ 5.93 (593%) → scored healthy +2 ("highly profitable").
+  const m = { roeTTM: 0.30, netProfitMarginTTM: 5.93, currentRatioAnnual: 2 };
+  const vs = valueScore(m);
+  assert.ok(vs.flags.some(f => /implausible/i.test(f)), "the implausible margin is flagged");
+  // healthy = roe>0.15 (+2) + current ratio>1.5 (+1); the bad +2 margin must NOT be counted.
+  assert.equal(vs.healthy, 3);
+});
+
+test("valueScore: a normal net margin still scores and is not flagged", () => {
+  const vs = valueScore({ netProfitMarginTTM: 0.25 });            // 25% → +2, no flag
+  assert.equal(vs.healthy, 2);
+  assert.ok(!vs.flags.some(f => /implausible/i.test(f)));
+});
+
+test("valueScore: a legitimately high ROE (>100%) is untouched (low-equity/buyback names)", () => {
+  const vs = valueScore({ roeTTM: 2.22 });                        // MA-style ROE → +2, no flag
+  assert.equal(vs.healthy, 2);
+  assert.ok(!vs.flags.some(f => /implausible/i.test(f)));
 });

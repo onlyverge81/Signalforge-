@@ -925,7 +925,9 @@ export function valueScore(m){
   let cheap=0, healthy=0, growing=0;
   const num=v=>(v==null||isNaN(v))?null:Number(v);
   const pe=num(m.peTTM), pb=num(m.pbAnnual), de=num(m["totalDebt/totalEquityAnnual"]);
-  const roe=num(m.roeTTM), npm=num(m.netProfitMarginTTM), cr=num(m.currentRatioAnnual);
+  const roe=num(m.roeTTM), cr=num(m.currentRatioAnnual);
+  let npm=num(m.netProfitMarginTTM);
+  if(npm!=null&&Math.abs(npm)>1.5){flags.push("Net margin "+(npm*100).toFixed(0)+"% implausible — likely a filing-data error, ignored"); npm=null;}
   const revG=num(m.revenueGrowthTTMYoy), epsG=num(m.epsGrowthTTMYoy);
 
   if(pe!=null){

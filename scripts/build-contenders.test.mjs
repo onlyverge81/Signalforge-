@@ -6,7 +6,7 @@ import { test } from "node:test";
 import assert from "node:assert/strict";
 import {
   metricMap, parseSnapshotPrices, parsePolygonFinancials, crossCheck,
-  techVerdict, indexUniverse, buildContender, rankContenders,
+  techVerdict, momentumFromMonthly, indexUniverse, buildContender, rankContenders,
   classifyWatch, rankWatchlist,
 } from "./build-contenders.mjs";
 
@@ -69,20 +69,18 @@ test("crossCheck: no filing → passes but marks itself unchecked", () => {
   assert.equal(r.checked, false);
 });
 
-test("techVerdict: passes on a positive pattern edge alone (no signal study)", () => {
-  const t = techVerdict(undefined, { edge:0.007, winRate:0.68 });
-  assert.equal(t.pass, true);
-  assert.equal(t.patternEdge, 0.007);
-  assert.equal(t.trendPF, null);
+test("techVerdict: box is driven by 12-1 momentum, tri-state pass/fail/nodata", () => {
+  assert.deepEqual({ box:techVerdict(null,null,0.12).box, pass:techVerdict(null,null,0.12).pass }, { box:"pass", pass:true });
+  assert.deepEqual({ box:techVerdict(null,null,-0.05).box, pass:techVerdict(null,null,-0.05).pass }, { box:"fail", pass:false });
+  // null momentum is "nodata" — NEVER conflated with a negative read (the META/MSFT false-negative bug).
+  assert.deepEqual({ box:techVerdict(null,null,null).box, pass:techVerdict(null,null,null).pass }, { box:"nodata", pass:false });
+  assert.equal(techVerdict(null,null,NaN).box, "nodata");
 });
 
-test("techVerdict: negative edge & no signal study → fails", () => {
-  assert.equal(techVerdict(null, { edge:-0.01 }).pass, false);
-});
-
-test("techVerdict: trend profit-factor ≥ 1 rescues a flat pattern", () => {
-  const t = techVerdict({ trendHold:{ profitFactor:1.3, expectancy:0.2 } }, { edge:-0.01 });
-  assert.equal(t.pass, true);
+test("techVerdict: the dead pattern edge is kept only as an experimental secondary read (does NOT gate the box)", () => {
+  const t = techVerdict({ trendHold:{ profitFactor:1.3, expectancy:0.2 } }, { edge:0.007, winRate:0.68 }, -0.05);
+  assert.equal(t.box, "fail");          // momentum is negative → fail, regardless of a positive pattern edge
+  assert.equal(t.patternEdge, 0.007);   // still surfaced for display
   assert.equal(t.trendPF, 1.3);
 });
 
@@ -94,26 +92,40 @@ test("indexUniverse: maps universe[] by uppercase symbol", () => {
 });
 
 test("buildContender: A/B name clearing all three boxes is flagged allBoxes", () => {
-  // Cheap price + strong fundamentals → grade A/B; positive edge; aligned filing.
+  // Cheap price + strong fundamentals → grade A/B; positive momentum; aligned filing.
   const c = buildContender({
     sym:"AAPL", rec:REC, price:60,
-    patternRow:{ edge:0.007, winRate:0.68 }, signalRow:null,
+    patternRow:{ edge:0.007, winRate:0.68 }, signalRow:null, momo:0.18,
     fin:{ filingDate:"2026-05-01", endDate:"2026-03-28", fiscalPeriod:"Q2", fiscalYear:"2026", equity:74e9 },
     now:new Date("2026-06-01"),
   });
   assert.ok(c.grade === "A" || c.grade === "B");
-  assert.equal(c.tech.pass, true);
+  assert.equal(c.tech.box, "pass");
   assert.equal(c.crossCheck.ok, true);
   assert.equal(c.allBoxes, true);
   assert.equal(c.filing.daysAgo, 31);
   assert.ok(c.reasons.length > 0);
 });
 
-test("buildContender: positive grade but negative edge fails the technical box", () => {
-  const c = buildContender({ sym:"AAPL", rec:REC, price:60, patternRow:{ edge:-0.02 }, fin:null });
+test("buildContender: positive grade but negative momentum fails the technical box", () => {
+  const c = buildContender({ sym:"AAPL", rec:REC, price:60, patternRow:{ edge:0.02 }, momo:-0.1, fin:null });
   assert.ok(c.grade === "A" || c.grade === "B");
-  assert.equal(c.tech.pass, false);
+  assert.equal(c.tech.box, "fail");
   assert.equal(c.allBoxes, false);
+});
+
+test("buildContender: missing momentum history → nodata box, not an all-boxes pass", () => {
+  const c = buildContender({ sym:"AAPL", rec:REC, price:60, fin:null }); // momo omitted
+  assert.equal(c.tech.box, "nodata");
+  assert.equal(c.allBoxes, false);
+});
+
+test("momentumFromMonthly: 12-1 return skipping the latest month; null when too short", () => {
+  // 14 ascending closes 100..113: sig = closes[len-2]=112, back = closes[len-2-12]=100 → 0.12
+  const closes = Array.from({ length:14 }, (_,i)=>100+i);
+  assert.equal(+momentumFromMonthly(closes).toFixed(4), 0.12);
+  assert.equal(momentumFromMonthly(closes.slice(0,13)), null); // need lookback+skip+1 = 14
+  assert.equal(momentumFromMonthly([]), null);
 });
 
 test("rankContenders: drops non-A/B, orders all-boxes then total then symbol", () => {

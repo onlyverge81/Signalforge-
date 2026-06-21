@@ -55,6 +55,9 @@ jobs:
       - name: Build contenders.json (Polygon price + filings)
         env:
           POLYGON_API_KEY: ${{ secrets.POLYGON_API_KEY }}
+          # The user's Stocks-Starter plan is unlimited (no throttle), so don't pace the
+          # ~500 per-name financials calls at the 13s free-tier default (would take ~100min).
+          POLYGON_PACE_MS: "0"
         run: node scripts/build-contenders.mjs
 
       - name: Commit contenders.json if it changed

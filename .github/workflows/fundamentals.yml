@@ -49,6 +49,9 @@ jobs:
       - name: Build fundamentals.json from SEC EDGAR
         env:
           SEC_USER_AGENT: "SignalForge fundamentals builder (${{ github.repository }})"
+          # Polygon (price vendor by charter) ranks the active roster by dollar volume
+          # to pick the top ~500 names; without it the build falls back to tickers.txt.
+          POLYGON_API_KEY: ${{ secrets.POLYGON_API_KEY }}
         run: node scripts/build-fundamentals.mjs
 
       # Merit-evidence harness: reconstruct point-in-time merit from the SEC XBRL
