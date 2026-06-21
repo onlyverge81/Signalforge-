@@ -1933,9 +1933,15 @@ function App() {
   const [fundaDB,   setFundaDB]   = useState(null);
   // Universe-wide edge of the Convergence-Breakout pattern (built in CI, same-origin).
   const [patternStudy, setPatternStudy] = useState(null);
+  // Daily A/B contenders shortlist (built in CI by scripts/build-contenders.mjs).
+  // Read-only viewer, same-origin — the on-ramp from universe → diligence → execution.
+  const [contenders, setContenders] = useState(null);
+  const [contenderOpen, setContenderOpen] = useState(null); // sym whose checklist is expanded
+  const [contenderAllBoxesOnly, setContenderAllBoxesOnly] = useState(false); // strict shortlist filter
   useEffect(()=>{ let alive=true;
     fetch("./fundamentals.json").then(r=>r.ok?r.json():null).then(j=>{ if(alive&&j&&typeof j==="object") setFundaDB(j); }).catch(()=>{});
     fetch("./pattern-study.json").then(r=>r.ok?r.json():null).then(j=>{ if(alive&&j&&j.aggregate) setPatternStudy(j); }).catch(()=>{});
+    fetch("./contenders.json").then(r=>r.ok?r.json():null).then(j=>{ if(alive&&j&&Array.isArray(j.contenders)) setContenders(j); }).catch(()=>{});
     return ()=>{ alive=false; };
   },[]);
   // Merit-evidence study (built in CI by scripts/build-study.mjs). Read-only here.
@@ -2168,11 +2174,11 @@ function App() {
   }
   useEffect(()=>()=>stopLive(),[]); // close the socket + watchdog on unmount
 
-  async function fetchLive(){
+  async function fetchLive(symOverride){
     const usePoly=provider==="polygon";
     const key=(usePoly?polyKey:apiKey).trim();
     if(!key){setError(usePoly?"Enter your Polygon REST API key first (polygon.io → Accessing the API).":"Enter your free Twelve Data API key first (twelvedata.com).");setTab("live");return;}
-    const sym=ticker.trim().toUpperCase();
+    const sym=(typeof symOverride==="string"&&symOverride?symOverride:ticker).trim().toUpperCase();
     if(!sym){setError("Enter a ticker symbol.");return;}
     stopLive(); // tear down any active stream so it can't fold a stale symbol's bar into the new series
     setFetching(true);setError("");setOutlook(null);setOutlookError(null);setLiveFreshness(null);
@@ -2517,7 +2523,7 @@ function App() {
 
       {/* Tabs */}
       <div style={{background:BG3,borderBottom:"1px solid "+BORD,padding:"0 20px",display:"flex"}}>
-        {[["input","▣ DATA"],["live","⚡ LIVE"],["evidence","🔬 EVIDENCE"],["paper","📒 FORWARD TEST"],["backtest","⟲ BACKTEST"],["replay","▶ REPLAY"],["value","✚ AUTOPSY"],["outlook","◎ OUTLOOK"],["signals","◈ SIGNALS"],["position","⊞ SIZE"],["history","◷ HISTORY"]].map(([k,l])=>(
+        {[["input","▣ DATA"],["live","⚡ LIVE"],["evidence","🔬 EVIDENCE"],["paper","📒 FORWARD TEST"],["backtest","⟲ BACKTEST"],["replay","▶ REPLAY"],["value","✚ AUTOPSY"],["contenders","★ CONTENDERS"],["outlook","◎ OUTLOOK"],["signals","◈ SIGNALS"],["position","⊞ SIZE"],["history","◷ HISTORY"]].map(([k,l])=>(
           <button key={k} style={tBtn(tab===k)} onClick={()=>setTab(k)}>{l}</button>
         ))}
       </div>
@@ -3859,6 +3865,157 @@ function App() {
                     </div>
                     );
                   })()}
+                </>
+              );
+            })()}
+          </>
+        )}
+
+        {/* ── CONTENDERS TAB — the daily A/B shortlist for pre-execution diligence ── */}
+        {tab==="contenders"&&(
+          <>
+            <div style={{...card,border:"1px solid rgba(255,215,64,0.25)"}}>
+              <span style={lbl}>★ CONTENDERS — the daily A/B shortlist</span>
+              <div style={{fontSize:11,color:"#90a4ae",lineHeight:1.8}}>
+                The on-ramp from <strong style={{color:"#ffd740"}}>universe → diligence → execution</strong>. Every name is graded by the same <strong style={{color:"#00e676"}}>AUTOPSY</strong> engine over its SEC filings <em>at today's price</em>; only <strong>grade A/B</strong> businesses make the list. Each is then checked for a <strong>technical edge</strong> (the convergence-breakout pattern's measured edge) and cross-referenced against <strong>Polygon's latest filing</strong>. A name clearing <strong style={{color:"#00e676"}}>ALL boxes</strong> — quality business · positive technical edge · filings agree — is the rare setup worth your deepest research before you act. Below the shortlist, a <strong style={{color:"#ffd740"}}>WATCH LATER</strong> tier surfaces C-grade names that just missed the cut or have upside building — diamonds in the rough to revisit.
+              </div>
+              <div style={{marginTop:10,padding:10,borderRadius:4,background:"rgba(255,215,64,0.05)",border:"1px solid rgba(255,215,64,0.15)",fontSize:9,color:"#90a4ae",lineHeight:1.7}}>
+                ⚠ A high grade with all boxes means "worth deeper study," never "guaranteed buy." It cannot judge moat, brand, or management — the qualitative ~20% that needs reading the annual report. Refreshed daily server-side; the price moves the valuation grade between filings.
+              </div>
+            </div>
+
+            {!contenders&&(
+              <div style={{textAlign:"center",padding:"50px 0",color:"#1e2a3a"}}>
+                <div style={{fontSize:40}}>★</div>
+                <div style={{letterSpacing:2,fontSize:11,marginTop:12}}>NO CONTENDERS LIST LOADED YET</div>
+                <div style={{fontSize:10,color:FADE,marginTop:8,lineHeight:1.7}}>It's published daily by a GitHub Action (<code style={{color:"#00bcd4"}}>contenders.json</code>). Check back after the next run.</div>
+              </div>
+            )}
+
+            {contenders&&(()=>{
+              const gradeColors={A:"#00e676",B:"#69f0ae",C:"#ffd740",D:"#ff8a80",F:"#ff5252"};
+              const all=contenders.contenders||[];
+              const list=contenderAllBoxesOnly?all.filter(c=>c.allBoxes):all;
+              const cnt=contenders.counts||{};
+              const when=contenders.generatedAt?new Date(contenders.generatedAt):null;
+              const pctEdge=v=>v!=null?(v*100>=0?"+":"")+(v*100).toFixed(2)+"%":"—";
+              const watch=contenders.watchlist||[];
+              const WATCH_LABELS={borderline:"BORDERLINE",techEdge:"TECH EDGE",deepValue:"DEEP VALUE",highGrowth:"HIGH GROWTH"};
+              const renderCard=(c)=>{
+                const gc=gradeColors[c.grade]||"#90a4ae";
+                const open=contenderOpen===c.sym;
+                const cc=c.crossCheck||{};
+                const tags=c.watchTags||[];
+                return(
+                  <div key={c.sym} style={{...card,border:"1px solid "+(c.allBoxes?"rgba(0,230,118,0.35)":BORD),background:c.allBoxes?"rgba(0,230,118,0.04)":BG2}}>
+                    <div style={{display:"flex",alignItems:"center",gap:12,flexWrap:"wrap"}}>
+                      <div style={{fontSize:34,fontWeight:700,color:gc,lineHeight:1,minWidth:34,textAlign:"center"}}>{c.grade}</div>
+                      <div style={{flex:1,minWidth:140}}>
+                        <div style={{display:"flex",alignItems:"center",gap:8,flexWrap:"wrap"}}>
+                          <span style={{fontSize:16,fontWeight:700,color:"#eceff1",letterSpacing:1}}>{c.sym}</span>
+                          {c.allBoxes&&<span style={{fontSize:8,fontWeight:700,letterSpacing:1,padding:"3px 7px",borderRadius:3,color:"#00e676",background:"#00e67618",border:"1px solid #00e67655"}}>★ ALL BOXES</span>}
+                          {tags.map(t=><span key={t} style={{fontSize:8,fontWeight:700,letterSpacing:1,padding:"3px 7px",borderRadius:3,color:"#ffd740",background:"#ffd74015",border:"1px solid #ffd74055"}}>{WATCH_LABELS[t]||t.toUpperCase()}</span>)}
+                          <span style={{fontSize:9,color:DIM}}>score {c.total>0?"+":""}{c.total}</span>
+                        </div>
+                        <div style={{fontSize:10,color:FADE,marginTop:2}}>{c.entity||""}</div>
+                      </div>
+                      <button style={{...pill(false),marginBottom:0,whiteSpace:"nowrap",color:"#00bcd4",borderColor:"#00bcd499"}} onClick={()=>{setTicker(c.sym);fetchLive(c.sym);}}>ANALYZE →</button>
+                    </div>
+
+                    <div style={{display:"grid",gridTemplateColumns:"repeat(auto-fit,minmax(92px,1fr))",gap:8,marginTop:12}}>
+                      {[
+                        {l:"PRICE",v:c.price!=null?"$"+c.price.toFixed(2):"—",col:"#eceff1"},
+                        {l:"P/E",v:c.peTTM!=null?c.peTTM.toFixed(1):"—",col:"#90a4ae"},
+                        {l:"P/B",v:c.pbAnnual!=null?c.pbAnnual.toFixed(2):"—",col:"#90a4ae"},
+                        {l:"CHEAP",v:(c.cheap>0?"+":"")+c.cheap,col:c.cheap>0?"#00e676":c.cheap<0?"#ff5252":"#ffd740"},
+                        {l:"HEALTH",v:(c.healthy>0?"+":"")+c.healthy,col:c.healthy>0?"#00e676":c.healthy<0?"#ff5252":"#ffd740"},
+                        {l:"GROWTH",v:(c.growing>0?"+":"")+c.growing,col:c.growing>0?"#00e676":c.growing<0?"#ff5252":"#ffd740"},
+                      ].map(x=>(
+                        <div key={x.l} style={{background:"#060810",padding:"8px 6px",borderRadius:4,textAlign:"center"}}>
+                          <div style={{fontSize:8,color:DIM,letterSpacing:1,marginBottom:3}}>{x.l}</div>
+                          <div style={{fontSize:14,fontWeight:700,color:x.col}}>{x.v}</div>
+                        </div>
+                      ))}
+                    </div>
+
+                    <div style={{display:"grid",gridTemplateColumns:"1fr 1fr",gap:8,marginTop:8}}>
+                      <div style={{background:"#060810",padding:"8px 10px",borderRadius:4}}>
+                        <div style={{fontSize:8,color:DIM,letterSpacing:1,marginBottom:3}}>TECHNICAL EDGE</div>
+                        <div style={{fontSize:11,color:c.tech&&c.tech.pass?"#00e676":"#ff8a80",fontWeight:700}}>
+                          {c.tech&&c.tech.pass?"✓ ":"· "}pattern edge {pctEdge(c.tech&&c.tech.patternEdge)}
+                          {c.tech&&c.tech.trendPF!=null?<span style={{color:FADE,fontWeight:400}}> · trend PF {c.tech.trendPF.toFixed(2)}</span>:null}
+                        </div>
+                      </div>
+                      <div style={{background:"#060810",padding:"8px 10px",borderRadius:4}}>
+                        <div style={{fontSize:8,color:DIM,letterSpacing:1,marginBottom:3}}>LATEST FILING</div>
+                        <div style={{fontSize:11,color:cc.ok?"#90a4ae":"#ff8a80",fontWeight:700}}>
+                          {c.filing&&c.filing.date
+                            ? <>{cc.ok?"✓ ":"⚠ "}{c.filing.period||""}{c.filing.fiscalYear?" FY"+String(c.filing.fiscalYear).slice(-2):""} · filed {c.filing.daysAgo!=null?c.filing.daysAgo+"d ago":c.filing.date}</>
+                            : <span style={{color:FADE,fontWeight:400}}>not cross-referenced</span>}
+                        </div>
+                      </div>
+                    </div>
+
+                    <div style={{marginTop:8,display:"flex",justifyContent:"space-between",alignItems:"center",gap:8,flexWrap:"wrap"}}>
+                      <span style={{fontSize:9,color:FADE,lineHeight:1.5,flex:1,minWidth:160}}>{cc.note||""}</span>
+                      {((c.reasons&&c.reasons.length)||(c.flags&&c.flags.length))?(
+                        <button style={{...pill(open),marginBottom:0,fontSize:9}} onClick={()=>setContenderOpen(open?null:c.sym)}>
+                          {open?"▲ HIDE DILIGENCE":"▼ DILIGENCE ("+((c.reasons||[]).length)+"✓ "+((c.flags||[]).length)+"⚠)"}
+                        </button>
+                      ):null}
+                    </div>
+
+                    {open&&(
+                      <div style={{marginTop:8,paddingTop:8,borderTop:"1px solid "+BG2}}>
+                        {(c.reasons||[]).map((r,i)=>(<div key={"r"+i} style={{fontSize:10,color:"#90a4ae",padding:"4px 0",lineHeight:1.5}}>✓ {r}</div>))}
+                        {(c.flags||[]).map((f,i)=>(<div key={"f"+i} style={{fontSize:10,color:"#ff8a80",padding:"4px 0",lineHeight:1.5}}>⚠ {f}</div>))}
+                      </div>
+                    )}
+                  </div>
+                );
+              };
+              return(
+                <>
+                  <div style={{...card,display:"flex",alignItems:"center",gap:14,flexWrap:"wrap"}}>
+                    <div style={{textAlign:"center",minWidth:70}}>
+                      <div style={{fontSize:30,fontWeight:700,color:"#ffd740",lineHeight:1}}>{cnt.aOrB!=null?cnt.aOrB:all.length}</div>
+                      <div style={{fontSize:8,color:DIM,letterSpacing:1,marginTop:4}}>A/B NAMES</div>
+                    </div>
+                    <div style={{textAlign:"center",minWidth:70}}>
+                      <div style={{fontSize:30,fontWeight:700,color:"#00e676",lineHeight:1}}>{cnt.allBoxes!=null?cnt.allBoxes:all.filter(c=>c.allBoxes).length}</div>
+                      <div style={{fontSize:8,color:DIM,letterSpacing:1,marginTop:4}}>ALL BOXES</div>
+                    </div>
+                    <div style={{textAlign:"center",minWidth:70}}>
+                      <div style={{fontSize:30,fontWeight:700,color:"#ffd740",lineHeight:1}}>{cnt.watch!=null?cnt.watch:(contenders.watchlist||[]).length}</div>
+                      <div style={{fontSize:8,color:DIM,letterSpacing:1,marginTop:4}}>WATCH LATER</div>
+                    </div>
+                    <div style={{flex:1,minWidth:160,fontSize:9,color:FADE,lineHeight:1.7}}>
+                      Graded from <strong style={{color:"#90a4ae"}}>{cnt.universe||"—"}</strong> names · {contenders.priceSrc||"live price"}.{when?" Refreshed "+when.toISOString().slice(0,16).replace("T"," ")+" UTC.":""}
+                    </div>
+                    <button style={{...pill(contenderAllBoxesOnly),marginBottom:0,whiteSpace:"nowrap"}} onClick={()=>setContenderAllBoxesOnly(v=>!v)}>
+                      {contenderAllBoxesOnly?"★ ALL BOXES ONLY":"SHOW ALL A/B"}
+                    </button>
+                  </div>
+
+                  {list.length===0&&(
+                    <div style={{textAlign:"center",padding:"30px 0",color:FADE,fontSize:11,letterSpacing:1}}>
+                      {contenderAllBoxesOnly?"No name cleared every box in the latest run.":"No A/B contenders in the latest run."}
+                    </div>
+                  )}
+
+                  {list.map(renderCard)}
+
+                  {!contenderAllBoxesOnly&&watch.length>0&&(
+                    <>
+                      <div style={{...card,border:"1px solid rgba(255,215,64,0.25)",marginTop:18}}>
+                        <span style={lbl}>💎 WATCH LATER — C-grade diamonds in the rough</span>
+                        <div style={{fontSize:11,color:"#90a4ae",lineHeight:1.8}}>
+                          Not contenders <em>yet</em>, but worth keeping an eye on: names that <strong style={{color:"#ffd740"}}>just missed the cut</strong>, whose <strong style={{color:"#ffd740"}}>chart is already working</strong>, or that are standouts in one category (deep value or high growth) the blended grade hasn't caught up to. A turn in price (re-rating the valuation grade) or the next filing could push these into the A/B shortlist. The tagged ones lead.
+                        </div>
+                      </div>
+                      {watch.map(renderCard)}
+                    </>
+                  )}
                 </>
               );
             })()}
