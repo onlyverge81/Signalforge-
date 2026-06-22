@@ -618,8 +618,7 @@ time; the in-sample dyno points, the OOS ledger pulls the trigger; NEVER an in-s
   context-blind); vote-construction audit (Div bug, Trend window-dep, RSI/MACD/VWAP mis-thresholds); shadow engine
   + shadow backtest (8 teams); `shadow-noDiv`/`noDeadDiv`.
 - ⏳ PASSIVE — mature the ~22 OOS labels + 7 shadow streams to n≥10 and clear the BH/BY FDR family. Time, not work.
-- 🟢 **R1 · Pre-register the promotion bar** (cheapest, foundational, do FIRST): write the exact gate into this file
-  — n≥10, q≤0.05 on the **BY** column, positive alpha, survives a hold-out window. Prevents optional-stopping p-hacking.
+- 🟢 **R1 · Pre-register the promotion bar** (cheapest, foundational, do FIRST): ✅ **DONE — LOCKED protocol below.**
 - 🟢 **R2 · Prune the FDR TEST family** (cheap, restores power): drop dominated/redundant labels (e.g. `noMacdPat`
   dominated by `noDead`; overlapping combined variants) so correlated tests don't dilute the BY column.
 - 🟢 **R3 · Liquid PRIMARY research universe** (biggest contamination fix): re-run the studies on a tradeable universe
@@ -641,4 +640,32 @@ time; the in-sample dyno points, the OOS ledger pulls the trigger; NEVER an in-s
 - 🔵 **D5 · Terminal milestone** — pre-commit a go/no-go date: "at 100 closed `momentum-liquid` OOS trades, decide;
   demote whatever FDR has cleared." Turns open-ended measurement into a decidable project.
 - ⏳ OPTIONAL leftovers: WebSocket forming-bar parity test; live end-to-end (needs a key in a real browser).
+
+### R1 — Pre-registered PROMOTE / DEMOTE protocol (LOCKED 2026-06-22 — do not soften after seeing data)
+
+Written BEFORE the ledger filled, expressly to forbid optional-stopping (moving the bar to fit a number you've
+already watched). Operates on `forward-perf.json`'s per-variant `alphaGrowthPct` (alpha vs TOTAL-return buy-&-hold),
+its BH and BY FDR `significance`, and `n` (closed, benchmarkable trades).
+
+**PROMOTE** a propose-only label to "ratified / tradeable" — ALL must hold:
+1. **Coverage:** `n ≥ 10` closed benchmarkable OOS trades (charter floor). `n < 10` ⇒ status WATCH, never promoted.
+2. **Significance:** clears the FDR family at `q ≤ 0.05` on **BOTH the BH and the BY** columns — not BH alone (the
+   ~30-member family is correlated; BY is the dependence-robust check and is now a co-gate, not just a footnote).
+3. **Sign:** point-estimate `alphaGrowthPct > 0` (a significant NEGATIVE alpha is evidence to DEMOTE, never promote).
+4. **Persistence (anti-overfit):** split the label's closed trades chronologically in half — mean alpha must be
+   **positive in BOTH halves**. If `n < 20` the split is untrustworthy ⇒ status PROVISIONAL, hold promotion until `n ≥ 20`.
+5. **Cleanliness:** no-lookahead intact; not flagged data-suspect.
+
+**DEMOTE** (cut a nuisance vote / mark a label dead) — LOWER bar, cut fast (charter "demote fast"):
+1. `n ≥ 5` closed OOS trades.
+2. The adverse verdict at `p ≤ 0.1`: for a nuisance VOTE, its `shadow-*` team's alpha beats the full team's `all`;
+   for a label, a significant NEGATIVE `alphaGrowthPct`. Cut, don't flip; never re-wire the live engine in-sample.
+
+**ANTI-OPTIONAL-STOPPING (binding process):**
+- Evaluate ONLY at the fixed cadence (monthly) — never continuously; do NOT act on the first threshold crossing
+  between checkpoints.
+- A label evaluated and failed is re-examined only at the NEXT scheduled checkpoint, not re-tested daily for a cross.
+- This bar is FROZEN. To change it, change it for FUTURE labels with a dated note — NEVER retroactively to admit a
+  label you have already been watching.
+- **Terminal (D5):** at 100 closed `momentum-liquid` OOS trades, force a go/no-go and demote whatever has cleared.
 
