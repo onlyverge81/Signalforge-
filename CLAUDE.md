@@ -619,8 +619,11 @@ time; the in-sample dyno points, the OOS ledger pulls the trigger; NEVER an in-s
   + shadow backtest (8 teams); `shadow-noDiv`/`noDeadDiv`.
 - ⏳ PASSIVE — mature the ~22 OOS labels + 7 shadow streams to n≥10 and clear the BH/BY FDR family. Time, not work.
 - 🟢 **R1 · Pre-register the promotion bar** (cheapest, foundational, do FIRST): ✅ **DONE — LOCKED protocol below.**
-- 🟢 **R2 · Prune the FDR TEST family** (cheap, restores power): drop dominated/redundant labels (e.g. `noMacdPat`
-  dominated by `noDead`; overlapping combined variants) so correlated tests don't dilute the BY column.
+- 🟢 **R2 · Prune the FDR TEST family** (cheap, restores power): ✅ **DONE.** The FDR denominator now counts only genuine
+  PROMOTION HYPOTHESES — `forward-perf` flags each variant `fdr` and EXCLUDES baselines (`all`/`position`), every `-off`
+  control leg (the complement, not a hypothesis), and the dominated `shadow-noMacdPat`. ~halves the family `m`, restoring
+  BH/BY power and ending the double-count of anti-correlated legs. Excluded-but-populated variants read verdict `CONTEXT`
+  (not a false `NOT SIGNIFICANT`). Tests +1 (299 green).
 - 🟢 **R3 · Liquid PRIMARY research universe** (biggest contamination fix): re-run the studies on a tradeable universe
   (price≥$5, ADV≥$2M, ~S&P-1500) as the DEFAULT; keep the survivorship-free micro-cap roster only as a bias cross-check.
 - 🟢 **R4 · Audit the SIZE / risk-management layer** (untapped frontier): point the same scalpel at position sizing /

@@ -285,7 +285,13 @@ export function scoreLedger(ledger, variants = defaultVariants(), costPerTrade =
   const suspect = rows.filter(t => t.tags && t.tags.dataSuspect).length;
   const variantsOut = {};
   for (const v of variants) {
-    variantsOut[v.label] = variantAlpha(rows.filter(v.where), costPerTrade);
+    const va = variantAlpha(rows.filter(v.where), costPerTrade);
+    // R2 — the FDR family is the genuine PROMOTION hypotheses only. Baselines (`all`, `position`),
+    // every `-off` complement leg (the control, not a hypothesis), and the dominated `shadow-noMacdPat`
+    // (a strict subset of `noDead`/`noDeadDiv`) are CONTEXT — excluding them from the multiple-testing
+    // denominator restores power for the real survivors and stops double-counting anti-correlated legs.
+    va.fdr = !(v.label === "all" || v.label === "position" || v.label === "shadow-noMacdPat" || v.label.endsWith("-off"));
+    variantsOut[v.label] = va;
   }
   const perf = {
     generatedAt: new Date().toISOString(),
@@ -409,10 +415,11 @@ export function attachSignificance(perf, opts = {}) {
     stat[label] = { tt, pUpper, pLower };
   }
 
-  // 2) multiple-testing family = variants with n ≥ minN and a defined p
+  // 2) multiple-testing family = PROMOTION HYPOTHESES with n ≥ minN and a defined p. Baselines, `-off`
+  //    complement legs, and dominated variants are flagged fdr:false (R2) → excluded from the denominator.
   const family = entries
     .map(([label]) => label)
-    .filter(label => stat[label].tt.n >= minN && stat[label].pUpper != null);
+    .filter(label => perf.variants[label].fdr !== false && stat[label].tt.n >= minN && stat[label].pUpper != null);
   const m = family.length;
   const harmonic = Array.from({ length: m }, (_, i) => 1 / (i + 1)).reduce((a, b) => a + b, 0);
 
@@ -431,6 +438,8 @@ export function attachSignificance(perf, opts = {}) {
     let verdict, promotable = false, provenLoser = false;
     if (tt.n < minN) {
       verdict = "TOO FEW TRADES";
+    } else if (!inFamily) {
+      verdict = "CONTEXT";    // baseline / `-off` control / dominated — not a promotion hypothesis (R2)
     } else if (meanAlpha > 0 && qBH != null && qBH < Q_SIGNIFICANT) {
       verdict = "SIGNIFICANT"; promotable = true;
     } else if (meanAlpha > 0 && qBH != null && qBH < Q_SUGGESTIVE) {
@@ -458,6 +467,7 @@ export function attachSignificance(perf, opts = {}) {
 
   perf.multipleTesting = {
     method: "Benjamini-Hochberg FDR (promotion); Benjamini-Yekutieli reported as arbitrary-dependence cross-check",
+    familyNote: "Family = PROMOTION HYPOTHESES only (R2): baselines (all/position), every `-off` control leg, and the dominated shadow-noMacdPat are excluded so correlated non-hypotheses don't dilute the BH/BY denominator.",
     minTrades: minN,
     familySize: m,
     family,
