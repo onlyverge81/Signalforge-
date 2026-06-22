@@ -9,7 +9,7 @@ import {
   buildPanel, obsFor, standaloneICs, contributionPie, spearman,
   correlationMatrix, conditionalIC, interactionScan, combinedComposite,
   parsePolyFinancials, recAsOf, autopsyValues,
-  dollarVol, trailingMedianDollarVol, liquidAt, trailingBeta, betaNeutralIC,
+  dollarVol, trailingMedianDollarVol, liquidAt, clearsLiquidityBar, trailingBeta, betaNeutralIC,
   obsForNeutral, robustnessFor,
   solveLinear, olsResidual, uniqueIC, standardizeByPeriod, corrMatrixPearson,
   jacobiEig, effectiveBets, pca,
@@ -530,4 +530,21 @@ test("oscillatorEventStudy detects a timing edge and reports a flat one as ~0 (a
   assert.ok(study.RSI.bull.meanExcessPct > 0, "oversold entries beat the name's own hold in a mean-reverting series (got " + study.RSI.bull.meanExcessPct + "%)");
   // Shape of the result object.
   assert.ok("t" in study.RSI.bull && "verdict" in study.RSI.bull && study.horizon === 10);
+});
+
+// ─── R3 — universe-level liquidity screen (liquid default, survivorship-free cross-check) ──────
+
+test("clearsLiquidityBar: a liquid name passes; perpetual micro-cap junk and thin history fail", () => {
+  const mk = (n, price, vol) => Array.from({ length: n }, () => ({ close: price, volume: vol }));
+  // $20 × 1M = $20M median ADV, price ≥ $5 → tradeable.
+  assert.equal(clearsLiquidityBar(mk(300, 20, 1_000_000)), true);
+  // sub-$5 penny stock → fails the price floor.
+  assert.equal(clearsLiquidityBar(mk(300, 2, 5_000_000)), false);
+  // $20 but ~$2k/day dollar-volume → fails the ADV floor (micro-cap junk).
+  assert.equal(clearsLiquidityBar(mk(300, 20, 100)), false);
+  // too little history → not a tradeable read, false (no crash).
+  assert.equal(clearsLiquidityBar(mk(10, 20, 1_000_000)), false);
+  // a name liquid for MOST of its life then a thin tail still passes on the median (de-listed-but-was-liquid).
+  const wasLiquid = mk(280, 30, 2_000_000).concat(mk(20, 1, 50));   // long liquid history + a dying tail
+  assert.equal(clearsLiquidityBar(wasLiquid), true, "median over history passes — no survivorship bias added");
 });

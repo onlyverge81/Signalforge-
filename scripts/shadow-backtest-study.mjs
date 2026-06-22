@@ -20,6 +20,7 @@ import { runBacktest, scoreAt } from "./engine.mjs";
 import { fetchPolygonAggs } from "./pattern-study.mjs";
 import { selectMeritUniverse } from "./build-study.mjs";
 import { readTickers } from "./build-fundamentals.mjs";
+import { clearsLiquidityBar } from "./factor-interaction-study.mjs";
 
 const __dirname = path.dirname(fileURLToPath(import.meta.url));
 const ROOT = path.resolve(__dirname, "..");
@@ -122,6 +123,16 @@ async function main() {
   }
   console.log("\n" + Object.keys(barsByTicker).length + " names loaded (" + errors.length + " skipped).");
 
+  // R3 — LIQUID universe is the DEFAULT (price≥$5, median ADV≥$2M); the full survivorship-free roster is
+  // an opt-in bias cross-check (SBT_UNIVERSE=full). The first shadow-backtest ran on junky micro-caps; this
+  // makes the reveal TRADEABLE-relevant. Liquid de-listed names still pass (no survivorship bias added).
+  const fullUniverse = process.env.SBT_UNIVERSE === "full";
+  let droppedIlliquid = 0;
+  if(!fullUniverse){
+    for(const sym of Object.keys(barsByTicker)){ if(!clearsLiquidityBar(barsByTicker[sym])){ delete barsByTicker[sym]; droppedIlliquid++; } }
+    console.log("liquid universe screen: kept " + Object.keys(barsByTicker).length + " names, dropped " + droppedIlliquid + " illiquid (SBT_UNIVERSE=full for the survivorship-free cross-check).");
+  } else console.log("universe: FULL survivorship-free roster (bias cross-check) — liquid screen OFF.");
+
   const teams = TEAMS.map(team => {
     const results = Object.values(barsByTicker).map(bars => teamBacktestOne(bars, team.drop));
     return { key: team.key, label: team.label, drop: team.drop, ...aggregateTeam(results) };
@@ -130,7 +141,8 @@ async function main() {
 
   const out = {
     generatedAt: new Date().toISOString(),
-    universe: { requested: tickers.length, covered: Object.keys(barsByTicker).length, source, survivorshipFree, skipped: errors },
+    universe: { requested: tickers.length, covered: Object.keys(barsByTicker).length, source, survivorshipFree,
+      screen: fullUniverse ? "FULL survivorship-free roster (bias cross-check)" : `LIQUID default (${droppedIlliquid} illiquid dropped)`, skipped: errors },
     config: { slMult: SLM, tpMult: TPM, costs: COSTS, minBars: MIN_BARS },
     teams: revealed,
     caveats: [

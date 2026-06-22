@@ -624,8 +624,13 @@ time; the in-sample dyno points, the OOS ledger pulls the trigger; NEVER an in-s
   control leg (the complement, not a hypothesis), and the dominated `shadow-noMacdPat`. ~halves the family `m`, restoring
   BH/BY power and ending the double-count of anti-correlated legs. Excluded-but-populated variants read verdict `CONTEXT`
   (not a false `NOT SIGNIFICANT`). Tests +1 (299 green).
-- 🟢 **R3 · Liquid PRIMARY research universe** (biggest contamination fix): re-run the studies on a tradeable universe
-  (price≥$5, ADV≥$2M, ~S&P-1500) as the DEFAULT; keep the survivorship-free micro-cap roster only as a bias cross-check.
+- 🟢 **R3 · Liquid PRIMARY research universe** (biggest contamination fix): ✅ **DONE (shared screen, two studies).**
+  Pure `clearsLiquidityBar(bars)` (median price≥$5 AND median daily $-vol≥$2M over a name's history) is now the DEFAULT
+  universe gate for `factor-interaction-study` + `shadow-backtest-study` — drops the perpetual micro-cap junk that
+  contaminated the pie (lowvol artifact, oversold bounce). Liquid de-listed names still pass (NO survivorship bias
+  added). The full survivorship-free roster stays an opt-in **bias cross-check** via `FIS_UNIVERSE=full` /
+  `SBT_UNIVERSE=full`; the `universe.screen` field + caveats record which ran. Tests +1 (300 green). Pattern to adopt
+  next in the sibling cross-sectional studies (momentum/reversal/lowvol/quality/merit) — same helper, same toggle.
 - 🟢 **R4 · Audit the SIZE / risk-management layer** (untapped frontier): point the same scalpel at position sizing /
   stops / portfolio construction — a coin-toss signal with disciplined sizing can still be a product; great signal +
   bad sizing blows up. Likely higher leverage than squeezing the signal further.

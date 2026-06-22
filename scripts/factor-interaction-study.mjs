@@ -241,6 +241,19 @@ export function liquidAt(series, idx, { minADV = LIQ_MIN_ADV, minPrice = LIQ_MIN
   return trailingMedianDollarVol(series, idx, win) >= minADV;
 }
 
+// Universe-level liquidity screen (R3): is this a TRADEABLE name over its history, or perpetual micro-cap
+// junk? Median price + median daily dollar-volume across ALL its bars must clear the floors. Used to make
+// the LIQUID universe the DEFAULT research surface; the full survivorship-free roster stays an opt-in bias
+// cross-check. (De-listed names that WERE liquid before death still pass — no survivorship bias added.)
+export function clearsLiquidityBar(bars, { minPrice = LIQ_MIN_PRICE, minADV = LIQ_MIN_ADV } = {}){
+  const b = (bars || []).filter(x => x && x.close > 0);
+  if(b.length < 30) return false;
+  const med = arr => { const s = arr.slice().sort((a, b) => a - b); const m = s.length >> 1; return s.length % 2 ? s[m] : (s[m - 1] + s[m]) / 2; };
+  const medPrice = med(b.map(x => x.close));
+  const medADV = med(b.map(x => x.close * (x.volume || 0)));
+  return medPrice >= minPrice && medADV >= minADV;
+}
+
 // Daily simple returns keyed by bar timestamp (for beta alignment). Pure.
 export function dailyReturnsByT(series){
   const m = new Map();
@@ -851,6 +864,18 @@ async function main(){
     }catch(e){ errors.push(sym + ": " + (e.message || e)); console.warn("✗ " + sym.padEnd(6) + " — " + (e.message || e)); }
   }
 
+  // R3 — LIQUID universe is the DEFAULT research surface (price≥$5, median ADV≥$2M over history); the full
+  // survivorship-free roster is an opt-in bias cross-check (FIS_UNIVERSE=full). Drops perpetual micro-cap
+  // junk that contaminated the pie (the lowvol artifact, the oversold bounce — angle A). Liquid de-listed
+  // names still pass (no survivorship bias added). Set BEFORE the panel so every downstream stat uses it.
+  const fullUniverse = process.env.FIS_UNIVERSE === "full";
+  let droppedIlliquid = 0;
+  if(!fullUniverse){
+    for(const sym of Object.keys(barsByTicker)){ if(!clearsLiquidityBar(barsByTicker[sym])){ delete barsByTicker[sym]; droppedIlliquid++; } }
+    console.log("liquid universe screen: kept " + Object.keys(barsByTicker).length + " names, dropped " + droppedIlliquid +
+      " illiquid (price≥$" + LIQ_MIN_PRICE + ", median ADV≥$" + (LIQ_MIN_ADV/1e6) + "M). Set FIS_UNIVERSE=full for the survivorship-free cross-check.");
+  } else console.log("universe: FULL survivorship-free roster (bias cross-check) — liquid screen OFF.");
+
   // Robustness inputs (angle A) — best-effort, never fatal: a market proxy (SPY) for beta and the SIC
   // sector map. If either fails the pie still emits; only that neutralisation column goes unavailable.
   let market = null;
@@ -923,7 +948,9 @@ async function main(){
 
   const out = {
     generatedAt: new Date().toISOString(),
-    universe: { requested: tickers.length, covered: Object.keys(barsByTicker).length, withFinancials: fundCount, source, survivorshipFree, skipped: errors },
+    universe: { requested: tickers.length, covered: Object.keys(barsByTicker).length, withFinancials: fundCount, source, survivorshipFree,
+      screen: fullUniverse ? "FULL survivorship-free roster (bias cross-check)" : `LIQUID default (price≥$${LIQ_MIN_PRICE}, median ADV≥$${LIQ_MIN_ADV/1e6}M; ${droppedIlliquid} illiquid dropped)`,
+      skipped: errors },
     source: { prices: "Polygon (adjusted daily close)", fundamentals: haveFunda ? "Polygon /vX/reference/financials (point-in-time by filing_date)" : "none loaded" },
     config: { rebalance: "monthly", forwardHorizon: "1 month", minBars: MIN_BARS, rows: panel.length },
     contributors: { factors: FACTOR_NAMES, fundamentals: FUNDA, votes: VOTE_NAMES, voteWeights: VOTE_WEIGHTS },
