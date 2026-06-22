@@ -556,6 +556,16 @@ The honest meta: the SIGNALS dashboard shows 7 authoritative votes; under the ho
 as-displayed, Pat), 2 redundant/mis-thresholded (MACD, RSI), 1 mislabeled (VWAP). DISCIPLINE: corrections become
 OOS-testable CANDIDATE votes (corrected divergence / recent-window Trend / context-aware Pat), never in-sample patches.
 
+**Second shadow-backtest run (8 teams incl. Div, DONE, in-sample) — merged via PR #56:** the audit's `Div` bug now has
+its own shadow team. Result (38 names): **dropping Div alone helps modestly** (Δexpectancy +0.096, Δalpha +5.2pp —
+on par with Pat/ADX, below MACD; quirk: it ADDS 73 trades, improving quality not churn). **The full 4-vote cleanup
+`noDeadDiv` (−MACD−Pat−ADX−Div) is the new best team:** expectancy +0.148 (t +0.61) vs the 3-vote `noDead` +0.081,
+win 44.7%, trades −38% (2435→1513), alpha recovered +43.7pp — i.e. removing the divergence bug ON TOP of the other
+three makes the cleanest team cleaner still. **The nuisances COMPOUND super-additively:** sum of the 4 single Δexp =
++0.365, but all-four-together = +0.738 (double) — they reinforce each other's bad trades. HONEST (unchanged): in-sample
+(dies live); even fully cleaned alpha is STILL −18.6 (loses to passive) and t +0.61 is a COIN TOSS, not significance.
+The OOS `shadow-noDiv`/`shadow-noDeadDiv` ledger under FDR is the arbiter — NO in-sample re-wire.
+
 **Contenders hardening (DONE) — branch `claude/signalforge-duplicate-parsecsv-yiWlH`, 4 issues found reviewing
 the first live `contenders.json`:**
 - **#1 implausible-fundamentals guard:** a bad SEC TTM assembly gave **NVDA npm ≈ 5.93 (593%)**, scored as
