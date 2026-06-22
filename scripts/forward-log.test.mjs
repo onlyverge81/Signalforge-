@@ -2,7 +2,7 @@
 // Run: node --test scripts/
 import { test } from "node:test";
 import assert from "node:assert/strict";
-import { splitSettled, markToMarket, mergeLedger, buildEntry, parseFeed, gradeFor, forwardGates, meritGate, momentumValue, momentumRankGate, reversalValue, reversalRankGate, lowVolValue, lowVolRankGate, qualityValue, qualityRankGate, eventTags, earningsGate, buildPositionEntry, markToMarketPosition, liquidAtBar, buildShadowEntries, SHADOW_CONFIGS } from "./forward-log.mjs";
+import { splitSettled, markToMarket, mergeLedger, buildEntry, parseFeed, gradeFor, forwardGates, meritGate, momentumValue, momentumRankGate, reversalValue, reversalRankGate, lowVolValue, lowVolRankGate, qualityValue, qualityRankGate, eventTags, earningsGate, buildPositionEntry, markToMarketPosition, liquidAtBar, buildShadowEntries, SHADOW_CONFIGS, contenderTag } from "./forward-log.mjs";
 
 // A long uptrend of `up` rising bars then `dip` declining bars (a pullback inside the trend).
 const _pbar = c => { c=+(+c).toFixed(4); return { date:"2025-01-01", open:c, high:+(c+1).toFixed(4), low:+(c-1).toFixed(4), close:c, volume:1e6 }; };
@@ -428,6 +428,29 @@ test("buildEntry: news labels ride the captured events and never change the OPEN
   const none = buildEntry({ sym: "TST", settled, fundaDB: null, news: [] });
   assert.equal(none.tags.newsPositive, false);
   assert.equal(none.tags.newsQuiet, true);
+});
+
+// ─── contenders overlay — propose-only membership LABEL ───────────────────────
+test("contenderTag: marks A/B membership and all-boxes from the current contenders.json", () => {
+  const db = { contenders: [
+    { sym: "AAPL", allBoxes: true },
+    { sym: "msft", allBoxes: false },   // graded A/B but didn't clear every box; case-insensitive
+  ] };
+  assert.deepEqual(contenderTag(db, "AAPL"), { contenderAB: true,  contenderAllBoxes: true });
+  assert.deepEqual(contenderTag(db, "MSFT"), { contenderAB: true,  contenderAllBoxes: false });
+  assert.deepEqual(contenderTag(db, "TSLA"), { contenderAB: false, contenderAllBoxes: false });
+  assert.deepEqual(contenderTag(null, "AAPL"), { contenderAB: false, contenderAllBoxes: false });
+});
+
+test("buildEntry: the contenders label rides the current list and never changes the OPEN/OBSERVATION decision", () => {
+  const settled = genUp(120);
+  const db = { contenders: [{ sym: "TST", allBoxes: true }] };
+  const on  = buildEntry({ sym: "TST", settled, fundaDB: null, contendersDB: db });
+  const off = buildEntry({ sym: "TST", settled, fundaDB: null, contendersDB: { contenders: [] } });
+  assert.equal(on.tags.contenderAllBoxes, true);
+  assert.equal(on.tags.contenderAB, true);
+  assert.equal(off.tags.contenderAllBoxes, false);
+  assert.equal(on.status, off.status, "contenders membership must not change which trades open");
 });
 
 // ─── earnings-proximity overlay — propose-only LABEL from the SEC filing date ──

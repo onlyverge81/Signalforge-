@@ -1,6 +1,6 @@
 {
   "version": 1,
-  "updatedAt": "2026-06-19T12:38:07.169Z",
+  "updatedAt": "2026-06-20T08:35:55.513Z",
   "policy": {
     "promote": {
       "minTrades": 10,
@@ -286,6 +286,126 @@
       "history": [
         {
           "at": "2026-06-17T12:57:13.050Z",
+          "from": null,
+          "to": "candidate",
+          "reason": "registered"
+        }
+      ]
+    },
+    "mom-quality-on": {
+      "state": "candidate",
+      "since": "2026-06-20T08:35:55.513Z",
+      "history": [
+        {
+          "at": "2026-06-20T08:35:55.513Z",
+          "from": null,
+          "to": "candidate",
+          "reason": "registered"
+        }
+      ]
+    },
+    "mom-quality-off": {
+      "state": "candidate",
+      "since": "2026-06-20T08:35:55.513Z",
+      "history": [
+        {
+          "at": "2026-06-20T08:35:55.513Z",
+          "from": null,
+          "to": "candidate",
+          "reason": "registered"
+        }
+      ]
+    },
+    "mom-lowvol-on": {
+      "state": "candidate",
+      "since": "2026-06-20T08:35:55.513Z",
+      "history": [
+        {
+          "at": "2026-06-20T08:35:55.513Z",
+          "from": null,
+          "to": "candidate",
+          "reason": "registered"
+        }
+      ]
+    },
+    "mom-lowvol-off": {
+      "state": "candidate",
+      "since": "2026-06-20T08:35:55.513Z",
+      "history": [
+        {
+          "at": "2026-06-20T08:35:55.513Z",
+          "from": null,
+          "to": "candidate",
+          "reason": "registered"
+        }
+      ]
+    },
+    "rev-lowvol-on": {
+      "state": "candidate",
+      "since": "2026-06-20T08:35:55.513Z",
+      "history": [
+        {
+          "at": "2026-06-20T08:35:55.513Z",
+          "from": null,
+          "to": "candidate",
+          "reason": "registered"
+        }
+      ]
+    },
+    "rev-lowvol-off": {
+      "state": "candidate",
+      "since": "2026-06-20T08:35:55.513Z",
+      "history": [
+        {
+          "at": "2026-06-20T08:35:55.513Z",
+          "from": null,
+          "to": "candidate",
+          "reason": "registered"
+        }
+      ]
+    },
+    "quality-position-on": {
+      "state": "candidate",
+      "since": "2026-06-20T08:35:55.513Z",
+      "history": [
+        {
+          "at": "2026-06-20T08:35:55.513Z",
+          "from": null,
+          "to": "candidate",
+          "reason": "registered"
+        }
+      ]
+    },
+    "quality-position-off": {
+      "state": "candidate",
+      "since": "2026-06-20T08:35:55.513Z",
+      "history": [
+        {
+          "at": "2026-06-20T08:35:55.513Z",
+          "from": null,
+          "to": "candidate",
+          "reason": "registered"
+        }
+      ]
+    },
+    "quality-grade-position-on": {
+      "state": "candidate",
+      "since": "2026-06-20T08:35:55.513Z",
+      "history": [
+        {
+          "at": "2026-06-20T08:35:55.513Z",
+          "from": null,
+          "to": "candidate",
+          "reason": "registered"
+        }
+      ]
+    },
+    "quality-grade-position-off": {
+      "state": "candidate",
+      "since": "2026-06-20T08:35:55.513Z",
+      "history": [
+        {
+          "at": "2026-06-20T08:35:55.513Z",
           "from": null,
           "to": "candidate",
           "reason": "registered"

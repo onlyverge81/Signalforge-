@@ -163,6 +163,17 @@ export function liquidAtBar(candles, { minADV = LIQ_MIN_ADV, minPrice = LIQ_MIN_
   return med >= minADV;
 }
 
+// ─── Contenders overlay (propose-only) ───────────────────────────────────────
+// contenders.json is the daily A/B research shortlist (build-contenders.mjs). This tags
+// whether the name logged on THIS bar is currently a contender — point-in-time (we log the
+// current bar against the current list, like every other label; no lookahead). A LABEL only:
+// it never enters forwardGates/actionable, so it does not change which trades open. Pure.
+export function contenderTag(contendersDB, sym) {
+  const list = contendersDB && Array.isArray(contendersDB.contenders) ? contendersDB.contenders : [];
+  const hit = list.find(c => c && String(c.sym).toUpperCase() === String(sym).toUpperCase());
+  return { contenderAB: !!hit, contenderAllBoxes: !!(hit && hit.allBoxes) };
+}
+
 // ─── Cross-sectional SHORT-TERM REVERSAL overlay (propose-only) ───────────────
 // The reversal.json study judges this factor with monthly bars; here, on the live DAILY feed,
 // reversalValue computes the same 1-month idea: the NEGATED trailing ~1-month return, so a
@@ -311,7 +322,7 @@ export function forwardGates({ signal, entry, tp1, stats, suspect, costPerTrade,
 // A tradeable long → OPEN position; HOLD, a long-only-blocked short, or a thin /
 // proven-losing setup → OBSERVATION (no position, no P&L). Every row carries its
 // gate tags so realized stats can later be segmented by them.
-export function buildEntry({ sym, settled, fundaDB, news = [], loggedAt = new Date().toISOString() }) {
+export function buildEntry({ sym, settled, fundaDB, contendersDB = null, news = [], loggedAt = new Date().toISOString() }) {
   if (settled.length < 30) return null; // not enough history for a trustworthy signal
   const a = analyze(settled, sym, CFG.market, CFG.strategy, CFG.slMult, CFG.tpMult);
   const bt = settled.length >= 40
@@ -371,7 +382,9 @@ export function buildEntry({ sym, settled, fundaDB, news = [], loggedAt = new Da
       macdBull: (a.indicators && a.indicators.macd) ? (a.indicators.macd.sig === "BULLISH" ? true : a.indicators.macd.sig === "BEARISH" ? false : null) : null,
       quality: (q => q == null ? null : parseFloat(q.toFixed(4)))(qualityValue(fundaDB && fundaDB[sym])),
       qualityActivated: false, ...eventTags(eventsAtSignal),
-      earningsRecent: earningsGate(fundaDB && fundaDB[sym], decision.date) },
+      earningsRecent: earningsGate(fundaDB && fundaDB[sym], decision.date),
+      // Contenders shortlist membership (propose-only label; never enters the gate).
+      ...contenderTag(contendersDB, sym) },
     status: isObs ? "OBSERVATION" : "OPEN",
     exit: null, exitAt: null, exitDate: null, barsHeld: null,
     pnl: null, grossPct: null, pnlPct: null, benchClose: null, benchDiv: null,
@@ -476,7 +489,7 @@ export function buildShadowEntries({ sym, settled, fundaDB, news = [], loggedAt 
 // names are skipped (null), matching the in-app "not engaged" honesty. An engaged BUY (a dip
 // inside a real uptrend) OPENs a position with a wide ATR stop + trailing exit; engaged HOLD or
 // a thesis-break SELL is a no-position OBSERVATION. Long-only by construction.
-export function buildPositionEntry({ sym, settled, fundaDB, news = [], loggedAt = new Date().toISOString() }) {
+export function buildPositionEntry({ sym, settled, fundaDB, contendersDB = null, news = [], loggedAt = new Date().toISOString() }) {
   if (settled.length < 200) return null;                 // trend filter can't engage — don't log
   const ps = scorePosition(settled);
   if (!ps || ps.engaged === false) return null;
@@ -507,7 +520,9 @@ export function buildPositionEntry({ sym, settled, fundaDB, news = [], loggedAt 
       // A/B. Set CROSS-SECTIONALLY by the run loop after ranking the position batch; never a gate.
       quality: (q => q == null ? null : parseFloat(q.toFixed(4)))(qualityValue(fundaDB && fundaDB[sym])),
       qualityActivated: false, ...eventTags(eventsAtSignal),
-      earningsRecent: earningsGate(fundaDB && fundaDB[sym], decision.date) },
+      earningsRecent: earningsGate(fundaDB && fundaDB[sym], decision.date),
+      // Contenders shortlist membership (propose-only label; never enters the gate).
+      ...contenderTag(contendersDB, sym) },
     status: actionable ? "OPEN" : "OBSERVATION",
     exit: null, exitAt: null, exitDate: null, barsHeld: null,
     pnl: null, grossPct: null, pnlPct: null, benchClose: null, benchDiv: null,
@@ -606,6 +621,7 @@ async function main() {
   const args = parseArgs(process.argv.slice(2));
   const writes = !(args.preview || args.dryRun);
   const fundaDB = readJSON(path.join(ROOT, "fundamentals.json"));
+  const contendersDB = readJSON(path.join(ROOT, "contenders.json"));
   const fixture = args.fixture ? readJSON(path.resolve(args.fixture)) : null;
   const key = process.env.POLYGON_API_KEY || process.env.POLYGON_KEY || "";
   if (!fixture && !key) { console.error("Set POLYGON_API_KEY (or pass --fixture for offline)."); process.exit(2); }
@@ -643,7 +659,7 @@ async function main() {
       // 2) Build today's entries (tactical + POSITION), stamping news/event context.
       let news = [];
       if (!fixture && key) { try { news = await fetchPolygonNews(sym, key); } catch { news = []; } }
-      for (const entry of [ buildEntry({ sym, settled, fundaDB, news }), buildPositionEntry({ sym, settled, fundaDB, news }),
+      for (const entry of [ buildEntry({ sym, settled, fundaDB, contendersDB, news }), buildPositionEntry({ sym, settled, fundaDB, contendersDB, news }),
                             ...buildShadowEntries({ sym, settled, fundaDB, news }) ]) {
         if (!entry) continue;
         const dup = ledger.some(e => e.id === entry.id) || fresh.some(e => e.id === entry.id);

@@ -1,0 +1,87 @@
+name: Build contenders
+
+# Builds contenders.json — the daily A/B shortlist for pre-execution diligence.
+# Joins data already on disk (fundamentals.json from the nightly SEC build, and
+# pattern-study.json's per-ticker edge) with a LIVE Polygon price (one grouped
+# snapshot) and Polygon's filing record (/vX/reference/financials), grades every
+# name with the same valueScore() the app uses, keeps the A/B names, marks the ones
+# that also clear a technical edge and a SEC-vs-Polygon filing cross-check
+# ("all boxes"), ranks them, commits the file, and deploys Pages so the app can read
+# it same-origin. Self-contained like pattern-study.yml.
+#
+# Requires the repo secret POLYGON_API_KEY (the REST key). If fundamentals.json is
+# missing or no A/B name survives, the build errors rather than overwriting a good
+# list with an empty one. Paced for the free tier's 5 req/min (override with
+# POLYGON_PACE_MS on a higher-rate plan).
+#
+# Runs DAILY (the valuation half of the grade moves with price, so A/B membership
+# changes daily) on a cron + manual dispatch — deliberately NOT on push. All the
+# data-builder workflows share the 'pages' concurrency group. Its 08:00 slot is
+# clear of fundamentals' daily 06:17 run, so it reads a fresh fundamentals.json.
+
+on:
+  schedule:
+    - cron: "0 8 * * *"   # daily 08:00 UTC (after fundamentals' 06:17)
+  workflow_dispatch:
+
+permissions:
+  contents: write   # to commit contenders.json
+  pages: write
+  id-token: write
+
+# Share the 'pages' group with the other deploy workflows so they never clash.
+concurrency:
+  group: pages
+  cancel-in-progress: false
+
+jobs:
+  build-and-deploy:
+    runs-on: ubuntu-latest
+    environment:
+      name: github-pages
+      url: ${{ steps.deploy.outputs.page_url }}
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Set up Node
+        uses: actions/setup-node@v4
+        with:
+          node-version: 20
+
+      - name: Run offline unit tests
+        run: node --test scripts/*.test.mjs
+
+      - name: Build contenders.json (Polygon price + filings)
+        env:
+          POLYGON_API_KEY: ${{ secrets.POLYGON_API_KEY }}
+          # The user's Stocks-Starter plan is unlimited (no throttle), so don't pace the
+          # ~500 per-name financials calls at the 13s free-tier default (would take ~100min).
+          POLYGON_PACE_MS: "0"
+        run: node scripts/build-contenders.mjs
+
+      - name: Commit contenders.json if it changed
+        run: |
+          git config user.name "github-actions[bot]"
+          git config user.email "github-actions[bot]@users.noreply.github.com"
+          # Stage first, THEN check the staged diff — `git diff --quiet` alone ignores
+          # untracked files, so a never-before-committed file would never persist.
+          git add contenders.json
+          if git diff --cached --quiet; then
+            echo "contenders.json unchanged — nothing to commit."
+          else
+            git commit -m "chore: refresh contenders.json"
+            git push
+          fi
+
+      - name: Configure Pages
+        uses: actions/configure-pages@v5
+
+      - name: Upload artifact (repo root, incl. fresh contenders.json)
+        uses: actions/upload-pages-artifact@v3
+        with:
+          path: '.'
+
+      - name: Deploy to GitHub Pages
+        id: deploy
+        uses: actions/deploy-pages@v4

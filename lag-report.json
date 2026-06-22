@@ -1,7 +1,7 @@
 {
   "latest": {
     "runAgg": {
-      "probedAt": "2026-06-19T19:19:25.351Z",
+      "probedAt": "2026-06-19T23:49:56.172Z",
       "marketOpen": false,
       "nSymbols": 36,
       "medianStalenessSec": null,
@@ -432,6 +432,17 @@
     },
     {
       "probedAt": "2026-06-19T19:19:25.351Z",
+      "marketOpen": false,
+      "nSymbols": 36,
+      "medianStalenessSec": null,
+      "p90StalenessSec": null,
+      "pctRealtime": 0,
+      "pctDelayed": 0,
+      "pctStale": 0,
+      "planInferred": "unknown (market closed)"
+    },
+    {
+      "probedAt": "2026-06-19T23:49:56.172Z",
       "marketOpen": false,
       "nSymbols": 36,
       "medianStalenessSec": null,

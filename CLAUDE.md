@@ -556,6 +556,34 @@ The honest meta: the SIGNALS dashboard shows 7 authoritative votes; under the ho
 as-displayed, Pat), 2 redundant/mis-thresholded (MACD, RSI), 1 mislabeled (VWAP). DISCIPLINE: corrections become
 OOS-testable CANDIDATE votes (corrected divergence / recent-window Trend / context-aware Pat), never in-sample patches.
 
+**Contenders hardening (DONE) — branch `claude/signalforge-duplicate-parsecsv-yiWlH`, 4 issues found reviewing
+the first live `contenders.json`:**
+- **#1 implausible-fundamentals guard:** a bad SEC TTM assembly gave **NVDA npm ≈ 5.93 (593%)**, scored as
+  "highly profitable." `valueScore` (`engine.mjs`, mirrored byte-for-byte into `index.html`) now drops a net
+  margin with `|npm|>1.5` and flags it ("implausible — likely a filing-data error, ignored"); legit high ROE
+  (>100%, low-equity/buyback names) is untouched. The REAL cause is the upstream `distill`/`secTTM` revenue
+  TTM assembly — the guard is a safety net, not the cure (follow-up open). Tests +3.
+- **#2 universe widened to ~S&P 500:** `fundamentals.json` was capped at 36 names (the 46-name `tickers.txt`).
+  `build-fundamentals.mjs` now ranks the **active** `roster.json` names by **dollar volume** from one full-market
+  Polygon snapshot (`parseSnapshotDollarVol` + `selectLiquidUniverse`, pure/tested) → top ~500 active, CIK-bearing
+  names; crawls SEC by the roster CIK (skips `secCik`); falls back to `tickers.txt` without a key/roster.
+  `build-contenders.mjs` grades **every** name in `fundamentals.json` (was `readTickers().filter`) and uses the
+  full-market snapshot. `fundamentals.yml` gains `POLYGON_API_KEY`; `contenders.yml` sets `POLYGON_PACE_MS=0`
+  (the plan is unlimited — 500 financials calls in minutes, not ~100min). Tests +6.
+- **#3 honest technical box (no more dead-pattern coin-flip):** `allBoxes` gated on the convergence pattern, a
+  MEASURED LOSER. `techVerdict` now reads **12-1 momentum** (`momentumFromMonthly` off Polygon monthly bars — the
+  one robust factor) as a **tri-state box** (`pass`/`fail`/**`nodata`** — never conflates "no data" with "negative,"
+  fixing the META/MSFT false-negative); the pattern edge is kept only as an experimental secondary read. `allBoxes`
+  = grade A/B AND `box==="pass"` AND `crossCheck.ok`. CONTENDERS tab shows the momentum read + a distinct
+  "no price history" state. Tests updated.
+- **#4 propose-only `contenders-on` OOS ledger:** `forward-log.mjs` `contenderTag(contendersDB, sym)` tags
+  `contenderAllBoxes`/`contenderAB` on tactical + position rows (point-in-time: current bar vs current list, no
+  lookahead); `forward-perf.mjs` adds `contenders-on/off` + `contenders-ab-on/off` under the existing BH/BY FDR
+  family. NEVER touches `gate.actionable` (status byte-identical, tested). EVIDENCE scoreboard rows added. Tests +3.
+- Engine↔app `valueScore` parity verified byte-identical; app mounts clean (driver, zero JS errors); 298 tests green.
+  Live SEC/Polygon crawl runs in CI (sandbox blocks both) — dispatch `fundamentals.yml` then `contenders.yml` after
+  merge to populate the widened list.
+
 **Next — Track B:**
 - Mature the `momentum-on` / `merits-on` / `news-*` / `earnings-recent-on` OOS ledgers to n≥10; human-ratify
   only if they clear FDR. PASSIVE — the nightly `forward-log → forward-perf → promote` already partitions every
