@@ -607,3 +607,38 @@ the first live `contenders.json`:**
   chart (cosmetic on a delayed/swing feed — NOT a real-time signal) + a PolyLiveSocket↔poly-ws.mjs parity test.
   Live end-to-end needs a key in a real browser (the delayed socket is egress-blocked in CI).
 - Every candidate clears no-lookahead + OOS t≥2 after FDR before it's ever shown as tradeable.
+
+## Improvement roadmap (recommendation backlog — dedup'd, pick ONE at a time)
+
+Single source of truth so recommendations aren't overlaid or lost. Status: ✅ done · ⏳ passive (ledger only) ·
+🟢 actionable now (charter-clean) · 🔵 decision (user's call, gated on OOS proof). **Sustainable rule: one at a
+time; the in-sample dyno points, the OOS ledger pulls the trigger; NEVER an in-sample re-wire.**
+
+- ✅ DONE this arc: scoreAt↔analyze parity audit (clean, 370/370); patterns()/candle audit (geometry correct,
+  context-blind); vote-construction audit (Div bug, Trend window-dep, RSI/MACD/VWAP mis-thresholds); shadow engine
+  + shadow backtest (8 teams); `shadow-noDiv`/`noDeadDiv`.
+- ⏳ PASSIVE — mature the ~22 OOS labels + 7 shadow streams to n≥10 and clear the BH/BY FDR family. Time, not work.
+- 🟢 **R1 · Pre-register the promotion bar** (cheapest, foundational, do FIRST): write the exact gate into this file
+  — n≥10, q≤0.05 on the **BY** column, positive alpha, survives a hold-out window. Prevents optional-stopping p-hacking.
+- 🟢 **R2 · Prune the FDR TEST family** (cheap, restores power): drop dominated/redundant labels (e.g. `noMacdPat`
+  dominated by `noDead`; overlapping combined variants) so correlated tests don't dilute the BY column.
+- 🟢 **R3 · Liquid PRIMARY research universe** (biggest contamination fix): re-run the studies on a tradeable universe
+  (price≥$5, ADV≥$2M, ~S&P-1500) as the DEFAULT; keep the survivorship-free micro-cap roster only as a bias cross-check.
+- 🟢 **R4 · Audit the SIZE / risk-management layer** (untapped frontier): point the same scalpel at position sizing /
+  stops / portfolio construction — a coin-toss signal with disciplined sizing can still be a product; great signal +
+  bad sizing blows up. Likely higher leverage than squeezing the signal further.
+- 🟢 **R5 · Candidate CORRECTED votes** (only after R3): corrected-Div (same-window price vs RSI), recent-window Trend,
+  context-aware Pat — each a propose-only candidate vote / shadow team, OOS-gated, never an in-sample patch.
+- 🟢 **R6 · Codify the audit RITUAL**: make the gauntlet (cross-sectional IC → robustness A–F → shadow → OOS → record)
+  the standing requirement every new vote/factor/feature must pass. The habit compounds more than any single edge.
+- 🔵 **D1 · Demote-fast the nuisances** (MACD first, then the MACD+Pat+ADX+Div trio) WHEN their `shadow-*` streams clear
+  FDR. Lower bar than promotion; cut, don't flip.
+- 🔵 **D2 · Self-conflict Step 3** (regime picks the lead camp in the score) — only after `votes-aligned` clears FDR.
+- 🔵 **D3 · Vote re-weight** (`ic-backed`) — DE-PRIORITIZED: the pie's cross-sectional IC is the wrong target for the
+  engine's per-name decision (angle F); if anything, weight by the timing evidence, not selection IC.
+- 🔵 **D4 · Product reframe** — momentum-12-1-on-liquid as the SPINE; regime notifier + confluence demoted to a TIMING
+  overlay the human consults, not the verdict (even fully cleaned the confluence is a coin-toss that loses to passive).
+- 🔵 **D5 · Terminal milestone** — pre-commit a go/no-go date: "at 100 closed `momentum-liquid` OOS trades, decide;
+  demote whatever FDR has cleared." Turns open-ended measurement into a decidable project.
+- ⏳ OPTIONAL leftovers: WebSocket forming-bar parity test; live end-to-end (needs a key in a real browser).
+
