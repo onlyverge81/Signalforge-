@@ -232,12 +232,16 @@ export function defaultVariants() {
     // (mirrors forward-log's SHADOW_CONFIGS). The A/B is each shadow stream vs the full team's `all`: if a
     // shadow team's alpha beats `all` under FDR, that vote is a net NUISANCE — evidence to demote it
     // (demote-fast, never re-wired off in-sample). RSI/Stoch/BB are deliberately NOT shadowed (angle F
-    // rescued them as timing tools). Each is its own logged stream, scoped out of tactical above.
+    // rescued them as timing tools). The nuisance set: MACD (backwards, F), Pat (context-blind),
+    // ADX (~0 IC, highest weight), Div (window-mismatch bug, weighted 2.5). Each is its own logged
+    // stream, scoped out of tactical above.
     { label: "shadow-noMacd",    where: t => !!(t.tags && t.tags.mode === "shadow-noMacd") },
     { label: "shadow-noPat",     where: t => !!(t.tags && t.tags.mode === "shadow-noPat") },
     { label: "shadow-noAdx",     where: t => !!(t.tags && t.tags.mode === "shadow-noAdx") },
+    { label: "shadow-noDiv",     where: t => !!(t.tags && t.tags.mode === "shadow-noDiv") },
     { label: "shadow-noMacdPat", where: t => !!(t.tags && t.tags.mode === "shadow-noMacdPat") },
     { label: "shadow-noDead",    where: t => !!(t.tags && t.tags.mode === "shadow-noDead") },
+    { label: "shadow-noDeadDiv", where: t => !!(t.tags && t.tags.mode === "shadow-noDeadDiv") },
     { label: "position", where: t => !!(t.tags && t.tags.mode === "position") },
     // Quality × DURATION (propose-only A/B INSIDE the position/long-hold stream): the
     // quality-duration study found high-ROE names beat the market with an edge that GROWS over

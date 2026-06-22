@@ -535,6 +535,27 @@ the charter says dies live); even cleaned the team's alpha is STILL −15.3 (rec
 — "a much less bad loser," not an edge); junky de-listed micro-cap universe. This STRENGTHENS THE PRIOR for demoting
 the three; the OOS `shadow-*` ledger under FDR is still the arbiter — NO in-sample re-wire.
 
+**Vote-construction self-audit (DONE, diagnostic) — "the check-engine light was on by construction":** a tread-lightly
+read of the SIGNALS-tab votes (does the engine actually recognise the chart's moving parts?) found the pie's dead/
+negative votes are dead for IDENTIFIABLE construction faults, several over-weighted — this is the MECHANISM behind the
+t −12.6. Findings (empirically verified where subtle; NONE re-wired — diagnostic only):
+- **`Div` (divergence) — BUG, mismatched windows (weight 2.5).** Compares the LAST-10-bar price move against RSI
+  computed over the OLD `[0..len−10]` window — different, non-overlapping periods. A recent CRASH produced "lower lows
+  but RSI rising → bullish bottom" because the RSI it read predated the crash. The one arguable true bug.
+- **`Pat` (patterns) — CONTEXT-BLIND (geometry CORRECT).** Wick/body/range math is right (hammer/engulfing/doji/etc.
+  all recognised), but it fires reversal patterns regardless of trend-location — a Hammer fires identically at a top
+  and a bottom — and multiple patterns STACK (one bar → 2+ Pat votes @1.5). Negative IC explained.
+- **`Trend` — whole-window net move, not the current trend.** `(last−first)/first` over the ENTIRE loaded series →
+  window-length-dependent (a name that rose 200 bars then fell 40 reads UPTREND on full history, DOWNTREND on recent
+  50). It scores a significant pie IC (0.072) only because cross-sectionally it's an ACCIDENTAL momentum proxy — right
+  answer, wrong mechanism; misleading as the displayed "UPTREND/DOWNTREND".
+- **`RSI` 40/60 thresholds** (vs textbook 30/70) — fires at non-extreme levels → "which side of ~50," diluted.
+- **`MACD` = EMA12>EMA26** — a plain fast/slow crossover (redundant with the MA votes), no signal-line/histogram, and
+  backwards at swing horizons (F). **`VWAP`** is a 20-bar volume-weighted MA mislabeled as session VWAP.
+The honest meta: the SIGNALS dashboard shows 7 authoritative votes; under the hood 3 are buggy/misapplied (Div, Trend-
+as-displayed, Pat), 2 redundant/mis-thresholded (MACD, RSI), 1 mislabeled (VWAP). DISCIPLINE: corrections become
+OOS-testable CANDIDATE votes (corrected divergence / recent-window Trend / context-aware Pat), never in-sample patches.
+
 **Next — Track B:**
 - Mature the `momentum-on` / `merits-on` / `news-*` / `earnings-recent-on` OOS ledgers to n≥10; human-ratify
   only if they clear FDR. PASSIVE — the nightly `forward-log → forward-perf → promote` already partitions every
