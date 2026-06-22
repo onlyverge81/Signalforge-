@@ -523,6 +523,39 @@ IN-SAMPLE, never the verdict — the engine's technical core is a measured loser
 negative; the RELATIVE delta is the flashlight, the OOS `shadow-*` ledger under FDR is the arbiter. Tests +4 (269
 green).
 
+**First shadow-backtest CI run (DONE, in-sample reveal) — branch `claude/signalforge-profitability-wheel-qbclby`,
+merged via PR #53:** 38/60 survivorship-free names. **Full team:** 2420 trades, win 41.8%, per-trade expectancy
+**−0.533 (t −2.76, significantly losing)**, meanAlpha vs buy-&-hold −57.7. **Dropping the nuisances helps, and they
+COMPOUND:** −MACD alone cuts 556 trades (−23%) + recovers +17pp alpha (the worst single offender — confirms angle F);
+−Pat/−ADX help less alone; **the full cleanup (−MACD−Pat−ADX) FLIPS per-trade expectancy from −0.533 to +0.206 (t
+−2.76 → +0.89), cuts trades 36% (2420→1557), and lifts win rate to 44.8%** — Δexpectancy +0.74, Δalpha +42pp. The
+strongest evidence yet that MACD/Pat/ADX are net-negative nuisances (pie diagnosed → angle F mechanised MACD → the
+in-reverse backtest shows removal flips expectancy positive + slashes churn). **HONEST BOUNDS:** in-sample (the green
+the charter says dies live); even cleaned the team's alpha is STILL −15.3 (recovered +42pp but still loses to passive
+— "a much less bad loser," not an edge); junky de-listed micro-cap universe. This STRENGTHENS THE PRIOR for demoting
+the three; the OOS `shadow-*` ledger under FDR is still the arbiter — NO in-sample re-wire.
+
+**Vote-construction self-audit (DONE, diagnostic) — "the check-engine light was on by construction":** a tread-lightly
+read of the SIGNALS-tab votes (does the engine actually recognise the chart's moving parts?) found the pie's dead/
+negative votes are dead for IDENTIFIABLE construction faults, several over-weighted — this is the MECHANISM behind the
+t −12.6. Findings (empirically verified where subtle; NONE re-wired — diagnostic only):
+- **`Div` (divergence) — BUG, mismatched windows (weight 2.5).** Compares the LAST-10-bar price move against RSI
+  computed over the OLD `[0..len−10]` window — different, non-overlapping periods. A recent CRASH produced "lower lows
+  but RSI rising → bullish bottom" because the RSI it read predated the crash. The one arguable true bug.
+- **`Pat` (patterns) — CONTEXT-BLIND (geometry CORRECT).** Wick/body/range math is right (hammer/engulfing/doji/etc.
+  all recognised), but it fires reversal patterns regardless of trend-location — a Hammer fires identically at a top
+  and a bottom — and multiple patterns STACK (one bar → 2+ Pat votes @1.5). Negative IC explained.
+- **`Trend` — whole-window net move, not the current trend.** `(last−first)/first` over the ENTIRE loaded series →
+  window-length-dependent (a name that rose 200 bars then fell 40 reads UPTREND on full history, DOWNTREND on recent
+  50). It scores a significant pie IC (0.072) only because cross-sectionally it's an ACCIDENTAL momentum proxy — right
+  answer, wrong mechanism; misleading as the displayed "UPTREND/DOWNTREND".
+- **`RSI` 40/60 thresholds** (vs textbook 30/70) — fires at non-extreme levels → "which side of ~50," diluted.
+- **`MACD` = EMA12>EMA26** — a plain fast/slow crossover (redundant with the MA votes), no signal-line/histogram, and
+  backwards at swing horizons (F). **`VWAP`** is a 20-bar volume-weighted MA mislabeled as session VWAP.
+The honest meta: the SIGNALS dashboard shows 7 authoritative votes; under the hood 3 are buggy/misapplied (Div, Trend-
+as-displayed, Pat), 2 redundant/mis-thresholded (MACD, RSI), 1 mislabeled (VWAP). DISCIPLINE: corrections become
+OOS-testable CANDIDATE votes (corrected divergence / recent-window Trend / context-aware Pat), never in-sample patches.
+
 **Contenders hardening (DONE) — branch `claude/signalforge-duplicate-parsecsv-yiWlH`, 4 issues found reviewing
 the first live `contenders.json`:**
 - **#1 implausible-fundamentals guard:** a bad SEC TTM assembly gave **NVDA npm ≈ 5.93 (593%)**, scored as

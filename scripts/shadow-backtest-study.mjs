@@ -33,10 +33,12 @@ const round = x => (x == null || !isFinite(x)) ? null : Math.round(x * 1e4) / 1e
 export const TEAMS = [
   { key: "full",      drop: null,                  label: "Full team (baseline)" },
   { key: "noMacd",    drop: ["MACD"],              label: "− MACD (used backwards, F)" },
-  { key: "noPat",     drop: ["Pat"],               label: "− Pattern (dead / negative)" },
+  { key: "noPat",     drop: ["Pat"],               label: "− Pattern (context-blind)" },
   { key: "noAdx",     drop: ["ADX"],               label: "− ADX (≈0 IC, highest weight)" },
+  { key: "noDiv",     drop: ["Div"],               label: "− Divergence (window-bug, w2.5)" },
   { key: "noMacdPat", drop: ["MACD", "Pat"],       label: "− MACD + Pat" },
-  { key: "noDead",    drop: ["MACD", "Pat", "ADX"], label: "− MACD + Pat + ADX (full cleanup)" },
+  { key: "noDead",    drop: ["MACD", "Pat", "ADX"], label: "− MACD + Pat + ADX" },
+  { key: "noDeadDiv", drop: ["MACD", "Pat", "ADX", "Div"], label: "− MACD+Pat+ADX+Div (full cleanup)" },
 ];
 
 // Pure: backtest ONE name with a team's vote-drop. Returns the per-name trade outcomes + buy-&-hold.

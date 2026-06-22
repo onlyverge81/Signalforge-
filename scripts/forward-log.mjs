@@ -439,10 +439,12 @@ export function markToMarket(entry, settled, exitAt = new Date().toISOString(), 
 // are NOT dropped — angle F RESCUED them as mean-reversion TIMERS (genuine at their real job).
 export const SHADOW_CONFIGS = [
   { key: "shadow-noMacd",    drop: ["MACD"] },           // MACD used backwards at swing horizons (F)
-  { key: "shadow-noPat",     drop: ["Pat"] },            // pattern edge is dead / negative IC
+  { key: "shadow-noPat",     drop: ["Pat"] },            // pattern edge is dead / negative IC (context-blind)
   { key: "shadow-noAdx",     drop: ["ADX"] },            // ~0 IC yet the engine's highest hand-weight
+  { key: "shadow-noDiv",     drop: ["Div"] },            // divergence is a window-mismatch BUG, weighted 2.5
   { key: "shadow-noMacdPat", drop: ["MACD", "Pat"] },    // the two named nuisances, together
-  { key: "shadow-noDead",    drop: ["MACD", "Pat", "ADX"] }, // full nuisance cleanup
+  { key: "shadow-noDead",    drop: ["MACD", "Pat", "ADX"] }, // 3-vote nuisance cleanup
+  { key: "shadow-noDeadDiv", drop: ["MACD", "Pat", "ADX", "Div"] }, // full cleanup incl. the divergence bug
 ];
 // Build the shadow teams' entries for one name: for each config whose shadow signal is an ACTIONABLE
 // BUY, log a tactical-style OPEN entry on the SAME ATR levels. Returns 0..N entries. No-lookahead:
