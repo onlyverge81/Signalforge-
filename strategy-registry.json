@@ -1,6 +1,6 @@
 {
   "version": 1,
-  "updatedAt": "2026-06-20T08:35:55.513Z",
+  "updatedAt": "2026-06-23T10:47:26.692Z",
   "policy": {
     "promote": {
       "minTrades": 10,
@@ -406,6 +406,234 @@
       "history": [
         {
           "at": "2026-06-20T08:35:55.513Z",
+          "from": null,
+          "to": "candidate",
+          "reason": "registered"
+        }
+      ]
+    },
+    "momentum-liquid-on": {
+      "state": "candidate",
+      "since": "2026-06-23T10:47:26.692Z",
+      "history": [
+        {
+          "at": "2026-06-23T10:47:26.692Z",
+          "from": null,
+          "to": "candidate",
+          "reason": "registered"
+        }
+      ]
+    },
+    "momentum-liquid-off": {
+      "state": "candidate",
+      "since": "2026-06-23T10:47:26.692Z",
+      "history": [
+        {
+          "at": "2026-06-23T10:47:26.692Z",
+          "from": null,
+          "to": "candidate",
+          "reason": "registered"
+        }
+      ]
+    },
+    "votes-aligned-on": {
+      "state": "candidate",
+      "since": "2026-06-23T10:47:26.692Z",
+      "history": [
+        {
+          "at": "2026-06-23T10:47:26.692Z",
+          "from": null,
+          "to": "candidate",
+          "reason": "registered"
+        }
+      ]
+    },
+    "votes-aligned-off": {
+      "state": "candidate",
+      "since": "2026-06-23T10:47:26.692Z",
+      "history": [
+        {
+          "at": "2026-06-23T10:47:26.692Z",
+          "from": null,
+          "to": "candidate",
+          "reason": "registered"
+        }
+      ]
+    },
+    "ic-backed-on": {
+      "state": "candidate",
+      "since": "2026-06-23T10:47:26.692Z",
+      "history": [
+        {
+          "at": "2026-06-23T10:47:26.692Z",
+          "from": null,
+          "to": "candidate",
+          "reason": "registered"
+        }
+      ]
+    },
+    "ic-backed-off": {
+      "state": "candidate",
+      "since": "2026-06-23T10:47:26.692Z",
+      "history": [
+        {
+          "at": "2026-06-23T10:47:26.692Z",
+          "from": null,
+          "to": "candidate",
+          "reason": "registered"
+        }
+      ]
+    },
+    "macd-fade-on": {
+      "state": "candidate",
+      "since": "2026-06-23T10:47:26.692Z",
+      "history": [
+        {
+          "at": "2026-06-23T10:47:26.692Z",
+          "from": null,
+          "to": "candidate",
+          "reason": "registered"
+        }
+      ]
+    },
+    "macd-fade-off": {
+      "state": "candidate",
+      "since": "2026-06-23T10:47:26.692Z",
+      "history": [
+        {
+          "at": "2026-06-23T10:47:26.692Z",
+          "from": null,
+          "to": "candidate",
+          "reason": "registered"
+        }
+      ]
+    },
+    "contenders-on": {
+      "state": "candidate",
+      "since": "2026-06-23T10:47:26.692Z",
+      "history": [
+        {
+          "at": "2026-06-23T10:47:26.692Z",
+          "from": null,
+          "to": "candidate",
+          "reason": "registered"
+        }
+      ]
+    },
+    "contenders-off": {
+      "state": "candidate",
+      "since": "2026-06-23T10:47:26.692Z",
+      "history": [
+        {
+          "at": "2026-06-23T10:47:26.692Z",
+          "from": null,
+          "to": "candidate",
+          "reason": "registered"
+        }
+      ]
+    },
+    "contenders-ab-on": {
+      "state": "candidate",
+      "since": "2026-06-23T10:47:26.692Z",
+      "history": [
+        {
+          "at": "2026-06-23T10:47:26.692Z",
+          "from": null,
+          "to": "candidate",
+          "reason": "registered"
+        }
+      ]
+    },
+    "contenders-ab-off": {
+      "state": "candidate",
+      "since": "2026-06-23T10:47:26.692Z",
+      "history": [
+        {
+          "at": "2026-06-23T10:47:26.692Z",
+          "from": null,
+          "to": "candidate",
+          "reason": "registered"
+        }
+      ]
+    },
+    "shadow-noMacd": {
+      "state": "candidate",
+      "since": "2026-06-23T10:47:26.692Z",
+      "history": [
+        {
+          "at": "2026-06-23T10:47:26.692Z",
+          "from": null,
+          "to": "candidate",
+          "reason": "registered"
+        }
+      ]
+    },
+    "shadow-noPat": {
+      "state": "candidate",
+      "since": "2026-06-23T10:47:26.692Z",
+      "history": [
+        {
+          "at": "2026-06-23T10:47:26.692Z",
+          "from": null,
+          "to": "candidate",
+          "reason": "registered"
+        }
+      ]
+    },
+    "shadow-noAdx": {
+      "state": "candidate",
+      "since": "2026-06-23T10:47:26.692Z",
+      "history": [
+        {
+          "at": "2026-06-23T10:47:26.692Z",
+          "from": null,
+          "to": "candidate",
+          "reason": "registered"
+        }
+      ]
+    },
+    "shadow-noDiv": {
+      "state": "candidate",
+      "since": "2026-06-23T10:47:26.692Z",
+      "history": [
+        {
+          "at": "2026-06-23T10:47:26.692Z",
+          "from": null,
+          "to": "candidate",
+          "reason": "registered"
+        }
+      ]
+    },
+    "shadow-noMacdPat": {
+      "state": "candidate",
+      "since": "2026-06-23T10:47:26.692Z",
+      "history": [
+        {
+          "at": "2026-06-23T10:47:26.692Z",
+          "from": null,
+          "to": "candidate",
+          "reason": "registered"
+        }
+      ]
+    },
+    "shadow-noDead": {
+      "state": "candidate",
+      "since": "2026-06-23T10:47:26.692Z",
+      "history": [
+        {
+          "at": "2026-06-23T10:47:26.692Z",
+          "from": null,
+          "to": "candidate",
+          "reason": "registered"
+        }
+      ]
+    },
+    "shadow-noDeadDiv": {
+      "state": "candidate",
+      "since": "2026-06-23T10:47:26.692Z",
+      "history": [
+        {
+          "at": "2026-06-23T10:47:26.692Z",
           "from": null,
           "to": "candidate",
           "reason": "registered"
