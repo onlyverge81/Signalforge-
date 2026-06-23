@@ -2391,13 +2391,20 @@ function App() {
     }, 50);
   }
 
-  // Position sizing
+  // Position sizing — fixed-fractional risk (shares = risk$ ÷ stop-distance), with a CONCENTRATION CAP
+  // (R4 #1): a tight stop can otherwise recommend a position worth >100% of the account. We cap at
+  // MAX_POS_PCT of account and recommend the SMALLER of the two — never over-concentrate.
   const accNum  = parseFloat(account)||10000;
   const riskNum = parseFloat(riskPct)||1;
   const riskAmt = accNum*(riskNum/100);
   const slDist  = analysis ? Math.abs(analysis.entry - analysis.sl) : 0;
-  const posSize = slDist>0 ? Math.floor(riskAmt/slDist) : 0;
+  const riskBasedSize = slDist>0 ? Math.floor(riskAmt/slDist) : 0;        // size from the 1-2% risk rule alone
+  const MAX_POS_PCT = 20;                                                 // concentration cap (% of account)
+  const concCapSize = (analysis && analysis.entry>0) ? Math.floor(accNum*(MAX_POS_PCT/100)/analysis.entry) : 0;
+  const posSize = Math.min(riskBasedSize, concCapSize);                  // recommend the smaller — never over-concentrate
+  const sizeCapped = analysis && riskBasedSize > concCapSize;            // the concentration cap is binding
   const posVal  = analysis ? posSize*analysis.entry : 0;
+  const effRiskAmt = posSize*slDist;                                     // ACTUAL $ risked at the recommended size (≤ riskAmt when capped)
 
   const last  = rows[rows.length-1];
   const first = rows[0];
@@ -4385,8 +4392,8 @@ function App() {
                       {l:"ENTRY PRICE",v:fmt(analysis.entry),c:"#00bcd4"},
                       {l:"STOP LOSS",v:fmt(analysis.sl),c:"#ff5252"},
                       {l:"SL DISTANCE",v:fmt(slDist),c:"#ff8a80"},
-                      {l:"POSITION SIZE",v:posSize+" units",c:"#00e676"},
-                      {l:"POSITION VALUE",v:"$"+posVal.toFixed(2),c:"#69f0ae"},
+                      {l:"POSITION SIZE",v:posSize+" units"+(sizeCapped?" ⚑":""),c:sizeCapped?"#ffb74d":"#00e676"},
+                      {l:"POSITION VALUE",v:"$"+posVal.toFixed(2)+" ("+(accNum>0?(100*posVal/accNum).toFixed(0):"0")+"%)",c:(posVal/accNum)>MAX_POS_PCT/100?"#ff5252":"#69f0ae"},
                       {l:"RISK/REWARD",v:"1 : "+analysis.rr,c:"#ffd740"},
                     ].map(x=>(
                       <div key={x.l} style={{background:"#060810",padding:12,borderRadius:4,borderLeft:"3px solid "+x.c}}>
@@ -4395,10 +4402,16 @@ function App() {
                       </div>
                     ))}
                   </div>
+                  {sizeCapped&&(
+                    <div style={{marginTop:12,padding:"10px 12px",borderRadius:4,background:"rgba(255,183,77,0.07)",border:"1px solid rgba(255,183,77,0.30)",fontSize:11,color:"#ffd180",lineHeight:1.7}}>
+                      ⚑ <strong>CONCENTRATION-CAPPED.</strong> The 1-2% risk rule alone would size <strong>{riskBasedSize} units</strong> (${(riskBasedSize*analysis.entry).toFixed(0)}, {(100*riskBasedSize*analysis.entry/accNum).toFixed(0)}% of account) — a tight stop inflates the share count. Capped to <strong>{posSize} units</strong> (≤{MAX_POS_PCT}% of account), so you actually risk <strong>${effRiskAmt.toFixed(2)}</strong> ({(100*effRiskAmt/accNum).toFixed(2)}%), not the full {riskPct}%. Over-concentration avoided.
+                    </div>
+                  )}
                   <div style={{marginTop:14,padding:12,background:"#060810",borderRadius:4,fontSize:11,color:"#90a4ae",lineHeight:1.9}}>
-                    Risking <strong style={{color:"#ffd740"}}>{riskPct}%</strong> (${riskAmt.toFixed(2)}) of your ${Number(accNum).toLocaleString()} account on {ticker}.<br/>
+                    Risking <strong style={{color:"#ffd740"}}>{(100*effRiskAmt/accNum).toFixed(2)}%</strong> (${effRiskAmt.toFixed(2)}) of your ${Number(accNum).toLocaleString()} account on {ticker}.<br/>
                     With stop loss at {fmt(analysis.sl)} ({fmt(slDist)} from entry), buy <strong style={{color:"#00e676"}}>{posSize} units</strong> (${posVal.toFixed(2)} position).<br/>
-                    Max loss if SL hit: <strong style={{color:"#ff5252"}}>${(posSize*slDist).toFixed(2)}</strong> · Target gain TP1: <strong style={{color:"#00e676"}}>${(posSize*Math.abs(analysis.tp1-analysis.entry)).toFixed(2)}</strong>
+                    Max loss if SL hit <span style={{color:FADE}}>(ideal)</span>: <strong style={{color:"#ff5252"}}>~${effRiskAmt.toFixed(2)}</strong> · Target gain TP1: <strong style={{color:"#00e676"}}>${(posSize*Math.abs(analysis.tp1-analysis.entry)).toFixed(2)}</strong><br/>
+                    <span style={{fontSize:10,color:FADE}}>⚠ "Max loss" is the IDEAL — it excludes costs/slippage and assumes the stop fills at the stop price. A gap-down or thin liquidity can blow through it, so a real loss can exceed this.</span>
                   </div>
                 </>
               ):(
@@ -4408,9 +4421,9 @@ function App() {
             <div style={{...card,fontSize:10,color:DIM,lineHeight:1.9}}>
               <span style={{color:"#00e676",fontWeight:700}}>POSITION SIZING RULES</span><br/>
               · Never risk more than 1-2% of account per trade<br/>
-              · Position value should not exceed 10-20% of account (avoid over-concentration)<br/>
+              · Position value is auto-capped at {MAX_POS_PCT}% of account here (avoid over-concentration)<br/>
               · Always set a stop loss before entering — no stop = undefined risk<br/>
-              · Scale down position size in high-volatility conditions (high ATR)<br/>
+              · High volatility auto-shrinks the size (wider ATR stop → fewer shares → same risk-$)<br/>
               · R/R ratio should be minimum 1:1.5, ideally 1:2 or better
             </div>
           </>

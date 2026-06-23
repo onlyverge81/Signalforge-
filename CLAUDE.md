@@ -656,6 +656,11 @@ time; the in-sample dyno points, the OOS ledger pulls the trigger; NEVER an in-s
   #1 cap + #2 honest max-loss are charter-clean DISPLAY-layer safety fixes (touch the risk tool, not signal/gate);
   #3 portfolio heat + #4 edge-aware sizing are the deeper frontier (bigger builds). Verified empirically (tight stop →
   125% of account at 1% risk). Risk management, not signal-squeezing, is the higher-leverage gap.
+  **#1 + #2 NOW APPLIED (display-only, no engine/parity change):** the SIZE tab caps position value at `MAX_POS_PCT=20%`
+  of account (recommends `min(risk-based, concentration-cap)` size; an amber ⚑ banner shows the risk-rule size, the cap,
+  and the SHRUNK effective risk when binding — you risk LESS, never more); the "max loss" line is relabelled "(ideal)"
+  with a caveat that it excludes costs/slippage and assumes the stop fills at price (a gap-down can exceed it). 300 tests
+  green, app mounts clean. #3/#4 remain the deeper frontier.
 - 🟢 **R5 · Candidate CORRECTED votes** (only after R3): corrected-Div (same-window price vs RSI), recent-window Trend,
   context-aware Pat — each a propose-only candidate vote / shadow team, OOS-gated, never an in-sample patch.
 - 🟢 **R6 · Codify the audit RITUAL**: make the gauntlet (cross-sectional IC → robustness A–F → shadow → OOS → record)
