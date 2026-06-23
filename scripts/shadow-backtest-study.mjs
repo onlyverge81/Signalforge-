@@ -40,11 +40,14 @@ export const TEAMS = [
   { key: "noMacdPat", drop: ["MACD", "Pat"],       label: "− MACD + Pat" },
   { key: "noDead",    drop: ["MACD", "Pat", "ADX"], label: "− MACD + Pat + ADX" },
   { key: "noDeadDiv", drop: ["MACD", "Pat", "ADX", "Div"], label: "− MACD+Pat+ADX+Div (full cleanup)" },
+  // R5 — the corrected team: REPLACE Div/Trend/Pat with their fixed forms (not a drop, a re-build).
+  { key: "corrected", drop: ["Div", "Trend", "Pat"], corrected: true, label: "↻ corrected Div/Trend/Pat (R5)" },
 ];
 
-// Pure: backtest ONE name with a team's vote-drop. Returns the per-name trade outcomes + buy-&-hold.
-export function teamBacktestOne(bars, drop) {
-  const bt = runBacktest(bars, slice => scoreAt(slice, drop), SLM, TPM, COSTS, null, false);
+// Pure: backtest ONE name with a team's vote-drop (or the R5 corrected re-build). Returns the
+// per-name trade outcomes + buy-&-hold.
+export function teamBacktestOne(bars, drop, corrected = false) {
+  const bt = runBacktest(bars, slice => scoreAt(slice, drop, corrected), SLM, TPM, COSTS, null, false);
   const trades = bt.trades || [];
   const pnls = trades.map(t => t.pnlPct).filter(v => v != null && isFinite(v));
   const buyHold = (bars.length > 1 && bars[0].close > 0) ? (bars[bars.length - 1].close / bars[0].close - 1) * 100 : 0;
@@ -134,7 +137,7 @@ async function main() {
   } else console.log("universe: FULL survivorship-free roster (bias cross-check) — liquid screen OFF.");
 
   const teams = TEAMS.map(team => {
-    const results = Object.values(barsByTicker).map(bars => teamBacktestOne(bars, team.drop));
+    const results = Object.values(barsByTicker).map(bars => teamBacktestOne(bars, team.drop, team.corrected));
     return { key: team.key, label: team.label, drop: team.drop, ...aggregateTeam(results) };
   });
   const revealed = revealVsFull(teams);

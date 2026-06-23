@@ -66,6 +66,34 @@ The "losing verdict" the app shows is the system being **correct and honest**, n
 - **Honesty over green.** Surface measured expectancy, t-stat, and the buy-&-hold benchmark
   beside every verdict. "No proven edge" is integrity, not a bug.
 
+### The audit ritual (R6) — the standing gauntlet EVERY new vote / factor / feature must run
+
+This is the codified habit that compounds more than any single edge — the repeatable process the
+whole "Wheel" arc converged on. A candidate is NEVER wired into the live engine on a hunch or an
+in-sample win; it walks the full gauntlet, and only the OOS ledger pulls the trigger:
+
+1. **Cross-sectional IC first (the pie).** Measure the candidate's forward-return rank-IC across the
+   universe (reuse `study-lib.mjs` — it is factor-agnostic). |meanIC| as a share of the total is its
+   "weighted data value." A vote earns a seat by helping the TEAM, not by birthright.
+2. **Robustness angles A–F (don't trust a single number).** Liquidity screen + beta/sector-neutral IC
+   (A — is it a stale-price micro-cap or sector-bet artifact?); unique/incremental IC + PCA effective
+   bets (B — is it a NEW axis or a double-count?); bull/bear regime split (C — same-sign or a flip?);
+   IC term-structure (E — which horizon, and is the t honest under overlap?); a FAIR exam for the tool's
+   real job (F — e.g. judge an oscillator on TIMING via an event study, not cross-sectional selection).
+3. **Shadow team — with vs without.** Run the engine's own backtest WITH and WITHOUT the candidate
+   (`scoreAt`/`computeSignal` `drop`/inject); the RELATIVE Δ (expectancy, alpha, churn) is the flashlight.
+   In-sample, never the verdict.
+4. **OOS under the R1 bar.** Wire it propose-only (tag a forward-log row; NEVER touch `gate.actionable`),
+   let `forward-perf` score it under the BH+BY FDR family, and judge ONLY at the locked R1 PROMOTE/DEMOTE
+   thresholds (n≥10, q≤0.05 on BOTH BH and BY, positive alpha, persistence in both halves; demote at the
+   lower bar). Fixed monthly cadence — no optional-stopping.
+5. **Record it** in this file's progress checklist (measured numbers + honest caveats), win or lose. A
+   killed hypothesis recorded is as valuable as a survivor — it stops the next session re-deriving it.
+
+**The binding rule through all five: in-sample POINTS, the OOS ledger PULLS the trigger — NEVER an
+in-sample re-wire.** Green that hasn't cleared this gauntlet is contamination (R3 proved it: the pie's
+in-sample #1 was a stale-price artifact that the liquidity screen halved).
+
 ## Polygon data charter (Stocks Starter, $29/mo — the ONLY vendor)
 
 Polygon is the single source of truth. **Never add or fall back to another vendor** (the
@@ -606,6 +634,24 @@ the first live `contenders.json`:**
   Live SEC/Polygon crawl runs in CI (sandbox blocks both) — dispatch `fundamentals.yml` then `contenders.yml` after
   merge to populate the widened list.
 
+**R6 + R5 — codify the ritual + corrected candidate votes (DONE) — branch `claude/signalforge-profitability-wheel-qbclby`:**
+the roadmap executed two-at-once per the user's "R5-6". **R6 (cheap, foundational):** the standing gauntlet
+(cross-sectional IC → robustness A–F → shadow with-vs-without → OOS under the R1 bar → record; NEVER an in-sample
+re-wire) is now written into the Methodology section ("### The audit ritual (R6)") as the requirement every new
+vote/factor/feature must pass — the habit that compounds more than any single edge. **R5 (the corrected votes):** the
+vote-construction self-audit's three faults get FIXED candidate forms, judged OOS exactly like the nuisances —
+`divergenceFixed` (price vs RSI over the SAME recent window; a regression test proves it KILLS the false-bottom the
+window-mismatch bug printed after a crash, where the buggy `divergence` still reads BULLISH), `recentTrend` (net move
+over the last ~50 bars, not the whole stale series), `patternsContext` (same geometry, but a reversal pattern earns a
+vote only at the right LOCATION and multiple patterns COLLAPSE to one net vote — ending the context-blind stacking).
+Additive `corrected` path on `computeSignal`/`scoreAt`/`analyze` (`CORRECTED_DROP=["Div","Trend","Pat"]` + inject the
+fixed forms); default path byte-identical, mirrored into `index.html` (parity verified). Wired propose-only:
+`shadow-corrected` in `forward-log` SHADOW_CONFIGS + `forward-perf` variant (scored vs the full team's `all` under the
+FDR family) + a `corrected` team in the in-sample `shadow-backtest-study` (immediate flashlight). The live engine is
+UNCHANGED — candidates only; only the OOS ledger under R1 (or the shadow-backtest Δ) earns a re-wire. Tests +7 (307
+green); app mounts clean (driver, zero JS errors). The `shadow-corrected` OOS stream matures via the nightly pipeline;
+dispatch `shadow-backtest-study.yml` for the in-sample read.
+
 **Next — Track B:**
 - Mature the `momentum-on` / `merits-on` / `news-*` / `earnings-recent-on` OOS ledgers to n≥10; human-ratify
   only if they clear FDR. PASSIVE — the nightly `forward-log → forward-perf → promote` already partitions every
@@ -661,9 +707,20 @@ time; the in-sample dyno points, the OOS ledger pulls the trigger; NEVER an in-s
   and the SHRUNK effective risk when binding — you risk LESS, never more); the "max loss" line is relabelled "(ideal)"
   with a caveat that it excludes costs/slippage and assumes the stop fills at price (a gap-down can exceed it). 300 tests
   green, app mounts clean. #3/#4 remain the deeper frontier.
-- 🟢 **R5 · Candidate CORRECTED votes** (only after R3): corrected-Div (same-window price vs RSI), recent-window Trend,
-  context-aware Pat — each a propose-only candidate vote / shadow team, OOS-gated, never an in-sample patch.
-- 🟢 **R6 · Codify the audit RITUAL**: make the gauntlet (cross-sectional IC → robustness A–F → shadow → OOS → record)
+- 🟢 **R5 · Candidate CORRECTED votes**: ✅ **DONE — the `shadow-corrected` team.** The three faulty votes from the
+  self-audit get FIXED candidate forms, judged OOS like every nuisance: `divergenceFixed` (price vs RSI over the SAME
+  recent window — kills the window-mismatch false-bottom the bug produced after a crash), `recentTrend` (net move over
+  only the last ~50 bars, not the whole stale series), `patternsContext` (same geometry but a reversal pattern earns a
+  vote only at the right LOCATION — bullish at a bottom / bearish at a top — and multiple patterns COLLAPSE to ONE net
+  vote, ending the context-blind stacking). `computeSignal`/`scoreAt`/`analyze` gained an additive `corrected` path
+  (`CORRECTED_DROP=["Div","Trend","Pat"]` + inject the fixed forms); default path byte-identical, mirrored into
+  `index.html` (parity verified). Wired propose-only: `shadow-corrected` in `forward-log` SHADOW_CONFIGS (own OOS BUY
+  stream, gated identically), `forward-perf` `shadow-corrected` variant (scored vs the full team's `all` under the FDR
+  family), and a `corrected` team in the in-sample `shadow-backtest-study` (the immediate directional read). The live
+  engine's votes are UNCHANGED — these are CANDIDATES; only the OOS ledger under the R1 bar (or the shadow-backtest's
+  relative Δ as a flashlight) earns a re-wire. Tests +7 (307 green); app mounts clean.
+- 🟢 **R6 · Codify the audit RITUAL**: ✅ **DONE.** The gauntlet (cross-sectional IC → robustness A–F → shadow →
+  OOS under the R1 bar → record) is now written into the Methodology section above ("### The audit ritual (R6)") as
   the standing requirement every new vote/factor/feature must pass. The habit compounds more than any single edge.
 - 🔵 **D1 · Demote-fast the nuisances** (MACD first, then the MACD+Pat+ADX+Div trio) WHEN their `shadow-*` streams clear
   FDR. Lower bar than promotion; cut, don't flip.

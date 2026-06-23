@@ -11,7 +11,7 @@
 
 import { test } from "node:test";
 import assert from "node:assert/strict";
-import { analyze, runBacktest, scoreAt, scorePosition, checkBarExit, checkBarExitFine, isAmbiguousBar, tradeNet, realizedStats, convergenceBreakout, backtestPattern, edgeStatus, avgIndexGainByDate, correctionLevels, backtestCorrection, efficiencyRatio, marketRegime, computeSignal, valueScore } from "./engine.mjs";
+import { analyze, runBacktest, scoreAt, scorePosition, checkBarExit, checkBarExitFine, isAmbiguousBar, tradeNet, realizedStats, convergenceBreakout, backtestPattern, edgeStatus, avgIndexGainByDate, correctionLevels, backtestCorrection, efficiencyRatio, marketRegime, computeSignal, valueScore, divergenceFixed, recentTrend, patternsContext, correctedVotes, divergence, patterns } from "./engine.mjs";
 
 // ─── Helper: deterministic OHLC series (no RNG, fixed formula) ───────────────
 function gen(n){
@@ -488,4 +488,79 @@ test("valueScore: a legitimately high ROE (>100%) is untouched (low-equity/buyba
   const vs = valueScore({ roeTTM: 2.22 });                        // MA-style ROE → +2, no flag
   assert.equal(vs.healthy, 2);
   assert.ok(!vs.flags.some(f => /implausible/i.test(f)));
+});
+
+// ─── R5: corrected candidate votes (propose-only; never an in-sample re-wire) ──
+
+// A bar helper for hand-crafted candle geometry.
+const bar = (o,h,l,c,v=1e6) => ({date:"2025-01-01",open:o,high:h,low:l,close:c,volume:v});
+
+test("recentTrend reads only the recent window (fixes whole-window staleness)", () => {
+  // Whole series nets UP (100→…→150), but the recent 50 bars fall hard → DOWNTREND now.
+  const closes=[]; for(let i=0;i<60;i++) closes.push(100+i);           // 100..159 (up)
+  for(let i=0;i<50;i++) closes.push(159-i*1.5);                        // sharp recent decline
+  const tr=recentTrend(closes,50);
+  assert.equal(tr.dir,-1);
+  assert.equal(tr.state,"DOWNTREND");
+});
+
+test("divergenceFixed kills the window-mismatch false signal a recent crash produced", () => {
+  // Early decline (RSI low) → long rise (RSI climbs across the OLD window) → recent crash. The BUGGY
+  // divergence reads the rising RSI from the pre-crash window and prints a false BULLISH bottom against
+  // the crash's lower lows; the same-window fix reads RSI AFTER the crash (low) and does NOT.
+  const data=[]; let p=100;
+  for(let i=0;i<15;i++){ p-=1; data.push(p); }                         // early decline → low RSI
+  for(let i=0;i<45;i++){ p+=1; data.push(p); }                         // long rise → RSI climbs in the old window
+  for(let i=0;i<12;i++){ p-=4; data.push(p); }                         // recent crash → RSI now low
+  const buggy=divergence(data);
+  const fixed=divergenceFixed(data);
+  assert.equal(buggy && buggy.type, "BULLISH");                        // the documented false signal
+  assert.ok(!(fixed && fixed.type === "BULLISH"));                     // corrected: no false bottom
+});
+
+test("patternsContext honors a bullish reversal at a bottom, suppresses it at a top", () => {
+  // Same Bullish-Engulfing geometry on the last two bars; only the surrounding TREND differs.
+  const engB = bar(50,50.2,47.8,48);                                   // bearish
+  const engC = bar(47,51.2,46.8,51);                                   // bullish engulf of engB
+  const downA = bar(54,54.2,53.8,53.5);
+  const down = [bar(60,60.1,59.9,60), bar(58,58.1,57.9,58), bar(56,56.1,55.9,56), downA, engB, engC];
+  const upA = bar(45,46.2,44.8,46);
+  const up   = [bar(40,40.1,39.9,40), bar(42,42.1,41.9,42), bar(44,44.1,43.9,44), upA, engB, engC];
+  assert.equal(patternsContext(down).dir, 1);                          // bottom → honored
+  assert.equal(patternsContext(up).dir, 0);                            // top → suppressed (context-aware)
+});
+
+test("patternsContext collapses multiple patterns into a single net vote (no stacking)", () => {
+  // Three White Soldiers + Bullish Engulfing can both fire on the same bars; corrected = one net vote.
+  const s=[bar(40,40.2,39.8,40.1),bar(40,41,39.5,41),bar(40.5,42.5,40,42),bar(42,44.5,41.5,44)];
+  const r=patternsContext(s);
+  assert.ok(r.dir===1 || r.dir===0);                                   // never >1; a single collapsed vote
+});
+
+test("correctedVotes emits DivFix/TrendFix/PatFix with the originals' weights", () => {
+  const down=[bar(60,60.1,59.9,60),bar(58,58.1,57.9,58),bar(56,56.1,55.9,56),
+              bar(54,54.2,53.8,53.5),bar(50,50.2,47.8,48),bar(47,51.2,46.8,51)];
+  const cv=correctedVotes(down.map(d=>d.close), down);
+  const byName=Object.fromEntries(cv.map(v=>[v.n,v]));
+  assert.equal(byName.TrendFix.w, 2);
+  assert.equal(byName.TrendFix.dir, -1);                              // recent decline
+  assert.equal(byName.PatFix.w, 1.5);
+  assert.equal(byName.PatFix.dir, 1);                                 // bullish reversal at a bottom
+  assert.ok(!("DivFix" in byName));                                   // <25 bars → no divergence read
+});
+
+test("scoreAt default path is byte-identical (corrected is opt-in)", () => {
+  const s=gen(120);
+  assert.deepEqual(scoreAt(s), scoreAt(s, null, false));              // additive arg never changes default
+  const corr=scoreAt(s, null, true);
+  assert.ok(corr && ["BUY","SELL","HOLD"].includes(corr.signal));    // corrected team still produces a verdict
+});
+
+test("analyze shadow-corrected config drops Div/Trend/Pat and injects the corrected forms", () => {
+  const s=gen(120);
+  const a=analyze(s,"TEST","SPY","tactical",1.5,2.0,
+    { shadowDrops:[{key:"shadow-corrected",drop:["Div","Trend","Pat"],corrected:true}] });
+  assert.ok(a.shadows && ["BUY","SELL","HOLD"].includes(a.shadows["shadow-corrected"]));
+  // The live verdict is untouched by the shadow computation.
+  assert.equal(a.signal, analyze(s,"TEST","SPY","tactical",1.5,2.0).signal);
 });

@@ -251,6 +251,7 @@ export function defaultVariants() {
     { label: "shadow-noMacdPat", where: t => !!(t.tags && t.tags.mode === "shadow-noMacdPat") },
     { label: "shadow-noDead",    where: t => !!(t.tags && t.tags.mode === "shadow-noDead") },
     { label: "shadow-noDeadDiv", where: t => !!(t.tags && t.tags.mode === "shadow-noDeadDiv") },
+    { label: "shadow-corrected", where: t => !!(t.tags && t.tags.mode === "shadow-corrected") }, // R5: Div/Trend/Pat REPLACED with corrected forms
     { label: "position", where: t => !!(t.tags && t.tags.mode === "position") },
     // Quality × DURATION (propose-only A/B INSIDE the position/long-hold stream): the
     // quality-duration study found high-ROE names beat the market with an edge that GROWS over

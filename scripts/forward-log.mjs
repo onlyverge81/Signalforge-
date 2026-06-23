@@ -445,6 +445,10 @@ export const SHADOW_CONFIGS = [
   { key: "shadow-noMacdPat", drop: ["MACD", "Pat"] },    // the two named nuisances, together
   { key: "shadow-noDead",    drop: ["MACD", "Pat", "ADX"] }, // 3-vote nuisance cleanup
   { key: "shadow-noDeadDiv", drop: ["MACD", "Pat", "ADX", "Div"] }, // full cleanup incl. the divergence bug
+  // R5 — the corrected team: REPLACE the three faulty votes (Div bug / Trend window-dep / Pat context-blind)
+  // with their fixed forms (DivFix same-window, TrendFix recent-window, PatFix context-aware single vote).
+  // Not a drop — a candidate re-build, judged OOS under the R1 bar. The live engine's votes are unchanged.
+  { key: "shadow-corrected", drop: ["Div", "Trend", "Pat"], corrected: true },
 ];
 // Build the shadow teams' entries for one name: for each config whose shadow signal is an ACTIONABLE
 // BUY, log a tactical-style OPEN entry on the SAME ATR levels. Returns 0..N entries. No-lookahead:
