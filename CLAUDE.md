@@ -643,9 +643,19 @@ time; the in-sample dyno points, the OOS ledger pulls the trigger; NEVER an in-s
   added). The full survivorship-free roster stays an opt-in **bias cross-check** via `FIS_UNIVERSE=full` /
   `SBT_UNIVERSE=full`; the `universe.screen` field + caveats record which ran. Tests +1 (300 green). Pattern to adopt
   next in the sibling cross-sectional studies (momentum/reversal/lowvol/quality/merit) — same helper, same toggle.
-- 🟢 **R4 · Audit the SIZE / risk-management layer** (untapped frontier): point the same scalpel at position sizing /
-  stops / portfolio construction — a coin-toss signal with disciplined sizing can still be a product; great signal +
-  bad sizing blows up. Likely higher leverage than squeezing the signal further.
+- 🟢 **R4 · Audit the SIZE / risk-management layer** (untapped frontier): ✅ **AUDITED (diagnostic, nothing re-wired).**
+  The CORE sizing model is CORRECT — textbook fixed-fractional `shares = risk$ ÷ stop-distance`, risk-$ held constant,
+  uses the same ATR-based SL the signal sets, and is AUTO vol-normalized (wider ATR → wider stop → fewer shares).
+  But four RISK gaps (mirror image of the signal layer — core sound, management thin): **(1) no concentration cap
+  ENFORCED** — a tight stop inflates POSITION VALUE to >100% of the account (un-buyable without margin) while the tab's
+  printed "≤10-20%" rule is never applied; **(2) "max loss" is idealized** — ignores costs/slippage AND assumes the
+  stop fills at price (a gap-down blows through it), shown as definite; **(3) NO portfolio-level risk** — sizes each
+  trade in isolation, but the engine's longs are all correlated (long, momentum-tilted) so 10×1% ≠ 10% heat (the deep
+  "unmeasured factor"); **(4) NO edge-aware sizing** — full 1% on every signal regardless of proof, i.e. over-betting a
+  coin-toss (Kelly says ≈0 with no edge; ties to the FDR discipline — don't size what hasn't cleared the bar). FIXES:
+  #1 cap + #2 honest max-loss are charter-clean DISPLAY-layer safety fixes (touch the risk tool, not signal/gate);
+  #3 portfolio heat + #4 edge-aware sizing are the deeper frontier (bigger builds). Verified empirically (tight stop →
+  125% of account at 1% risk). Risk management, not signal-squeezing, is the higher-leverage gap.
 - 🟢 **R5 · Candidate CORRECTED votes** (only after R3): corrected-Div (same-window price vs RSI), recent-window Trend,
   context-aware Pat — each a propose-only candidate vote / shadow team, OOS-gated, never an in-sample patch.
 - 🟢 **R6 · Codify the audit RITUAL**: make the gauntlet (cross-sectional IC → robustness A–F → shadow → OOS → record)
