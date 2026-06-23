@@ -20,6 +20,18 @@ dies live. The only verdict that counts is out-of-sample, in `forward-perf.json`
 
 ## Measured state (so you don't re-derive it)
 
+- **R3 LIQUID-universe re-run (DONE, in-sample) CORRECTED two conclusions** — the single most important reason R3
+  mattered. On the tradeable default (factor-interaction 32 names / shadow-backtest 20 names, illiquid dropped):
+  (1) **lowvol is DETHRONED** — #1 on the junky roster (IC 0.113, t 3.99) → **#10, IC 0.042, t 0.87, NOT SIGNIFICANT**
+  on liquid names: its pie dominance was confirmed **stale-price micro-cap artifact** (angle A, now as the default).
+  The new liquid headline is **Vol (IC 0.111, t 2.4, now #1) + momentum-12-1 (t 2.2) + Trend (t 2.7)**. (2) The
+  shadow-cleanup **expectancy no longer flips POSITIVE** on tradeable names — removing MACD+Pat+ADX(+Div) takes the
+  engine from significantly-losing (t −2.71) to a **coin toss** (expectancy −0.05, t −0.20), NOT the +0.15 it showed
+  on junk (that flip was a micro-cap oversold-bounce effect). MACD stays the worst single offender; Div's incremental
+  help shrinks to ~noise once liquid. **Robust survivors held (momentum/Vol/Trend; nuisances drag); the fragile ones
+  (lowvol-edge, engine-turns-profitable) were contamination we'd have believed without R3.** Small/noisy samples,
+  still in-sample — the OOS ledger is the arbiter.
+
 - **In-sample (`signal-study.json`, Polygon daily, 410 names):** the symmetric engine is a
   *statistically significant loser* — baseline t-stat ≈ −12.6, total ≈ −14,960, while
   buy-&-hold returned ≈ +140%.
