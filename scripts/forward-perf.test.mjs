@@ -375,6 +375,27 @@ test("scoreLedger: shadow-team streams are scored as their own variants and kept
   assert.ok(perf.variants["shadow-noMacd"].alphaGrowthPct > perf.variants["all"].alphaGrowthPct);
 });
 
+test("R2: FDR family = promotion hypotheses only — baselines + `-off` legs are CONTEXT, excluded from the denominator", () => {
+  // 12 momentum-on + 12 momentum-off trades (so `all` = 24, all ≥ MIN_TRADES_SIG=10 → eligible by count).
+  const ledger = [];
+  for (let i = 0; i < 12; i++) ledger.push(closed({ id: "on" + i, entry: 100, exit: 100 + (i % 3) + 4, benchClose: 101, momentum: true }));
+  for (let i = 0; i < 12; i++) ledger.push(closed({ id: "off" + i, entry: 100, exit: 100 + (i % 4), benchClose: 105, momentum: false }));
+  const perf = scoreLedger(ledger);
+  const fam = perf.multipleTesting.family;
+  // The genuine hypothesis is in the family…
+  assert.ok(fam.includes("momentum-on"), "momentum-on (a promotion hypothesis) is in the FDR family");
+  // …but the baseline and the `-off` control leg are NOT (R2).
+  assert.ok(!fam.includes("all"), "the `all` baseline is excluded from the family");
+  assert.ok(!fam.includes("momentum-off"), "the `-off` control leg is excluded from the family");
+  // Excluded-but-populated variants read CONTEXT, not a false 'NOT SIGNIFICANT'.
+  assert.equal(perf.variants["all"].significance.verdict, "CONTEXT");
+  assert.equal(perf.variants["momentum-off"].significance.verdict, "CONTEXT");
+  assert.equal(perf.variants["all"].significance.inFamily, false);
+  // The flag is exposed so the EVIDENCE scoreboard can mark context rows.
+  assert.equal(perf.variants["all"].fdr, false);
+  assert.equal(perf.variants["momentum-on"].fdr, true);
+});
+
 test("scoreLedger: empty ledger is honest, not a crash", () => {
   const perf = scoreLedger([]);
   assert.equal(perf.ledger.rows, 0);

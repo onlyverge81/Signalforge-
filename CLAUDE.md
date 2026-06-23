@@ -20,6 +20,18 @@ dies live. The only verdict that counts is out-of-sample, in `forward-perf.json`
 
 ## Measured state (so you don't re-derive it)
 
+- **R3 LIQUID-universe re-run (DONE, in-sample) CORRECTED two conclusions** — the single most important reason R3
+  mattered. On the tradeable default (factor-interaction 32 names / shadow-backtest 20 names, illiquid dropped):
+  (1) **lowvol is DETHRONED** — #1 on the junky roster (IC 0.113, t 3.99) → **#10, IC 0.042, t 0.87, NOT SIGNIFICANT**
+  on liquid names: its pie dominance was confirmed **stale-price micro-cap artifact** (angle A, now as the default).
+  The new liquid headline is **Vol (IC 0.111, t 2.4, now #1) + momentum-12-1 (t 2.2) + Trend (t 2.7)**. (2) The
+  shadow-cleanup **expectancy no longer flips POSITIVE** on tradeable names — removing MACD+Pat+ADX(+Div) takes the
+  engine from significantly-losing (t −2.71) to a **coin toss** (expectancy −0.05, t −0.20), NOT the +0.15 it showed
+  on junk (that flip was a micro-cap oversold-bounce effect). MACD stays the worst single offender; Div's incremental
+  help shrinks to ~noise once liquid. **Robust survivors held (momentum/Vol/Trend; nuisances drag); the fragile ones
+  (lowvol-edge, engine-turns-profitable) were contamination we'd have believed without R3.** Small/noisy samples,
+  still in-sample — the OOS ledger is the arbiter.
+
 - **In-sample (`signal-study.json`, Polygon daily, 410 names):** the symmetric engine is a
   *statistically significant loser* — baseline t-stat ≈ −12.6, total ≈ −14,960, while
   buy-&-hold returned ≈ +140%.
@@ -556,6 +568,16 @@ The honest meta: the SIGNALS dashboard shows 7 authoritative votes; under the ho
 as-displayed, Pat), 2 redundant/mis-thresholded (MACD, RSI), 1 mislabeled (VWAP). DISCIPLINE: corrections become
 OOS-testable CANDIDATE votes (corrected divergence / recent-window Trend / context-aware Pat), never in-sample patches.
 
+**Second shadow-backtest run (8 teams incl. Div, DONE, in-sample) — merged via PR #56:** the audit's `Div` bug now has
+its own shadow team. Result (38 names): **dropping Div alone helps modestly** (Δexpectancy +0.096, Δalpha +5.2pp —
+on par with Pat/ADX, below MACD; quirk: it ADDS 73 trades, improving quality not churn). **The full 4-vote cleanup
+`noDeadDiv` (−MACD−Pat−ADX−Div) is the new best team:** expectancy +0.148 (t +0.61) vs the 3-vote `noDead` +0.081,
+win 44.7%, trades −38% (2435→1513), alpha recovered +43.7pp — i.e. removing the divergence bug ON TOP of the other
+three makes the cleanest team cleaner still. **The nuisances COMPOUND super-additively:** sum of the 4 single Δexp =
++0.365, but all-four-together = +0.738 (double) — they reinforce each other's bad trades. HONEST (unchanged): in-sample
+(dies live); even fully cleaned alpha is STILL −18.6 (loses to passive) and t +0.61 is a COIN TOSS, not significance.
+The OOS `shadow-noDiv`/`shadow-noDeadDiv` ledger under FDR is the arbiter — NO in-sample re-wire.
+
 **Contenders hardening (DONE) — branch `claude/signalforge-duplicate-parsecsv-yiWlH`, 4 issues found reviewing
 the first live `contenders.json`:**
 - **#1 implausible-fundamentals guard:** a bad SEC TTM assembly gave **NVDA npm ≈ 5.93 (593%)**, scored as
@@ -597,3 +619,73 @@ the first live `contenders.json`:**
   chart (cosmetic on a delayed/swing feed — NOT a real-time signal) + a PolyLiveSocket↔poly-ws.mjs parity test.
   Live end-to-end needs a key in a real browser (the delayed socket is egress-blocked in CI).
 - Every candidate clears no-lookahead + OOS t≥2 after FDR before it's ever shown as tradeable.
+
+## Improvement roadmap (recommendation backlog — dedup'd, pick ONE at a time)
+
+Single source of truth so recommendations aren't overlaid or lost. Status: ✅ done · ⏳ passive (ledger only) ·
+🟢 actionable now (charter-clean) · 🔵 decision (user's call, gated on OOS proof). **Sustainable rule: one at a
+time; the in-sample dyno points, the OOS ledger pulls the trigger; NEVER an in-sample re-wire.**
+
+- ✅ DONE this arc: scoreAt↔analyze parity audit (clean, 370/370); patterns()/candle audit (geometry correct,
+  context-blind); vote-construction audit (Div bug, Trend window-dep, RSI/MACD/VWAP mis-thresholds); shadow engine
+  + shadow backtest (8 teams); `shadow-noDiv`/`noDeadDiv`.
+- ⏳ PASSIVE — mature the ~22 OOS labels + 7 shadow streams to n≥10 and clear the BH/BY FDR family. Time, not work.
+- 🟢 **R1 · Pre-register the promotion bar** (cheapest, foundational, do FIRST): ✅ **DONE — LOCKED protocol below.**
+- 🟢 **R2 · Prune the FDR TEST family** (cheap, restores power): ✅ **DONE.** The FDR denominator now counts only genuine
+  PROMOTION HYPOTHESES — `forward-perf` flags each variant `fdr` and EXCLUDES baselines (`all`/`position`), every `-off`
+  control leg (the complement, not a hypothesis), and the dominated `shadow-noMacdPat`. ~halves the family `m`, restoring
+  BH/BY power and ending the double-count of anti-correlated legs. Excluded-but-populated variants read verdict `CONTEXT`
+  (not a false `NOT SIGNIFICANT`). Tests +1 (299 green).
+- 🟢 **R3 · Liquid PRIMARY research universe** (biggest contamination fix): ✅ **DONE (shared screen, two studies).**
+  Pure `clearsLiquidityBar(bars)` (median price≥$5 AND median daily $-vol≥$2M over a name's history) is now the DEFAULT
+  universe gate for `factor-interaction-study` + `shadow-backtest-study` — drops the perpetual micro-cap junk that
+  contaminated the pie (lowvol artifact, oversold bounce). Liquid de-listed names still pass (NO survivorship bias
+  added). The full survivorship-free roster stays an opt-in **bias cross-check** via `FIS_UNIVERSE=full` /
+  `SBT_UNIVERSE=full`; the `universe.screen` field + caveats record which ran. Tests +1 (300 green). Pattern to adopt
+  next in the sibling cross-sectional studies (momentum/reversal/lowvol/quality/merit) — same helper, same toggle.
+- 🟢 **R4 · Audit the SIZE / risk-management layer** (untapped frontier): point the same scalpel at position sizing /
+  stops / portfolio construction — a coin-toss signal with disciplined sizing can still be a product; great signal +
+  bad sizing blows up. Likely higher leverage than squeezing the signal further.
+- 🟢 **R5 · Candidate CORRECTED votes** (only after R3): corrected-Div (same-window price vs RSI), recent-window Trend,
+  context-aware Pat — each a propose-only candidate vote / shadow team, OOS-gated, never an in-sample patch.
+- 🟢 **R6 · Codify the audit RITUAL**: make the gauntlet (cross-sectional IC → robustness A–F → shadow → OOS → record)
+  the standing requirement every new vote/factor/feature must pass. The habit compounds more than any single edge.
+- 🔵 **D1 · Demote-fast the nuisances** (MACD first, then the MACD+Pat+ADX+Div trio) WHEN their `shadow-*` streams clear
+  FDR. Lower bar than promotion; cut, don't flip.
+- 🔵 **D2 · Self-conflict Step 3** (regime picks the lead camp in the score) — only after `votes-aligned` clears FDR.
+- 🔵 **D3 · Vote re-weight** (`ic-backed`) — DE-PRIORITIZED: the pie's cross-sectional IC is the wrong target for the
+  engine's per-name decision (angle F); if anything, weight by the timing evidence, not selection IC.
+- 🔵 **D4 · Product reframe** — momentum-12-1-on-liquid as the SPINE; regime notifier + confluence demoted to a TIMING
+  overlay the human consults, not the verdict (even fully cleaned the confluence is a coin-toss that loses to passive).
+- 🔵 **D5 · Terminal milestone** — pre-commit a go/no-go date: "at 100 closed `momentum-liquid` OOS trades, decide;
+  demote whatever FDR has cleared." Turns open-ended measurement into a decidable project.
+- ⏳ OPTIONAL leftovers: WebSocket forming-bar parity test; live end-to-end (needs a key in a real browser).
+
+### R1 — Pre-registered PROMOTE / DEMOTE protocol (LOCKED 2026-06-22 — do not soften after seeing data)
+
+Written BEFORE the ledger filled, expressly to forbid optional-stopping (moving the bar to fit a number you've
+already watched). Operates on `forward-perf.json`'s per-variant `alphaGrowthPct` (alpha vs TOTAL-return buy-&-hold),
+its BH and BY FDR `significance`, and `n` (closed, benchmarkable trades).
+
+**PROMOTE** a propose-only label to "ratified / tradeable" — ALL must hold:
+1. **Coverage:** `n ≥ 10` closed benchmarkable OOS trades (charter floor). `n < 10` ⇒ status WATCH, never promoted.
+2. **Significance:** clears the FDR family at `q ≤ 0.05` on **BOTH the BH and the BY** columns — not BH alone (the
+   ~30-member family is correlated; BY is the dependence-robust check and is now a co-gate, not just a footnote).
+3. **Sign:** point-estimate `alphaGrowthPct > 0` (a significant NEGATIVE alpha is evidence to DEMOTE, never promote).
+4. **Persistence (anti-overfit):** split the label's closed trades chronologically in half — mean alpha must be
+   **positive in BOTH halves**. If `n < 20` the split is untrustworthy ⇒ status PROVISIONAL, hold promotion until `n ≥ 20`.
+5. **Cleanliness:** no-lookahead intact; not flagged data-suspect.
+
+**DEMOTE** (cut a nuisance vote / mark a label dead) — LOWER bar, cut fast (charter "demote fast"):
+1. `n ≥ 5` closed OOS trades.
+2. The adverse verdict at `p ≤ 0.1`: for a nuisance VOTE, its `shadow-*` team's alpha beats the full team's `all`;
+   for a label, a significant NEGATIVE `alphaGrowthPct`. Cut, don't flip; never re-wire the live engine in-sample.
+
+**ANTI-OPTIONAL-STOPPING (binding process):**
+- Evaluate ONLY at the fixed cadence (monthly) — never continuously; do NOT act on the first threshold crossing
+  between checkpoints.
+- A label evaluated and failed is re-examined only at the NEXT scheduled checkpoint, not re-tested daily for a cross.
+- This bar is FROZEN. To change it, change it for FUTURE labels with a dated note — NEVER retroactively to admit a
+  label you have already been watching.
+- **Terminal (D5):** at 100 closed `momentum-liquid` OOS trades, force a go/no-go and demote whatever has cleared.
+
