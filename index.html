@@ -288,6 +288,70 @@ function divergence(closes,n=10) {
   return null;
 }
 
+// ─── R5: corrected CANDIDATE votes (propose-only, never an in-sample re-wire) ──
+// The vote-construction self-audit found three faulty votes (Div bug, Trend window-dependence,
+// Pat context-blindness). These are the CORRECTED versions — built as candidate votes for a
+// `shadow-corrected` team, judged OOS under the R1 bar. The live engine's votes are UNCHANGED;
+// these only enter via the shadow path (analyze opts.shadowDrops / scoreAt corrected). NEVER a patch.
+
+// Fixed divergence: compare price and RSI over the SAME recent n-bar window (the original `divergence`
+// compared the last-n price move against RSI computed over the OLD [0..len-n] window — a different,
+// non-overlapping period, so a recent crash read RSI that predated it). Same-window, no mismatch.
+function divergenceFixed(closes,n=10){
+  if(closes.length<n+15) return null;
+  const rsiAt=i=>rsi(closes.slice(0,i+1));
+  const last=closes.length-1, prev=last-n;
+  if(prev<14) return null;
+  const rNow=rsiAt(last), rPrev=rsiAt(prev);
+  if(rNow==null||rPrev==null) return null;
+  const pUp=closes[last]>closes[prev], rUp=rNow>rPrev;
+  if(pUp&&!rUp) return {type:"BEARISH",desc:"Price up over the last "+n+" bars but RSI down over the SAME window — bearish divergence."};
+  if(!pUp&&rUp) return {type:"BULLISH",desc:"Price down over the last "+n+" bars but RSI up over the SAME window — bullish divergence."};
+  return null;
+}
+
+// Recent-window trend: net move over only the last n bars (the original `Trend` vote read
+// (last−first)/first over the WHOLE loaded series → window-length-dependent and stale).
+function recentTrend(closes,n=50){
+  if(closes.length<2) return {dir:0,state:"SIDEWAYS",pct:0};
+  const w=Math.min(n,closes.length);
+  const a=closes[closes.length-w], b=closes[closes.length-1];
+  if(!(a>0)) return {dir:0,state:"SIDEWAYS",pct:0};
+  const pct=(b-a)/a*100;
+  const state=pct>2?"UPTREND":pct<-2?"DOWNTREND":"SIDEWAYS";
+  return {dir:pct>2?1:pct<-2?-1:0, state, pct:parseFloat(pct.toFixed(2))};
+}
+
+// Context-aware patterns: same `patterns()` geometry, but a reversal pattern only earns a vote at
+// the right LOCATION (bullish reversal in a down/sideways context = a bottom; bearish in an up/sideways
+// context = a top), and multiple patterns COLLAPSE to a single net vote (the original stacked one vote
+// per pattern, context-blind — a Hammer fired identically at a top and a bottom).
+function patternsContext(data,n=50){
+  const pats=patterns(data);
+  if(!pats.length) return {dir:0, pats:[], trend:"SIDEWAYS"};
+  const tr=recentTrend(data.map(d=>d.close),n);
+  let net=0; const honored=[];
+  for(const p of pats){
+    if(p.type==="BULLISH" && tr.dir<=0){ net+=1; honored.push(p.name); }
+    else if(p.type==="BEARISH" && tr.dir>=0){ net-=1; honored.push(p.name); }
+  }
+  return {dir: net>0?1:net<0?-1:0, pats:honored, trend:tr.state};
+}
+
+// The corrected candidate-vote set, replacing Div/Trend/Pat with their fixed forms (same names/weights
+// as the originals so the team comparison is apples-to-apples). Pure; reads only the slice's own bars.
+const CORRECTED_DROP=["Div","Trend","Pat"];
+function correctedVotes(closes, data){
+  const out=[];
+  const dv=divergenceFixed(closes);
+  if(dv) out.push({n:"DivFix", dir:dv.type==="BULLISH"?1:-1, w:2.5});
+  const tr=recentTrend(closes);
+  out.push({n:"TrendFix", dir:tr.dir, w:2});
+  const pc=patternsContext(data);
+  if(pc.dir!==0) out.push({n:"PatFix", dir:pc.dir, w:1.5});
+  return out;
+}
+
 // ─── SFA12: SignalForge Average tracker (composite of SMA5/10/20 + trend %) ──
 // Independent indicator — a single bold line that rides the SMA bundle, plus a
 // momentum readout (average of the three SMAs' % move over a `lookback` window;
@@ -508,7 +572,13 @@ function analyze(data, ticker, market, strategy, slMult, tpMult, opts={}) {
   let shadows=null;
   if(opts.shadowDrops && opts.shadowDrops.length){
     shadows={};
-    for(const sc of opts.shadowDrops) shadows[sc.key]=computeSignal(ctx,[],{drop:sc.drop}).signal;
+    for(const sc of opts.shadowDrops){
+      // R5: a `corrected:true` config drops Div/Trend/Pat and injects their corrected forms; the rest
+      // just drop named votes. Default path unchanged.
+      const extra = sc.corrected ? correctedVotes(closes, data) : [];
+      const dropList = sc.corrected ? (sc.drop||[]).concat(CORRECTED_DROP) : sc.drop;
+      shadows[sc.key]=computeSignal(ctx, extra, (dropList&&dropList.length)?{drop:dropList}:{}).signal;
+    }
   }
 
   // SFA12 tracker (independent indicator — does NOT affect the live result above).
@@ -963,7 +1033,7 @@ function scoreFlat(slice){
   return{score:s,signal:s>=4?"BUY":s<=-4?"SELL":"HOLD",atr:atr(slice)};
 }
 
-function scoreAt(slice, drop=null) {
+function scoreAt(slice, drop=null, corrected=false) {
   if (slice.length < 26) return null; // need enough for MACD/SMA
   const closes = slice.map(d=>d.close), vols = slice.map(d=>d.volume);
   const last = slice[slice.length-1];
@@ -977,7 +1047,11 @@ function scoreAt(slice, drop=null) {
   const recV=vols.slice(-3).reduce((a,b)=>a+b,0)/3;
   const volSig=recV>avgV*1.15?"CONFIRMING":recV<avgV*0.85?"DIVERGING":"NEUTRAL";
   // `drop` (shadow backtests): run the same team signal with named votes removed. Default null = unchanged.
-  const r=computeSignal({R,M,s5,s10,s20,s50,trend,S,B,last,pats,div,volSig,ADX,OBV,VWAP}, [], (drop&&drop.length)?{drop}:{});
+  // `corrected` (R5 shadow-corrected team): drop Div/Trend/Pat and inject their corrected forms (candidate
+  // votes from the self-audit, judged OOS). Default false = unchanged byte-for-byte.
+  const extra = corrected ? correctedVotes(closes, slice) : [];
+  const dropList = corrected ? (drop||[]).concat(CORRECTED_DROP) : drop;
+  const r=computeSignal({R,M,s5,s10,s20,s50,trend,S,B,last,pats,div,volSig,ADX,OBV,VWAP}, extra, (dropList&&dropList.length)?{drop:dropList}:{});
   return {score:r.score, signal:r.signal, atr:atr(slice)};
 }
 
@@ -2391,13 +2465,20 @@ function App() {
     }, 50);
   }
 
-  // Position sizing
+  // Position sizing — fixed-fractional risk (shares = risk$ ÷ stop-distance), with a CONCENTRATION CAP
+  // (R4 #1): a tight stop can otherwise recommend a position worth >100% of the account. We cap at
+  // MAX_POS_PCT of account and recommend the SMALLER of the two — never over-concentrate.
   const accNum  = parseFloat(account)||10000;
   const riskNum = parseFloat(riskPct)||1;
   const riskAmt = accNum*(riskNum/100);
   const slDist  = analysis ? Math.abs(analysis.entry - analysis.sl) : 0;
-  const posSize = slDist>0 ? Math.floor(riskAmt/slDist) : 0;
+  const riskBasedSize = slDist>0 ? Math.floor(riskAmt/slDist) : 0;        // size from the 1-2% risk rule alone
+  const MAX_POS_PCT = 20;                                                 // concentration cap (% of account)
+  const concCapSize = (analysis && analysis.entry>0) ? Math.floor(accNum*(MAX_POS_PCT/100)/analysis.entry) : 0;
+  const posSize = Math.min(riskBasedSize, concCapSize);                  // recommend the smaller — never over-concentrate
+  const sizeCapped = analysis && riskBasedSize > concCapSize;            // the concentration cap is binding
   const posVal  = analysis ? posSize*analysis.entry : 0;
+  const effRiskAmt = posSize*slDist;                                     // ACTUAL $ risked at the recommended size (≤ riskAmt when capped)
 
   const last  = rows[rows.length-1];
   const first = rows[0];
@@ -4318,6 +4399,7 @@ function App() {
                 ["shadow-noMacdPat","Shadow team — MACD+Pat dropped"],
                 ["shadow-noDead","Shadow team — MACD+Pat+ADX dropped"],
                 ["shadow-noDeadDiv","Shadow team — MACD+Pat+ADX+Div dropped"],
+                ["shadow-corrected","Shadow team — Div/Trend/Pat CORRECTED (R5)"],
                 ["position","POSITION (dip-buy, trailing)"],
                 ["quality-position-on","POSITION · top-tertile ROE × duration"],
                 ["quality-grade-position-on","POSITION · AUTOPSY grade A/B × duration"],
@@ -4385,8 +4467,8 @@ function App() {
                       {l:"ENTRY PRICE",v:fmt(analysis.entry),c:"#00bcd4"},
                       {l:"STOP LOSS",v:fmt(analysis.sl),c:"#ff5252"},
                       {l:"SL DISTANCE",v:fmt(slDist),c:"#ff8a80"},
-                      {l:"POSITION SIZE",v:posSize+" units",c:"#00e676"},
-                      {l:"POSITION VALUE",v:"$"+posVal.toFixed(2),c:"#69f0ae"},
+                      {l:"POSITION SIZE",v:posSize+" units"+(sizeCapped?" ⚑":""),c:sizeCapped?"#ffb74d":"#00e676"},
+                      {l:"POSITION VALUE",v:"$"+posVal.toFixed(2)+" ("+(accNum>0?(100*posVal/accNum).toFixed(0):"0")+"%)",c:(posVal/accNum)>MAX_POS_PCT/100?"#ff5252":"#69f0ae"},
                       {l:"RISK/REWARD",v:"1 : "+analysis.rr,c:"#ffd740"},
                     ].map(x=>(
                       <div key={x.l} style={{background:"#060810",padding:12,borderRadius:4,borderLeft:"3px solid "+x.c}}>
@@ -4395,10 +4477,16 @@ function App() {
                       </div>
                     ))}
                   </div>
+                  {sizeCapped&&(
+                    <div style={{marginTop:12,padding:"10px 12px",borderRadius:4,background:"rgba(255,183,77,0.07)",border:"1px solid rgba(255,183,77,0.30)",fontSize:11,color:"#ffd180",lineHeight:1.7}}>
+                      ⚑ <strong>CONCENTRATION-CAPPED.</strong> The 1-2% risk rule alone would size <strong>{riskBasedSize} units</strong> (${(riskBasedSize*analysis.entry).toFixed(0)}, {(100*riskBasedSize*analysis.entry/accNum).toFixed(0)}% of account) — a tight stop inflates the share count. Capped to <strong>{posSize} units</strong> (≤{MAX_POS_PCT}% of account), so you actually risk <strong>${effRiskAmt.toFixed(2)}</strong> ({(100*effRiskAmt/accNum).toFixed(2)}%), not the full {riskPct}%. Over-concentration avoided.
+                    </div>
+                  )}
                   <div style={{marginTop:14,padding:12,background:"#060810",borderRadius:4,fontSize:11,color:"#90a4ae",lineHeight:1.9}}>
-                    Risking <strong style={{color:"#ffd740"}}>{riskPct}%</strong> (${riskAmt.toFixed(2)}) of your ${Number(accNum).toLocaleString()} account on {ticker}.<br/>
+                    Risking <strong style={{color:"#ffd740"}}>{(100*effRiskAmt/accNum).toFixed(2)}%</strong> (${effRiskAmt.toFixed(2)}) of your ${Number(accNum).toLocaleString()} account on {ticker}.<br/>
                     With stop loss at {fmt(analysis.sl)} ({fmt(slDist)} from entry), buy <strong style={{color:"#00e676"}}>{posSize} units</strong> (${posVal.toFixed(2)} position).<br/>
-                    Max loss if SL hit: <strong style={{color:"#ff5252"}}>${(posSize*slDist).toFixed(2)}</strong> · Target gain TP1: <strong style={{color:"#00e676"}}>${(posSize*Math.abs(analysis.tp1-analysis.entry)).toFixed(2)}</strong>
+                    Max loss if SL hit <span style={{color:FADE}}>(ideal)</span>: <strong style={{color:"#ff5252"}}>~${effRiskAmt.toFixed(2)}</strong> · Target gain TP1: <strong style={{color:"#00e676"}}>${(posSize*Math.abs(analysis.tp1-analysis.entry)).toFixed(2)}</strong><br/>
+                    <span style={{fontSize:10,color:FADE}}>⚠ "Max loss" is the IDEAL — it excludes costs/slippage and assumes the stop fills at the stop price. A gap-down or thin liquidity can blow through it, so a real loss can exceed this.</span>
                   </div>
                 </>
               ):(
@@ -4408,9 +4496,9 @@ function App() {
             <div style={{...card,fontSize:10,color:DIM,lineHeight:1.9}}>
               <span style={{color:"#00e676",fontWeight:700}}>POSITION SIZING RULES</span><br/>
               · Never risk more than 1-2% of account per trade<br/>
-              · Position value should not exceed 10-20% of account (avoid over-concentration)<br/>
+              · Position value is auto-capped at {MAX_POS_PCT}% of account here (avoid over-concentration)<br/>
               · Always set a stop loss before entering — no stop = undefined risk<br/>
-              · Scale down position size in high-volatility conditions (high ATR)<br/>
+              · High volatility auto-shrinks the size (wider ATR stop → fewer shares → same risk-$)<br/>
               · R/R ratio should be minimum 1:1.5, ideally 1:2 or better
             </div>
           </>
