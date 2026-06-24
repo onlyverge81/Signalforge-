@@ -768,6 +768,26 @@ personal overlay — never touches the grade/signal/gate. Pure display + localSt
 green). Verified via a Playwright drive of the CONTENDERS tab: 385 reaction toolbars render, a 🌟 click pins + shows the
 SINCE-YOU-STARRED delta row, MY PICKS stat present, zero JS errors. (Earlier queued; now shipped.)
 
+**🧑‍🏫 GUIDE tab — expert-advisor that coaches the whole toolkit into one read (DONE) — branch
+`claude/signalforge-profitability-wheel-qbclby`:** the capstone of the "status-without-action" theme (the regime A–D
+checklist, market labeling, ER recalibration, de-boilerplated ENGINE DIVIDED were the per-feature passes). One pure
+`guideBrief(analysis, regime, opts)` (`engine.mjs`, exported + unit-tested; mirrored byte-for-byte into `index.html`,
+parity verified) synthesizes the ALREADY-COMPUTED `analysis` + `outlook.regime` into `{here, cliffs, watch, apply,
+formation, next}` — reads existing fields ONLY, NEVER touches `analyze`/`computeSignal`/`scoreAt`/any gate/the
+long-only policy (verdict byte-identical; `analyze` snapshot unchanged). The GUIDE tab is placed **3rd, right after
+LIVE** (an on-ramp): YOU ARE HERE (verdict+regime+mode+timeframe chips) · **HOUSE RULES** (the advisory board answering
+the user's "who are the best teachers" ask — **Edward Thorp** (quant: only bet a MEASURED edge, size by it, no edge →
+don't trade) + **Richard Dennis / the Turtles** (mechanical rules, ATR-based sizing, cut losses fast / let winners run),
+whose proven methods ARE the OOS-gated, ATR-sized, momentum-tilted system) · CLIFFS-NOTES (regime-favored read, the
+DIVIDED-engine resolved lean, RSI extremes, mentor-voiced) · WHAT TO LOOK 👀 FOR (status-coded RSI/ADX/BB/VWAP/VOL/MACD
+checklist, reusing the regime-checklist item style) · APPLY NOW (recommended mode/timeframe/strategy from the regime) ·
+CHART FORMATION (patterns/divergence + what-to-watch-next) · NEXT STEP (routes to SIZE on an actionable BUY, else
+EVIDENCE). **A SHORT setup is surfaced as AWARENESS** (read from the raw `analysis.signal`/`score` — confirmed
+`index.html:2247` carries the raw SELL; muting is display-only), honestly framed "NOT taken under the long-only default"
+— never made actionable. STRICTLY display-only; no engine/parity/gate impact. Tests +6 (319 green); app mounts clean
+(driver: GUIDE empty state renders, full JSX transpiles, zero JS errors). Loaded-state cards populate on a live fetch
+(needs a key in a real browser — egress-blocked in CI).
+
 **Next — Track B:**
 - Mature the `momentum-on` / `merits-on` / `news-*` / `earnings-recent-on` OOS ledgers to n≥10; human-ratify
   only if they clear FDR. PASSIVE — the nightly `forward-log → forward-perf → promote` already partitions every
