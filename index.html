@@ -2084,6 +2084,12 @@ function App() {
   const [contenderAllBoxesOnly, setContenderAllBoxesOnly] = useState(false); // strict shortlist filter
   const [contenderAbout, setContenderAbout] = useState(null); // sym whose COMPANY profile panel is open
   const [companyInfo, setCompanyInfo] = useState({}); // sym -> {name,homepage,industry,description,loading,error,needKey,loaded}
+  // Personal CONTENDERS watchlist — Not/Like/Star reactions + a metrics SNAPSHOT taken when you react, so the
+  // card can show ⬆/⬇ deltas (grade/price/health/growth) since then. Device-local (no backend/charter), survives
+  // reloads + nightly rebuilds. sym -> {r:"star"|"like"|"not", snap:{grade,price,cheap,healthy,growing,total,filed}}.
+  const [picks, setPicks] = useState(()=>{ try{ return JSON.parse((typeof localStorage!=="undefined"&&localStorage.getItem("sf_contender_picks"))||"{}")||{}; }catch(_){ return {}; } });
+  const [picksOnly, setPicksOnly] = useState(false); // view filter: show only my starred/liked names
+  useEffect(()=>{ try{ if(typeof localStorage!=="undefined") localStorage.setItem("sf_contender_picks", JSON.stringify(picks)); }catch(_){} }, [picks]);
   useEffect(()=>{ let alive=true;
     fetch("./fundamentals.json").then(r=>r.ok?r.json():null).then(j=>{ if(alive&&j&&typeof j==="object") setFundaDB(j); }).catch(()=>{});
     fetch("./pattern-study.json").then(r=>r.ok?r.json():null).then(j=>{ if(alive&&j&&j.aggregate) setPatternStudy(j); }).catch(()=>{});
@@ -4096,11 +4102,26 @@ function App() {
                 setCompanyInfo(m=>({...m,[c.sym]:{loading:true}}));
                 polyTickerDetails(c.sym,key).then(d=>setCompanyInfo(m=>({...m,[c.sym]:{...d,loaded:true}}))).catch(e=>setCompanyInfo(m=>({...m,[c.sym]:{error:(e&&e.message)||"lookup failed"}})));
               };
+              // ── Personal watchlist (Not/Like/Star + change-since-you-reacted) ──
+              const GRADE_RANK={A:5,B:4,C:3,D:2,F:1};
+              const snapOf=c=>({grade:c.grade,price:c.price,cheap:c.cheap,healthy:c.healthy,growing:c.growing,total:c.total,filed:(c.filing&&c.filing.date)||null});
+              const reactTo=(c,r)=>setPicks(p=>{
+                const cur=p[c.sym];
+                if(cur&&cur.r===r){ const n={...p}; delete n[c.sym]; return n; }      // tap the active one → clear
+                return {...p,[c.sym]:{r, snap:(cur&&cur.snap)?cur.snap:snapOf(c)}};      // keep the baseline if re-reacting
+              });
+              const pickRank=sym=>{ const e=picks[sym]; return e?(e.r==="star"?3:e.r==="like"?2:e.r==="not"?-1:0):0; };
+              // Starred float to the very top, then Liked; Not sinks. Stable within a tier (original grade order kept).
+              const sortByPicks=arr=>arr.map((c,i)=>[c,i]).sort((a,b)=>(pickRank(b[0].sym)-pickRank(a[0].sym))||(a[1]-b[1])).map(x=>x[0]);
+              const pickFilter=arr=>picksOnly?arr.filter(c=>{const e=picks[c.sym];return e&&e.r!=="not";}):arr;
+              const REACTS=[["star","🌟","#ffd740","Star — pin to the top"],["like","👍","#00e676","Like — pin to the top"],["not","🚫","#ff8a80","Not interested — sink it"]];
               const renderCard=(c)=>{
                 const gc=gradeColors[c.grade]||"#90a4ae";
                 const open=contenderOpen===c.sym;
                 const cc=c.crossCheck||{};
                 const tags=c.watchTags||[];
+                const pk=picks[c.sym];
+                const filingChanged=!!(pk&&pk.snap&&pk.snap.filed&&c.filing&&c.filing.date&&pk.snap.filed!==c.filing.date);
                 return(
                   <div key={c.sym} style={{...card,border:"1px solid "+(c.allBoxes?"rgba(0,230,118,0.35)":BORD),background:c.allBoxes?"rgba(0,230,118,0.04)":BG2}}>
                     <div style={{display:"flex",alignItems:"center",gap:12,flexWrap:"wrap"}}>
@@ -4119,6 +4140,32 @@ function App() {
                         <button style={{...pill(false),marginBottom:0,whiteSpace:"nowrap",color:"#00bcd4",borderColor:"#00bcd499"}} onClick={()=>{setTicker(c.sym);fetchLive(c.sym);}}>ANALYZE →</button>
                       </div>
                     </div>
+
+                    <div style={{display:"flex",alignItems:"center",gap:6,marginTop:10,flexWrap:"wrap"}}>
+                      <span style={{fontSize:8,color:DIM,letterSpacing:1,marginRight:2}}>WATCHLIST</span>
+                      {REACTS.map(([r,ic,col,t])=>{ const on=pk&&pk.r===r;
+                        return <button key={r} title={t} onClick={()=>reactTo(c,r)} style={{cursor:"pointer",fontSize:13,lineHeight:1,padding:"4px 9px",borderRadius:5,border:"1px solid "+(on?col:BORD),background:on?col+"22":"transparent",opacity:on?1:0.5}}>{ic}</button>;
+                      })}
+                      {pk&&<span style={{fontSize:8,fontWeight:700,letterSpacing:1,color:pk.r==="star"?"#ffd740":pk.r==="like"?"#00e676":"#ff8a80"}}>📌 {pk.r==="star"?"STARRED":pk.r==="like"?"LIKED":"NOT"}</span>}
+                      {filingChanged&&<span title="The company has filed a new 10-Q/10-K since you reacted — the deltas below now span that filing." style={{fontSize:8,fontWeight:700,letterSpacing:1,color:"#00bcd4"}}>📄 NEW FILING</span>}
+                    </div>
+
+                    {pk&&pk.r!=="not"&&pk.snap&&(()=>{
+                      const s=pk.snap, arr=d=>d>0?"⬆":d<0?"⬇":"▬", dc=d=>d>0?"#00e676":d<0?"#ff5252":"#90a4ae";
+                      const gd=(GRADE_RANK[c.grade]||0)-(GRADE_RANK[s.grade]||0);
+                      const pp=(s.price>0&&c.price!=null)?((c.price-s.price)/s.price*100):null;
+                      const dh=c.healthy-s.healthy, dg=c.growing-s.growing;
+                      const chip=(label,col,txt)=>(<span style={{fontSize:9,color:"#90a4ae"}}>{label} <b style={{color:col}}>{txt}</b></span>);
+                      return (
+                        <div style={{display:"flex",gap:14,flexWrap:"wrap",marginTop:8,padding:"7px 10px",borderRadius:4,background:"#060810",border:"1px solid "+BG2}}>
+                          <span style={{fontSize:8,color:DIM,letterSpacing:1}}>SINCE YOU {pk.r==="star"?"STARRED":"LIKED"}</span>
+                          {chip("GRADE", dc(gd), s.grade===c.grade?(c.grade+" ▬"):(s.grade+"→"+c.grade+" "+arr(gd)))}
+                          {pp!=null&&chip("PRICE", dc(pp), (pp>=0?"+":"")+pp.toFixed(1)+"% "+arr(pp))}
+                          {chip("HEALTH", dc(dh), (dh>=0?"+":"")+dh+" "+arr(dh))}
+                          {chip("GROWTH", dc(dg), (dg>=0?"+":"")+dg+" "+arr(dg))}
+                        </div>
+                      );
+                    })()}
 
                     <div style={{display:"grid",gridTemplateColumns:"repeat(auto-fit,minmax(92px,1fr))",gap:8,marginTop:12}}>
                       {[
@@ -4219,12 +4266,25 @@ function App() {
                       <div style={{fontSize:30,fontWeight:700,color:"#ffd740",lineHeight:1}}>{cnt.watch!=null?cnt.watch:(contenders.watchlist||[]).length}</div>
                       <div style={{fontSize:8,color:DIM,letterSpacing:1,marginTop:4}}>WATCH LATER</div>
                     </div>
+                    {(()=>{ const ps=Object.values(picks); const nStar=ps.filter(p=>p.r==="star").length, nLike=ps.filter(p=>p.r==="like").length;
+                      return (
+                        <div style={{textAlign:"center",minWidth:70}}>
+                          <div style={{fontSize:30,fontWeight:700,color:"#ffd740",lineHeight:1}}>{nStar+nLike}</div>
+                          <div style={{fontSize:8,color:DIM,letterSpacing:1,marginTop:4}}>MY PICKS</div>
+                        </div>
+                      ); })()}
                     <div style={{flex:1,minWidth:160,fontSize:9,color:FADE,lineHeight:1.7}}>
                       Graded from <strong style={{color:"#90a4ae"}}>{cnt.universe||"—"}</strong> names · {contenders.priceSrc||"live price"}.{when?" Refreshed "+when.toISOString().slice(0,16).replace("T"," ")+" UTC.":""}
+                      <div style={{marginTop:3}}>Your 🌟/👍 picks pin to the top &amp; track ⬆/⬇ changes since you reacted — saved on this device.</div>
                     </div>
-                    <button style={{...pill(contenderAllBoxesOnly),marginBottom:0,whiteSpace:"nowrap"}} onClick={()=>setContenderAllBoxesOnly(v=>!v)}>
-                      {contenderAllBoxesOnly?"★ ALL BOXES ONLY":"SHOW ALL A/B"}
-                    </button>
+                    <div style={{display:"flex",flexDirection:"column",gap:6}}>
+                      <button style={{...pill(picksOnly),marginBottom:0,whiteSpace:"nowrap",fontSize:10}} onClick={()=>setPicksOnly(v=>!v)}>
+                        {picksOnly?"★ MY PICKS ONLY":"⊞ ALL NAMES"}
+                      </button>
+                      <button style={{...pill(contenderAllBoxesOnly),marginBottom:0,whiteSpace:"nowrap"}} onClick={()=>setContenderAllBoxesOnly(v=>!v)}>
+                        {contenderAllBoxesOnly?"★ ALL BOXES ONLY":"SHOW ALL A/B"}
+                      </button>
+                    </div>
                   </div>
 
                   {list.length===0&&(
@@ -4233,7 +4293,10 @@ function App() {
                     </div>
                   )}
 
-                  {list.map(renderCard)}
+                  {pickFilter(sortByPicks(list)).map(renderCard)}
+                  {picksOnly&&pickFilter(sortByPicks(list)).length===0&&(
+                    <div style={{textAlign:"center",padding:"24px 0",color:FADE,fontSize:11,letterSpacing:1}}>No starred or liked names yet — tap 🌟 or 👍 on a card to start your watchlist.</div>
+                  )}
 
                   {!contenderAllBoxesOnly&&watch.length>0&&(
                     <>
@@ -4243,7 +4306,7 @@ function App() {
                           Not contenders <em>yet</em>, but worth keeping an eye on: names that <strong style={{color:"#ffd740"}}>just missed the cut</strong>, whose <strong style={{color:"#ffd740"}}>chart is already working</strong>, or that are standouts in one category (deep value or high growth) the blended grade hasn't caught up to. A turn in price (re-rating the valuation grade) or the next filing could push these into the A/B shortlist. The tagged ones lead.
                         </div>
                       </div>
-                      {watch.map(renderCard)}
+                      {pickFilter(sortByPicks(watch)).map(renderCard)}
                     </>
                   )}
                 </>
