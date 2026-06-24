@@ -683,6 +683,23 @@ lives in the SIGNALS macro chip ("🌐 RISK-OFF · CONTEXT" — "CONTEXT" = "not
 "UNCONFIRMED EDGE" badge; the ENGINE-DIVIDED advisory is already actionable (gives camp directions + a regime room-read).
 Offered as the next one-at-a-time pass.
 
+**"Why is the regime ALWAYS BULL·RANGING·NORMAL?" — diagnosis + market-wide labeling fix #1 (DONE, display-only):**
+the user spotted that the OUTLOOK 🧭 regime and the SIGNALS "ENGINE DIVIDED" read identically no matter which stock is
+loaded. Root cause (traced, not guessed): the regime is `marketRegime(idx["SPY"])` (`index.html`) — it reads the **S&P
+proxy, NOT the stock**, so it is correctly IDENTICAL for every ticker (it's "read the room" = the broad market) and only
+moves day-to-day. The 🌐 MACRO chip is the twin (computed from `outlook.combined`, the SPY·DIA·QQQ session sum) — also
+market-wide. Neither was LABELED as market-wide, so both looked like stuck per-stock reads. Two further mechanisms recorded
+for later passes: (a) the ER mode thresholds (TRENDING≥0.45 / RANGING<0.25, `engine.mjs`) are mis-calibrated for DAILY
+INDEX data — net 21-day index progress is small vs the summed daily path, so ER sits structurally low (~0.07) and pins the
+MODE to RANGING almost always (display heuristic, not a gate — fix #2, deferred); (b) "ENGINE DIVIDED" fires on most names
+because the engine genuinely conflicts nearly always (Headline #2, the real pathology) and its "Room read" lead-camp line is
+fed by the stuck-RANGING regime, so it always says "weight mean-reversion" (fix #3, deferred). **Fix #1 SHIPPED:** both the
+🧭 regime card (header → "US MARKET REGIME · SPY" + a clarifier that it's the room your stock trades inside, same for every
+ticker, NOT a read on the stock) and the 🌐 macro card/chips (→ "US MARKET MACRO · SPY·DIA·QQQ · same for every ticker") are
+now explicitly labeled market-wide; the SIGNALS chips show "🧭 MKT · …" / "🌐 MKT · …" with tooltips that lead with the
+market-wide caveat. STRICTLY display (no engine/gate/verdict touched); app mounts clean (driver, zero JS errors). Fixes #2
+(recalibrate ER for daily index) and #3 (de-boilerplate ENGINE DIVIDED) remain offered as the next one-at-a-time passes.
+
 **Next — Track B:**
 - Mature the `momentum-on` / `merits-on` / `news-*` / `earnings-recent-on` OOS ledgers to n≥10; human-ratify
   only if they clear FDR. PASSIVE — the nightly `forward-log → forward-perf → promote` already partitions every

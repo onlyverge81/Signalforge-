@@ -2834,14 +2834,14 @@ function App() {
                     )}
                     {macro&&(()=>{
                       const rc=!macro.proven?"#90a4ae":macro.regime==="RISK-ON"?"#00e676":macro.regime==="RISK-OFF"?"#ff8a80":"#ffd740";
-                      return <span title={macro.note} style={{fontSize:9,fontWeight:700,letterSpacing:1,padding:"4px 10px",borderRadius:3,color:rc,background:rc+"1a",border:"1px solid "+rc+"44"}}>🌐 {macro.regime}{macro.proven?"":" · CONTEXT"}</span>;
+                      return <span title={"US MARKET macro (SPY · DIA · QQQ overlay) — describes the market backdrop, IDENTICAL for every ticker, NOT a read on "+(ticker||"this name")+".\n"+macro.note} style={{fontSize:9,fontWeight:700,letterSpacing:1,padding:"4px 10px",borderRadius:3,color:rc,background:rc+"1a",border:"1px solid "+rc+"44"}}>🌐 MKT · {macro.regime}{macro.proven?"":" · CONTEXT"}</span>;
                     })()}
                     {outlook&&outlook.regime&&(()=>{
                       const g=outlook.regime, tc=g.trend==="TRENDING"?"#26c6da":g.trend==="RANGING"?"#ffd740":"#90a4ae";
                       const intraday=["1","5","15","30","60"].includes(liveMeta?.resolution);
                       const cl=regimeChecklist(g,{resLabel:RES_LABEL[liveMeta?.resolution]||liveMeta?.resolution,intraday});
-                      const tip="MARKET REGIME · "+g.label+" — verify/confirm before you act:\n"+cl.map(i=>i.key+" "+i.label+": "+i.value+" → "+i.action).join("\n")+(g.risk?("\n⚑ "+g.risk):"")+"\nAwareness only — never changes the verdict. Full A–D checklist in OUTLOOK.";
-                      return <span title={tip} style={{fontSize:9,fontWeight:700,letterSpacing:1,padding:"4px 10px",borderRadius:3,color:tc,background:tc+"1a",border:"1px solid "+tc+"44"}}>🧭 {g.label}</span>;
+                      const tip="US MARKET REGIME (SPY) — the backdrop your stock trades inside, IDENTICAL for every ticker, NOT a read on "+(ticker||"this name")+".\n"+g.label+" — verify/confirm before you act:\n"+cl.map(i=>i.key+" "+i.label+": "+i.value+" → "+i.action).join("\n")+(g.risk?("\n⚑ "+g.risk):"")+"\nAwareness only — never changes the verdict. Full A–D checklist in OUTLOOK.";
+                      return <span title={tip} style={{fontSize:9,fontWeight:700,letterSpacing:1,padding:"4px 10px",borderRadius:3,color:tc,background:tc+"1a",border:"1px solid "+tc+"44"}}>🧭 MKT · {g.label}</span>;
                     })()}
                     {analysis.confluence&&analysis.confluence.famConflict&&(
                       <span title={"The engine is fighting itself: its MEAN-REVERSION votes (RSI/Stoch/BB) and TREND votes (MACD/MA/MAlong/Trend) point opposite ways. They're each valid in a DIFFERENT regime, so one camp is noise right now. Display only — the verdict is unchanged. Measured OOS via the votes-aligned ledger (Headline #2)."} style={{fontSize:9,fontWeight:700,letterSpacing:1,padding:"4px 10px",borderRadius:3,color:"#ffb74d",background:"rgba(255,183,77,0.10)",border:"1px solid #ffb74d55"}}>⚠ ENGINE DIVIDED</span>
@@ -3169,7 +3169,8 @@ function App() {
                     const stIco=s=>s==="confirm"?"✓":s==="caution"?"⚑":"?";
                     return (
                       <div style={{...card,borderLeft:"3px solid "+tCol}}>
-                        <span style={lbl}>🧭 MARKET REGIME · VERIFY / CONFIRM before you pick the tool</span>
+                        <span style={lbl}>🧭 US MARKET REGIME · SPY · VERIFY / CONFIRM before you pick the tool</span>
+                        <div style={{fontSize:9,color:FADE,marginTop:1,marginBottom:8,lineHeight:1.5}}>The <b>room</b> your stock trades inside — read from the S&amp;P 500 (<b>SPY</b>), so it is the SAME for every ticker and moves day-to-day, not stock-to-stock. It is NOT a read on {liveMeta?.sym||"this stock"} itself.</div>
                         <div style={{display:"flex",gap:8,flexWrap:"wrap",alignItems:"center",marginBottom:12}}>
                           <span style={{fontSize:20,fontWeight:800,letterSpacing:1,color:tCol}}>{g.label}</span>
                           <span style={{padding:"2px 8px",borderRadius:4,border:"1px solid "+dCol,color:dCol,fontSize:11,fontWeight:700}}>{g.direction}</span>
@@ -3233,7 +3234,7 @@ function App() {
                       <div style={{background:BG3,borderRadius:4,padding:"10px 14px",marginBottom:12,
                         border:"1px solid "+(!macro.proven?"rgba(144,164,174,0.25)":macro.regime==="RISK-ON"?"rgba(0,230,118,0.30)":macro.regime==="RISK-OFF"?"rgba(255,82,82,0.30)":"rgba(255,215,64,0.30)")}}>
                         <div style={{display:"flex",justifyContent:"space-between",alignItems:"center"}}>
-                          <span style={{fontSize:11,color:DIM,letterSpacing:1}}>🌐 MACRO REGIME <span style={{color:FADE}}>· {macro.proven?"conditions the signal":"context only"}</span></span>
+                          <span style={{fontSize:11,color:DIM,letterSpacing:1}}>🌐 US MARKET MACRO <span style={{color:FADE}}>· SPY·DIA·QQQ · same for every ticker · {macro.proven?"conditions the signal":"context only"}</span></span>
                           <span style={{fontSize:14,fontWeight:700,color:!macro.proven?MUT:(macro.regime==="RISK-ON"?"#00e676":macro.regime==="RISK-OFF"?"#ff8a80":"#ffd740")}}>{macro.regime}</span>
                         </div>
                         <div style={{fontSize:9,color:FADE,lineHeight:1.6,marginTop:5}}>{macro.note}</div>
