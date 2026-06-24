@@ -180,7 +180,23 @@ export function marketRegime(bars){
   const approxMA=win<200;
   const direction=last>ma*1.01?"BULL":last<ma*0.99?"BEAR":"NEUTRAL";
   const er=efficiencyRatio(closes,21);
-  const trend=er==null?"UNKNOWN":er>=0.45?"TRENDING":er<0.25?"RANGING":"TRANSITIONAL";
+  // Trend MODE: the old absolute cut-points (≥0.45 TRENDING / <0.25 RANGING) were mis-calibrated for DAILY
+  // INDEX data — net 21-day index drift is small vs the summed daily path, so ER sits structurally low
+  // (~0.07–0.20) and the mode was pinned to RANGING almost always. Fix: keep absolute calls only at the
+  // UNAMBIGUOUS extremes (≥0.45 = a clean trend, ≤0.10 = clear chop); classify the wide MID-RANGE where
+  // daily data actually lives RELATIVE to the market's OWN efficiency norm — the median of its trailing
+  // rolling 21-bar ER — exactly like `vol` is judged vs its 6-month baseline. Self-calibrating across
+  // resolutions/assets; display-only, touches no gate. The absolute ER is still surfaced for transparency.
+  const erSeries=[];
+  for(let i=21;i<closes.length;i++){ const e=efficiencyRatio(closes.slice(i-21,i+1),21); if(e!=null) erSeries.push(e); }
+  const medER=a=>{ if(!a.length) return null; const s=a.slice().sort((x,y)=>x-y),m=s.length>>1; return s.length%2?s[m]:(s[m-1]+s[m])/2; };
+  const baseER=erSeries.length>=12?medER(erSeries):null;
+  let trend;
+  if(er==null) trend="UNKNOWN";
+  else if(er>=0.45) trend="TRENDING";                                   // unambiguous clean directional move
+  else if(er<=0.10) trend="RANGING";                                    // unambiguous chop
+  else if(baseER!=null&&baseER>0) trend=er>=baseER*1.35?"TRENDING":er<=baseER*0.75?"RANGING":"TRANSITIONAL";
+  else trend=er>=0.30?"TRENDING":er<0.18?"RANGING":"TRANSITIONAL";      // short-history fallback (daily-calibrated)
   const rets=[]; for(let i=1;i<closes.length;i++) rets.push(closes[i]/closes[i-1]-1);
   const stdev=a=>{ if(a.length<2) return null; const m=a.reduce((x,y)=>x+y,0)/a.length; return Math.sqrt(a.reduce((x,y)=>x+(y-m)**2,0)/a.length); };
   const recentVol=stdev(rets.slice(-21)), baseVol=stdev(rets.slice(-126));

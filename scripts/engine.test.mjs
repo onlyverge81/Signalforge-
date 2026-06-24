@@ -400,11 +400,27 @@ test("marketRegime: a rising trend reads BULL · TRENDING and favors trend-follo
   assert.match(r.label, /BULL/);
 });
 
-test("marketRegime: a choppy, flat market reads RANGING and favors mean-reversion", () => {
-  const bars = Array.from({ length: 220 }, (_, i) => ({ close: 100 + Math.sin(i / 2) * 3 }));  // oscillating, no trend
+test("marketRegime: a genuinely choppy market reads RANGING and favors mean-reversion", () => {
+  // True bar-to-bar chop (a sawtooth that reverses every bar) → ER ≈ 0.05, below the unambiguous-chop
+  // floor → RANGING. (A smooth sine is NOT this: it's locally directional, so the relative classifier
+  // correctly reads it TRANSITIONAL — that's the whole point of the daily-index recalibration.)
+  const bars = Array.from({ length: 220 }, (_, i) => ({ close: 100 + (i % 2) * 2 }));
   const r = marketRegime(bars);
   assert.equal(r.trend, "RANGING");
   assert.match(r.favored, /Mean-reversion/);
+});
+
+test("marketRegime: a trend EMERGING from chop reads TRENDING at a mid-range ER (the daily-index fix)", () => {
+  // 190 bars of chop (low ER baseline) then a noisy drift up. The recent 21-bar ER lands in the MID-RANGE
+  // (~0.35) — BELOW the old absolute 0.45 TRENDING bar (so the old code mislabeled it), but well ABOVE the
+  // market's own efficiency norm, so the relative classifier correctly calls it TRENDING.
+  const bars = [];
+  for (let i = 0; i < 190; i++) bars.push({ close: 100 + (i % 2) * 2 });   // choppy baseline
+  let p = 100;
+  for (let i = 0; i < 30; i++) { p += 0.3 + (i % 2 ? 0.8 : -0.8); bars.push({ close: p }); } // drift up, noisy
+  const r = marketRegime(bars);
+  assert.ok(r.er < 0.45, "absolute ER is mid-range, under the old TRENDING bar (er=" + r.er + ")");
+  assert.equal(r.trend, "TRENDING");                                       // relative-to-own-norm catches it
 });
 
 test("marketRegime: a falling, volatile tape flags ELEVATED risk; <40 bars → null (honest)", () => {

@@ -697,8 +697,24 @@ fed by the stuck-RANGING regime, so it always says "weight mean-reversion" (fix 
 🧭 regime card (header → "US MARKET REGIME · SPY" + a clarifier that it's the room your stock trades inside, same for every
 ticker, NOT a read on the stock) and the 🌐 macro card/chips (→ "US MARKET MACRO · SPY·DIA·QQQ · same for every ticker") are
 now explicitly labeled market-wide; the SIGNALS chips show "🧭 MKT · …" / "🌐 MKT · …" with tooltips that lead with the
-market-wide caveat. STRICTLY display (no engine/gate/verdict touched); app mounts clean (driver, zero JS errors). Fixes #2
-(recalibrate ER for daily index) and #3 (de-boilerplate ENGINE DIVIDED) remain offered as the next one-at-a-time passes.
+market-wide caveat. STRICTLY display (no engine/gate/verdict touched); app mounts clean (driver, zero JS errors). Fix #3 (de-boilerplate
+ENGINE DIVIDED) remains offered as the next pass.
+
+**Fix #2 — ER trend-MODE recalibrated for daily-index data (DONE) — "stop pinning the regime to RANGING":** the old
+absolute cut-points (`er>=0.45` TRENDING / `er<0.25` RANGING, `marketRegime` in `engine.mjs`) were mis-tuned for DAILY
+INDEX bars — net 21-day index drift is small vs the summed daily path, so the efficiency ratio sits structurally low
+(~0.07–0.20) and the mode read RANGING almost always. Fix (mirrors the EXISTING `vol` classifier, which is relative to a
+6-month baseline): keep absolute calls only at the UNAMBIGUOUS extremes (`er>=0.45` = clean trend, `er<=0.10` = clear
+chop), and classify the wide MID-RANGE where daily data actually lives RELATIVE to the market's OWN efficiency norm — the
+MEDIAN of its trailing rolling 21-bar ER (`baseER`): TRENDING if `er>=baseER*1.35`, RANGING if `er<=baseER*0.75`, else
+TRANSITIONAL (short-history fallback uses daily-calibrated absolutes 0.30/0.18). Self-calibrating across resolutions/assets;
+the absolute ER is still surfaced for transparency. Now it DISCRIMINATES (a trend emerging from chop reads TRENDING at a
+mid-range ER the old 0.45 bar never reached) instead of being stuck. **Honest limitation:** a persistent moderate trend
+whose ER stays near its own (now-elevated) baseline reads TRANSITIONAL rather than TRENDING — relative classification's
+known tradeoff; the absolute ≥0.45 ceiling still catches strong trends. Mirrored byte-for-byte into `index.html` (parity
+verified); display-only, touches no gate/verdict. Tests: updated the "choppy" case to genuine bar-to-bar chop (the old
+smooth-sine series is locally directional → correctly TRANSITIONAL now) + added an emergent-trend discrimination test
+(312 green); app mounts clean. Fix #3 (de-boilerplate ENGINE DIVIDED, fed by this regime) is the remaining offered pass.
 
 **Next — Track B:**
 - Mature the `momentum-on` / `merits-on` / `news-*` / `earnings-recent-on` OOS ledgers to n≥10; human-ratify
