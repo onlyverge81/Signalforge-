@@ -826,6 +826,101 @@ function regimeChecklist(regime, opts={}){
                    :"Your chart matches the regime's daily/swing horizon." });
   return items;
 }
+// 🧑‍🏫 GUIDE — synthesize the already-computed `analysis` + market `regime` into a plain-English COACHED
+// read: where you are, what to look for, which SignalForge tool to apply NOW, and the next step. Pure &
+// display-only — reads existing fields, NEVER changes the verdict/gate/long-only policy. Channels two proven,
+// teachable mentors: Edward Thorp (only bet a MEASURED edge; size by it; no edge → don't trade) and Richard
+// Dennis / the Turtles (mechanical rules; ATR-based sizing; cut losses fast, let winners run). `opts` =
+// {mode,resLabel,intraday,macro}. status ∈ confirm|verify|caution mirrors regimeChecklist.
+function guideBrief(analysis, regime, opts={}){
+  if(!analysis) return null;
+  const a=analysis, I=a.indicators||{}, C=a.confluence||{};
+  const mode=opts.mode||null, resLabel=opts.resLabel||null, intraday=!!opts.intraday;
+  const sig=a.signal, muted=sig==="SELL", trend=regime?regime.trend:null;
+  const rsi=I.rsi&&typeof I.rsi.v==="number"?I.rsi.v:null;
+  const score=typeof a.score==="number"?a.score:0;
+  // ── here: state at a glance
+  const here={ verdict:sig, muted, confidence:typeof a.confidence==="number"?a.confidence:null,
+    regimeLabel:regime?regime.label:null, mode, resLabel, intraday };
+  // ── cliffs: prioritized plain-English read, in the mentors' voice
+  const cliffs=[];
+  if(regime&&regime.favored) cliffs.push("Read the room first — the market is "+regime.label+". "+regime.favored+".");
+  if(C.famConflict){
+    const camp = trend==="RANGING" ? {name:"mean-reversion (RSI/Stoch/BB)", dir:C.meanRevDir}
+      : trend==="TRENDING" ? {name:"trend (MACD/MA/Trend)", dir:C.trendDir} : null;
+    cliffs.push(camp
+      ? "The engine is DIVIDED — its two camps disagree. In this regime, trust the "+camp.name+" camp ("+(camp.dir>0?"BUY":camp.dir<0?"AVOID":"neutral")+") and discount the other as out-of-regime noise."
+      : "The engine is DIVIDED — its two camps disagree and the regime is transitional, so neither is favored: a genuine stand-aside.");
+  }
+  if(typeof C.icBackedShare==="number" && C.icBackedShare<0.34 && sig==="BUY")
+    cliffs.push("Caution — most of this BUY's weight rests on votes that did NOT prove out in testing; treat the conviction as thin.");
+  if(rsi!=null){
+    if(rsi<30) cliffs.push("RSI "+rsi+" is OVERSOLD — a bounce is possible, but only 'buy the dip' when the tape is RANGING (mean-reversion's home).");
+    else if(rsi>70) cliffs.push("RSI "+rsi+" is OVERBOUGHT — momentum may stall; chasing here buys the worst entry.");
+  }
+  cliffs.push(sig==="BUY"
+    ? "If you take it: size by ATR — risk a fixed small % on the stop distance, not on conviction — and let the SIZE tab set the shares (Thorp + Turtle rule)."
+    : "No proven edge is a position — a HOLD/AVOID protects capital. The Turtle rule (small losses, large wins) starts with NOT forcing a trade.");
+  // ── watch: status-coded checklist of what to look 👀 for on the chart
+  const watch=[];
+  if(rsi!=null) watch.push({ key:"RSI", label:"RSI MOMENTUM", value:String(rsi),
+    status:rsi<30?"confirm":rsi>70?"caution":"verify",
+    read:rsi<30?"Oversold — selling may be exhausted.":rsi>70?"Overbought — buyers may be exhausted.":"Mid-range — no extreme.",
+    action:rsi<30?"In a RANGING tape, wait for a higher close to confirm the bounce.":rsi>70?"Don't chase — wait for a pullback or fresh confirmation.":"Not a trigger alone — combine with the trend read." });
+  const adx=I.adx&&typeof I.adx.adx==="number"?I.adx.adx:null;
+  if(adx!=null) watch.push({ key:"ADX", label:"TREND STRENGTH", value:String(adx),
+    status:adx>25?"confirm":"verify",
+    read:adx>25?"ADX>25 — a strong, tradeable trend is present.":adx<20?"ADX<20 — weak/absent trend (chop).":"ADX mid — the trend is marginal.",
+    action:adx>25?"Trend-following votes are reliable — favor breakouts / momentum.":"Favor mean-reversion; trend signals misfire without strength." });
+  if(I.bb&&I.bb.sig&&I.bb.sig!=="N/A") watch.push({ key:"BB", label:"BOLLINGER BANDS", value:I.bb.sig,
+    status:I.bb.sig==="BULLISH"?"confirm":I.bb.sig==="BEARISH"?"caution":"verify",
+    read:I.bb.sig==="BULLISH"?"Price tagged the LOWER band — stretched low.":I.bb.sig==="BEARISH"?"Price tagged the UPPER band — stretched high.":"Price mid-band — no stretch.",
+    action:I.bb.sig==="BULLISH"?"A lower-band tag is a mean-reversion BUY setup in a range.":I.bb.sig==="BEARISH"?"An upper-band tag warns of a pullback.":"Wait for a band tag to act." });
+  if(I.vwap&&I.vwap.sig) watch.push({ key:"VWAP", label:"PRICE vs VWAP", value:I.vwap.sig,
+    status:I.vwap.sig==="BULLISH"?"confirm":"caution",
+    read:I.vwap.sig==="BULLISH"?"Price is ABOVE the 20-bar VWAP — buyers in control.":"Price is BELOW the 20-bar VWAP — sellers in control.",
+    action:I.vwap.sig==="BULLISH"?"Holding above VWAP supports a long.":"A reclaim of VWAP would improve a long entry." });
+  if(I.vol&&I.vol.sig) watch.push({ key:"VOL", label:"VOLUME", value:I.vol.sig,
+    status:I.vol.sig==="CONFIRMING"?"confirm":I.vol.sig==="DIVERGING"?"caution":"verify",
+    read:I.vol.sig==="DIVERGING"?"Volume is fading — the move lacks conviction.":I.vol.sig==="CONFIRMING"?"Volume confirms the move.":"Volume is unremarkable.",
+    action:I.vol.sig==="DIVERGING"?"Distrust a breakout on falling volume.":I.vol.sig==="CONFIRMING"?"Volume backs the read — a cleaner signal.":"Wait for volume to pick a side." });
+  if(I.macd&&I.macd.sig&&I.macd.sig!=="N/A") watch.push({ key:"MACD", label:"MACD (use with care)", value:I.macd.sig,
+    status:"verify",
+    read:"MACD reads "+I.macd.sig+", but testing showed it is WEAK / often backwards at swing horizons.",
+    action:"Don't let MACD alone drive the call — it is the engine's least reliable vote." });
+  // ── apply: which mode / resolution / strategy to use NOW
+  const apply={};
+  apply.mode = (trend==="TRENDING"&&!intraday)
+    ? { rec:"POSITION", why:"A real trend on a daily horizon is where long-hold position trades (let winners run on a trailing stop) pay best."+(mode==="position"?" You're already in POSITION mode.":" Consider switching from "+(mode||"the current")+" mode.") }
+    : { rec:"TACTICAL", why:"A ranging / intraday tape suits shorter tactical trades with defined targets."+(mode==="tactical"?" You're already in TACTICAL mode.":"") };
+  apply.resolution = intraday
+    ? { rec:"DAILY swing", why:"The regime read is a DAILY view and the feed is 15-min delayed — an intraday chart mismatches it. Switch to a daily / swing timeframe." }
+    : { rec:resLabel||"DAILY", why:"Your timeframe matches the regime's daily / swing horizon." };
+  apply.strategy = trend==="TRENDING"
+    ? { rec:"Trend-following / momentum", why:"Buy strength and ride breakouts; momentum-12-1 is the one robust edge here." }
+    : trend==="RANGING"
+    ? { rec:"Mean-reversion", why:"Buy oversold dips (RSI/Stoch/BB) toward the range middle; fade the extremes." }
+    : { rec:"Stand-aside / demand confluence", why:"A transitional tape rewards patience — wait for the regime to resolve before committing." };
+  // SHORT awareness (un-muted) — the bearish read is surfaced even though long-only never TAKES it.
+  apply.short = (sig==="SELL"||score<=-5)
+    ? { score, bears:typeof C.bear==="number"?C.bear:null,
+        read:"Conditions present a SHORT setup (score "+score+(typeof C.bear==="number"?", "+C.bear+" bear votes":"")+"). It is NOT taken — SignalForge is long-only by default. The bearish read: bears outweigh bulls here, so a long faces a headwind. Awareness only — wait for a long re-entry, or simply note the downside risk." }
+    : null;
+  // ── formation: the chart's current candle story + what to watch next
+  const pats=Array.isArray(a.patterns)?a.patterns.map(p=>({name:p.name,type:p.type,desc:p.desc})):[];
+  const div=a.divergence?{type:a.divergence.type,desc:a.divergence.desc}:null;
+  const nextWatch = trend==="RANGING"
+    ? "In this range, watch for a bullish reversal candle (hammer / bullish engulfing) at support with a higher close to confirm a bounce."
+    : trend==="TRENDING"
+    ? ((regime&&regime.direction==="BULL")?"In this uptrend, watch for a higher-low pullback that holds and resumes — the lower-risk continuation entry.":"In this downtrend, a long needs a clear base + a reclaim of resistance before it's worth the headwind.")
+    : "Watch the next few candles for the regime to resolve — a decisive close with volume tips the toolkit.";
+  const formation={ patterns:pats, divergence:div, nextWatch };
+  // ── next: the guided next step in the verify-first flow
+  const next = (sig==="BUY"&&!muted)
+    ? { tab:"size", label:"SIZE the trade →", why:"You have a long signal — set position size by ATR risk before acting." }
+    : { tab:"evidence", label:"Check the EVIDENCE →", why:"No actionable long — see whether any edge is OOS-proven before risking capital." };
+  return { here, cliffs, watch, apply, formation, next };
+}
 
 // ─── Phase-3 macro regime — condition conviction on the market, when earned ───
 // Reuses buildOutlook's DIA/SPY/QQQ overlay (no new data path). `combined` is the
@@ -2682,7 +2777,7 @@ function App() {
 
       {/* Tabs */}
       <div style={{background:BG3,borderBottom:"1px solid "+BORD,padding:"0 20px",display:"flex"}}>
-        {[["input","▣ DATA"],["live","⚡ LIVE"],["evidence","🔬 EVIDENCE"],["paper","📒 FORWARD TEST"],["backtest","⟲ BACKTEST"],["replay","▶ REPLAY"],["value","✚ AUTOPSY"],["contenders","★ CONTENDERS"],["outlook","◎ OUTLOOK"],["signals","◈ SIGNALS"],["position","⊞ SIZE"],["history","◷ HISTORY"]].map(([k,l])=>(
+        {[["input","▣ DATA"],["live","⚡ LIVE"],["guide","🧑‍🏫 GUIDE"],["evidence","🔬 EVIDENCE"],["paper","📒 FORWARD TEST"],["backtest","⟲ BACKTEST"],["replay","▶ REPLAY"],["value","✚ AUTOPSY"],["contenders","★ CONTENDERS"],["outlook","◎ OUTLOOK"],["signals","◈ SIGNALS"],["position","⊞ SIZE"],["history","◷ HISTORY"]].map(([k,l])=>(
           <button key={k} style={tBtn(tab===k)} onClick={()=>setTab(k)}>{l}</button>
         ))}
       </div>
@@ -2839,6 +2934,113 @@ function App() {
             </div>
             {error&&<div style={{background:"rgba(255,82,82,0.07)",border:"1px solid rgba(255,82,82,0.3)",borderRadius:4,padding:12,color:"#ff8a80",fontSize:11,marginBottom:14,lineHeight:1.7}}>⚠ {error}</div>}
             <button style={runBtn} onClick={run}>▶ RUN SIGNAL ANALYSIS</button>
+          </>
+        )}
+
+        {/* ── GUIDE TAB — expert-advisor / tutorial that coaches the whole toolkit into one read ── */}
+        {tab==="guide"&&(
+          <>
+            {!analysis&&(
+              <div style={{...card,textAlign:"center",padding:"40px 20px"}}>
+                <div style={{fontSize:40,marginBottom:10}}>🧑‍🏫</div>
+                <div style={{fontSize:16,fontWeight:800,letterSpacing:1,marginBottom:6}}>FETCH A STOCK TO COACH</div>
+                <div style={{fontSize:12,color:FADE,lineHeight:1.6,maxWidth:460,margin:"0 auto 16px"}}>The GUIDE reads your loaded stock + the market regime and explains, in plain English, how to read the screen and which SignalForge tool to apply right now.</div>
+                <button style={{...runBtn,width:"auto",padding:"10px 30px"}} onClick={()=>setTab("live")}>⚡ GO TO LIVE — FETCH DATA</button>
+              </div>
+            )}
+            {analysis&&(()=>{
+              const intraday=isIntradayRes(liveMeta?.resolution);
+              const resLabel=RES_LABEL[liveMeta?.resolution]||liveMeta?.resolution;
+              const g=guideBrief(analysis, outlook?.regime, {mode, resLabel, intraday, macro});
+              if(!g) return null;
+              const stCol=s=>s==="confirm"?"#00e676":s==="caution"?"#ff5252":"#ffd740";
+              const stIco=s=>s==="confirm"?"✓":s==="caution"?"⚑":"?";
+              const vCol=g.here.verdict==="BUY"?"#00e676":g.here.verdict==="SELL"?"#ff5252":"#ffd740";
+              return (
+                <>
+                  {/* 1 · YOU ARE HERE */}
+                  <div style={{...card,borderLeft:"3px solid "+vCol}}>
+                    <span style={lbl}>🧑‍🏫 YOUR GUIDE — {liveMeta?.sym||ticker} · the whole toolkit, coached into one read</span>
+                    <div style={{display:"flex",gap:8,flexWrap:"wrap",alignItems:"center",marginTop:8}}>
+                      <span style={{fontSize:18,fontWeight:800,color:vCol}}>{g.here.verdict}{g.here.muted?" (not taken — long-only)":""}</span>
+                      {g.here.confidence!=null&&<span style={{padding:"2px 8px",borderRadius:4,border:"1px solid "+DIM,color:DIM,fontSize:11,fontWeight:700}}>{g.here.confidence}% conf</span>}
+                      {g.here.regimeLabel&&<span style={{padding:"2px 8px",borderRadius:4,border:"1px solid #26c6da",color:"#26c6da",fontSize:11,fontWeight:700}}>🧭 MKT · {g.here.regimeLabel}</span>}
+                      {g.here.mode&&<span style={{padding:"2px 8px",borderRadius:4,border:"1px solid "+DIM,color:DIM,fontSize:11,fontWeight:700}}>{g.here.mode.toUpperCase()} MODE</span>}
+                      {resLabel&&<span style={{padding:"2px 8px",borderRadius:4,border:"1px solid "+DIM,color:DIM,fontSize:11,fontWeight:700}}>{resLabel}{intraday?" · INTRADAY":""}</span>}
+                    </div>
+                  </div>
+                  {/* 2 · HOUSE RULES (static mentors) */}
+                  <div style={card}>
+                    <span style={lbl}>📜 HOUSE RULES — the advisory board behind every read</span>
+                    <div style={{fontSize:11,color:"#cfd8dc",lineHeight:1.6,marginTop:6}}><b style={{color:"#90caf9"}}>Edward Thorp</b> (father of quant investing) — Only bet a <b>measured edge</b>; with no proven edge, the right size is ≈ zero. <b>Survive first</b> (risk of ruin), then compound. Never fool yourself — kill an idea when the data says so.</div>
+                    <div style={{fontSize:11,color:"#cfd8dc",lineHeight:1.6,marginTop:6}}><b style={{color:"#90caf9"}}>Richard Dennis / the Turtles</b> (trend-following) — Trade a <b>mechanical rule set</b>, not emotion. Size by <b>volatility (ATR)</b>. <b>Cut losses fast, let winners run</b> — the edge lives in discipline over hundreds of trades, never one call.</div>
+                    <div style={{fontSize:10,color:FADE,lineHeight:1.5,marginTop:6}}>SignalForge is built on exactly these: an OOS-proven edge before sizing, ATR-based stops, a long horizon. The reads below apply them to what's on your screen now.</div>
+                  </div>
+                  {/* 3 · CLIFFS-NOTES / PRO TIPS */}
+                  {g.cliffs.length>0&&(
+                    <div style={card}>
+                      <span style={lbl}>💡 CLIFFS-NOTES — how to read THIS setup</span>
+                      <div style={{display:"flex",flexDirection:"column",gap:6,marginTop:6}}>
+                        {g.cliffs.map((c,i)=><div key={i} style={{fontSize:11.5,color:"#cfd8dc",lineHeight:1.55,paddingLeft:14,position:"relative"}}><span style={{position:"absolute",left:0,color:"#ffd740"}}>▸</span>{c}</div>)}
+                      </div>
+                    </div>
+                  )}
+                  {/* 4 · WHAT TO LOOK FOR */}
+                  {g.watch.length>0&&(
+                    <div style={card}>
+                      <span style={lbl}>👀 WHAT TO LOOK FOR — the chart, line by line</span>
+                      <div style={{display:"flex",flexDirection:"column",gap:1,marginTop:6}}>
+                        {g.watch.map(it=>{const c=stCol(it.status);return(
+                          <div key={it.key} style={{display:"flex",gap:10,alignItems:"flex-start",background:BG3,borderLeft:"2px solid "+c,borderRadius:3,padding:"8px 12px"}}>
+                            <div style={{flex:1,minWidth:0}}>
+                              <div style={{display:"flex",gap:8,alignItems:"baseline",flexWrap:"wrap"}}>
+                                <span style={{fontSize:10,fontWeight:700,letterSpacing:1,color:DIM}}>{it.label}</span>
+                                <span style={{fontSize:12,fontWeight:800,color:c}}>{stIco(it.status)} {it.value}</span>
+                              </div>
+                              <div style={{fontSize:11,color:"#cfd8dc",lineHeight:1.5,marginTop:2}}>{it.read}</div>
+                              <div style={{fontSize:11,color:"#90caf9",lineHeight:1.5,marginTop:2}}><b style={{color:FADE,fontWeight:700}}>→ DO:</b> {it.action}</div>
+                            </div>
+                          </div>
+                        );})}
+                      </div>
+                    </div>
+                  )}
+                  {/* 5 · APPLY NOW */}
+                  <div style={card}>
+                    <span style={lbl}>🛠 APPLY NOW — which tool fits the moment</span>
+                    <div style={{display:"flex",flexDirection:"column",gap:8,marginTop:6}}>
+                      {[["MODE",g.apply.mode],["TIMEFRAME",g.apply.resolution],["STRATEGY",g.apply.strategy]].map(([k,v])=>(
+                        <div key={k} style={{fontSize:11,color:"#cfd8dc",lineHeight:1.55}}><span style={{fontSize:10,fontWeight:700,letterSpacing:1,color:DIM,marginRight:6}}>{k}:</span><b style={{color:"#00e676"}}>{v.rec}</b> — {v.why}</div>
+                      ))}
+                    </div>
+                    {g.apply.short&&(
+                      <div style={{marginTop:10,padding:"10px 12px",borderRadius:4,background:"rgba(255,183,77,0.08)",border:"1px solid #ffb74d55"}}>
+                        <div style={{fontSize:11,fontWeight:800,letterSpacing:1,color:"#ffb74d",marginBottom:4}}>⚠ SHORT SETUP — AWARENESS ONLY</div>
+                        <div style={{fontSize:11,color:"#cfd8dc",lineHeight:1.55}}>{g.apply.short.read}</div>
+                      </div>
+                    )}
+                  </div>
+                  {/* 6 · CHART FORMATION */}
+                  <div style={card}>
+                    <span style={lbl}>🕯 CHART FORMATION — what the candles say + what to watch next</span>
+                    {g.formation.patterns.length>0?(
+                      <div style={{display:"flex",flexDirection:"column",gap:4,marginTop:6}}>
+                        {g.formation.patterns.map((p,i)=>{const pc=p.type==="BULLISH"?"#00e676":p.type==="BEARISH"?"#ff5252":"#ffd740";return(
+                          <div key={i} style={{fontSize:11,color:"#cfd8dc",lineHeight:1.5}}><b style={{color:pc}}>{p.name}</b> <span style={{fontSize:9,color:pc,border:"1px solid "+pc,borderRadius:3,padding:"0 4px"}}>{p.type}</span> — {p.desc}</div>
+                        );})}
+                      </div>
+                    ):<div style={{fontSize:11,color:FADE,marginTop:6}}>No notable candle pattern on the latest bars.</div>}
+                    {g.formation.divergence&&<div style={{fontSize:11,color:g.formation.divergence.type==="BULLISH"?"#00e676":"#ff5252",lineHeight:1.5,marginTop:6}}><b>Divergence ({g.formation.divergence.type}):</b> {g.formation.divergence.desc}</div>}
+                    <div style={{fontSize:11,color:"#90caf9",lineHeight:1.55,marginTop:8}}><b style={{color:FADE,fontWeight:700}}>→ WATCH NEXT:</b> {g.formation.nextWatch}</div>
+                  </div>
+                  {/* 7 · NEXT STEP */}
+                  <div style={{...card,textAlign:"center"}}>
+                    <div style={{fontSize:11,color:FADE,lineHeight:1.55,marginBottom:10}}>{g.next.why}</div>
+                    <button style={{...runBtn,width:"auto",padding:"10px 30px"}} onClick={()=>setTab(g.next.tab)}>{g.next.label}</button>
+                  </div>
+                </>
+              );
+            })()}
           </>
         )}
 

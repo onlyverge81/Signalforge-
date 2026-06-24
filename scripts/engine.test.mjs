@@ -11,7 +11,7 @@
 
 import { test } from "node:test";
 import assert from "node:assert/strict";
-import { analyze, runBacktest, scoreAt, scorePosition, checkBarExit, checkBarExitFine, isAmbiguousBar, tradeNet, realizedStats, convergenceBreakout, backtestPattern, edgeStatus, avgIndexGainByDate, correctionLevels, backtestCorrection, efficiencyRatio, marketRegime, regimeChecklist, computeSignal, valueScore, divergenceFixed, recentTrend, patternsContext, correctedVotes, divergence, patterns } from "./engine.mjs";
+import { analyze, runBacktest, scoreAt, scorePosition, checkBarExit, checkBarExitFine, isAmbiguousBar, tradeNet, realizedStats, convergenceBreakout, backtestPattern, edgeStatus, avgIndexGainByDate, correctionLevels, backtestCorrection, efficiencyRatio, marketRegime, regimeChecklist, guideBrief, computeSignal, valueScore, divergenceFixed, recentTrend, patternsContext, correctedVotes, divergence, patterns } from "./engine.mjs";
 
 // ─── Helper: deterministic OHLC series (no RNG, fixed formula) ───────────────
 function gen(n){
@@ -429,6 +429,72 @@ test("marketRegime: a falling, volatile tape flags ELEVATED risk; <40 bars → n
   assert.equal(r.direction, "BEAR");
   assert.ok(r.risk && /headwind|ELEVATED/.test(r.risk));
   assert.equal(marketRegime(Array.from({ length: 20 }, () => ({ close: 100 }))), null, "too little history → null, not a guess");
+});
+
+// ─── guideBrief: the 🧑‍🏫 GUIDE coached read (pure, display-only) ──────────────
+
+test("guideBrief: null analysis → null (safe empty state)", () => {
+  assert.equal(guideBrief(null, null, {}), null);
+  assert.equal(guideBrief(undefined, { label:"BULL" }, {}), null);
+});
+
+test("guideBrief: a SELL surfaces the SHORT setup as awareness (un-muted) but never as a trade", () => {
+  const a = { signal:"SELL", score:-6, confidence:60,
+    indicators:{ rsi:{v:45} }, confluence:{ bear:5 }, patterns:[], divergence:null };
+  const g = guideBrief(a, null, {});
+  assert.equal(g.here.muted, true, "SELL is muted under long-only");
+  assert.ok(g.apply.short, "short awareness block present on a SELL");
+  assert.equal(g.apply.short.score, -6);
+  assert.match(g.apply.short.read, /NOT taken|long-only/, "framed as awareness, not a trade");
+  // A merely-bearish HOLD (score ≤ −5) also surfaces the awareness, even without a SELL verdict.
+  const bearishHold = guideBrief({ signal:"HOLD", score:-5, indicators:{}, confluence:{} }, null, {});
+  assert.ok(bearishHold.apply.short, "score ≤ −5 surfaces the short read even on HOLD");
+  // A neutral setup does not.
+  assert.equal(guideBrief({ signal:"HOLD", score:1, indicators:{}, confluence:{} }, null, {}).apply.short, null);
+});
+
+test("guideBrief: a divided engine resolves to the regime-favored camp in the cliffs", () => {
+  const a = { signal:"HOLD", score:0, indicators:{}, patterns:[], divergence:null,
+    confluence:{ famConflict:true, meanRevDir:1, trendDir:-1 } };
+  const ranging = guideBrief(a, { label:"BULL · RANGING", trend:"RANGING", favored:"Mean-reversion" }, {});
+  assert.ok(ranging.cliffs.some(c => /DIVIDED/.test(c) && /mean-reversion/.test(c)), "RANGING ⇒ trust mean-reversion camp");
+  const trending = guideBrief(a, { label:"BULL · TRENDING", trend:"TRENDING", favored:"Trend" }, {});
+  assert.ok(trending.cliffs.some(c => /DIVIDED/.test(c) && /trend/.test(c)), "TRENDING ⇒ trust trend camp");
+});
+
+test("guideBrief: an intraday chart recommends switching to the DAILY swing timeframe", () => {
+  const a = { signal:"BUY", score:5, indicators:{}, patterns:[], divergence:null, confluence:{} };
+  const g = guideBrief(a, { label:"BULL", trend:"RANGING" }, { intraday:true, resLabel:"15-min" });
+  assert.match(g.apply.resolution.rec, /DAILY/, "intraday ⇒ recommend DAILY");
+  // A daily chart is confirmed, not redirected.
+  const daily = guideBrief(a, { label:"BULL", trend:"RANGING" }, { intraday:false, resLabel:"Daily" });
+  assert.equal(daily.apply.resolution.rec, "Daily");
+});
+
+test("guideBrief: oversold RSI yields a confirm-reversal watch item and an oversold cliffs note", () => {
+  const a = { signal:"HOLD", score:0, confluence:{}, patterns:[], divergence:null,
+    indicators:{ rsi:{v:22}, adx:{adx:30}, bb:{sig:"BULLISH",v:{lower:1}}, vol:{sig:"DIVERGING"} } };
+  const g = guideBrief(a, { label:"BULL · RANGING", trend:"RANGING" }, {});
+  const rsiItem = g.watch.find(w => w.key === "RSI");
+  assert.ok(rsiItem && rsiItem.status === "confirm", "oversold RSI ⇒ confirm status");
+  assert.match(rsiItem.action, /bounce/, "action coaches confirming the bounce");
+  assert.ok(g.cliffs.some(c => /OVERSOLD/.test(c)), "oversold called out in the cliffs");
+  assert.ok(g.watch.find(w => w.key === "ADX"), "ADX item present");
+  assert.ok(g.watch.find(w => w.key === "VOL").status === "caution", "diverging volume ⇒ caution");
+});
+
+test("guideBrief: detected patterns and divergence surface in the formation; BUY routes to SIZE", () => {
+  const a = { signal:"BUY", score:6, confidence:70, confluence:{},
+    indicators:{ rsi:{v:55} },
+    patterns:[{ name:"Bullish Engulfing", type:"BULLISH", desc:"reversal" }],
+    divergence:{ type:"BULLISH", desc:"momentum building" } };
+  const g = guideBrief(a, { label:"BULL · TRENDING", trend:"TRENDING", direction:"BULL" }, { mode:"tactical" });
+  assert.equal(g.formation.patterns.length, 1);
+  assert.equal(g.formation.divergence.type, "BULLISH");
+  assert.ok(g.formation.nextWatch.length > 0);
+  assert.equal(g.next.tab, "size", "an actionable BUY routes to the SIZE tab");
+  // A muted/non-BUY routes to EVIDENCE instead.
+  assert.equal(guideBrief({ ...a, signal:"SELL" }, null, {}).next.tab, "evidence");
 });
 
 // ─── Self-conflict family split (research angles C+F) ─────────────────────────
