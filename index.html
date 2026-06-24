@@ -2860,7 +2860,7 @@ function App() {
                       return <span title={tip} style={{fontSize:9,fontWeight:700,letterSpacing:1,padding:"4px 10px",borderRadius:3,color:tc,background:tc+"1a",border:"1px solid "+tc+"44"}}>🧭 MKT · {g.label}</span>;
                     })()}
                     {analysis.confluence&&analysis.confluence.famConflict&&(
-                      <span title={"The engine is fighting itself: its MEAN-REVERSION votes (RSI/Stoch/BB) and TREND votes (MACD/MA/MAlong/Trend) point opposite ways. They're each valid in a DIFFERENT regime, so one camp is noise right now. Display only — the verdict is unchanged. Measured OOS via the votes-aligned ledger (Headline #2)."} style={{fontSize:9,fontWeight:700,letterSpacing:1,padding:"4px 10px",borderRadius:3,color:"#ffb74d",background:"rgba(255,183,77,0.10)",border:"1px solid #ffb74d55"}}>⚠ ENGINE DIVIDED</span>
+                      <span title={"The engine is fighting itself: its MEAN-REVERSION votes (RSI/Stoch/BB) and TREND votes (MACD/MA/MAlong/Trend) point opposite ways. This is the engine's NORMAL state, not a rare alarm — it conflicts on most names (the measured t −12.6 pathology). The US-market regime below resolves WHICH camp to trust (its direction is the honest lean); a TRANSITIONAL regime means stand aside. Display only — the verdict is unchanged; measured OOS via the votes-aligned ledger (Headline #2)."} style={{fontSize:9,fontWeight:700,letterSpacing:1,padding:"4px 10px",borderRadius:3,color:"#ffb74d",background:"rgba(255,183,77,0.10)",border:"1px solid #ffb74d55"}}>⚠ ENGINE DIVIDED</span>
                     )}
                     <span style={{fontSize:9,fontWeight:700,letterSpacing:1,padding:"4px 10px",borderRadius:3,color:mode==="position"?"#00bcd4":"#00e676",background:(mode==="position"?"#00bcd4":"#00e676")+"15",border:"1px solid "+(mode==="position"?"#00bcd4":"#00e676")+"44"}}>{mode==="position"?"🐢 POSITION":"⚡ TACTICAL"}</span>
                     {isIntradayRes(liveMeta?.resolution)&&(
@@ -2883,19 +2883,26 @@ function App() {
 
               {analysis.confluence&&analysis.confluence.famConflict&&(()=>{
                 const dirWord=d=>d>0?"BUY":d<0?"AVOID":"neutral";
+                const dirCol=d=>d>0?"#00e676":d<0?"#ff8a80":"#90a4ae";
                 const tDir=analysis.confluence.trendDir, mDir=analysis.confluence.meanRevDir;
                 const g=outlook&&outlook.regime;
-                // Regime-aware READ (display only): in a TRENDING market the trend camp is favored; in a
-                // RANGING one the mean-reversion camp is. Never changes the verdict — tells you which camp to weight.
+                // Regime-aware RESOLUTION (display only): the regime picks WHICH camp to trust, and that camp's
+                // direction is then the honest LEAN. TRENDING → trust the trend camp; RANGING → the mean-reversion
+                // camp; TRANSITIONAL / no-regime → neither is favored (a genuine stand-aside). Never changes the verdict.
                 const lead=g?(g.trend==="TRENDING"?"trend":g.trend==="RANGING"?"meanrev":null):null;
+                const leadCamp=lead==="trend"?"TREND":lead==="meanrev"?"MEAN-REVERSION":null;
+                const offCamp=lead==="trend"?"mean-reversion":"trend";
+                const leadDir=lead==="trend"?tDir:lead==="meanrev"?mDir:0;
                 return (
                   <div style={{marginTop:12,padding:"10px 12px",borderRadius:4,background:"rgba(255,183,77,0.06)",border:"1px solid rgba(255,183,77,0.30)"}}>
                     <div style={{fontSize:10,fontWeight:700,letterSpacing:1,color:"#ffb74d",marginBottom:6}}>⚠ ENGINE DIVIDED — internal conflict</div>
                     <div style={{fontSize:11,color:"#cfd8dc",lineHeight:1.7}}>
-                      Mean-reversion votes (RSI/Stoch/BB) say <b style={{color:mDir>0?"#00e676":"#ff8a80"}}>{dirWord(mDir)}</b>, trend votes (MACD/MA/MAlong/Trend) say <b style={{color:tDir>0?"#00e676":"#ff8a80"}}>{dirWord(tDir)}</b> — the confluence is fighting itself. Each camp is valid in a <b>different regime</b>, so one is noise right now.
-                      {lead&&g&&(<><br/><span style={{color:"#26c6da"}}>Room read:</span> the market is <b>{g.trend}</b> → weight the <b>{lead==="trend"?"TREND":"MEAN-REVERSION"}</b> camp; the other is likely chop/trend noise here.</>)}
+                      Mean-reversion votes (RSI/Stoch/BB) say <b style={{color:dirCol(mDir)}}>{dirWord(mDir)}</b>, trend votes (MACD/MA/MAlong/Trend) say <b style={{color:dirCol(tDir)}}>{dirWord(tDir)}</b> — the confluence is fighting itself. Each camp is valid in a <b>different regime</b>, so one is noise right now.
+                      {leadCamp
+                        ? (<><br/><span style={{color:"#26c6da"}}>Resolve with the room:</span> the US market is <b>{g.trend}</b> → trust the <b>{leadCamp}</b> camp, which says <b style={{color:dirCol(leadDir)}}>{dirWord(leadDir)}</b>. Honest lean here: <b style={{color:dirCol(leadDir)}}>{dirWord(leadDir)}</b> — discount the {offCamp} camp as out-of-regime noise.</>)
+                        : (<><br/><span style={{color:"#ffd740"}}>Resolve with the room:</span> the US market is <b>{g?g.trend:"UNREAD"}</b> → <b>neither camp is favored</b> yet. A genuine stand-aside — demand stronger, regime-aligned confluence before acting.</>)}
                     </div>
-                    <div style={{fontSize:9,color:DIM,marginTop:6}}>Display only — the verdict above is UNCHANGED. Whether resolving this conflict pays is being measured out-of-sample (votes-aligned ledger, EVIDENCE scoreboard). No in-sample re-wire. (Headline #2.)</div>
+                    <div style={{fontSize:9,color:DIM,marginTop:6}}>This split is the engine's <b>normal state</b>, not a rare alarm: the confluence sums mean-reversion and trend votes that pay in opposite regimes, so it conflicts on most names (the measured t&nbsp;−12.6 pathology, Headline&nbsp;#2). Display only — the verdict above is UNCHANGED; whether resolving the split pays is measured OOS (votes-aligned ledger, EVIDENCE scoreboard). No in-sample re-wire.</div>
                   </div>
                 );
               })()}

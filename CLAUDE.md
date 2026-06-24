@@ -714,7 +714,20 @@ whose ER stays near its own (now-elevated) baseline reads TRANSITIONAL rather th
 known tradeoff; the absolute ≥0.45 ceiling still catches strong trends. Mirrored byte-for-byte into `index.html` (parity
 verified); display-only, touches no gate/verdict. Tests: updated the "choppy" case to genuine bar-to-bar chop (the old
 smooth-sine series is locally directional → correctly TRANSITIONAL now) + added an emergent-trend discrimination test
-(312 green); app mounts clean. Fix #3 (de-boilerplate ENGINE DIVIDED, fed by this regime) is the remaining offered pass.
+(312 green); app mounts clean.
+
+**Fix #3 — de-boilerplate ENGINE DIVIDED (DONE, display-only):** the advisory read like static boilerplate because (a) it
+fires on most names (the engine genuinely conflicts nearly always) and (b) its old "Room read" line only weighted a camp
+("weight the MEAN-REVERSION camp") without an actionable conclusion, and was dropped entirely when the regime was
+TRANSITIONAL. Rebuilt (`index.html`, SIGNALS advisory + hero chip tooltip): the regime now RESOLVES the split to an honest
+LEAN — "the US market is RANGING → trust the MEAN-REVERSION camp, which says **BUY** → honest lean: BUY; discount the trend
+camp as out-of-regime noise" — using the camp's OWN direction (`trendDir`/`meanRevDir` already on `analysis.confluence`).
+When the regime is TRANSITIONAL/unread it says so explicitly ("neither camp is favored — a genuine stand-aside") instead of
+omitting the line. Added a calibration line: the split is the engine's NORMAL state, not a rare alarm (it conflicts on most
+names — the t −12.6 pathology, Headline #2). Combined with fix #2 (the regime now varies), the read now changes with the
+room + the two camps' directions instead of being fixed prose. STRICTLY display — reads existing `confluence` fields; the
+verdict is byte-identical; no engine/gate touched. App mounts clean (driver, zero JS errors). All three regime-clarity
+passes (#1 label market-wide, #2 recalibrate ER, #3 de-boilerplate) now done.
 
 **Next — Track B:**
 - Mature the `momentum-on` / `merits-on` / `news-*` / `earnings-recent-on` OOS ledgers to n≥10; human-ratify
