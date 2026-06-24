@@ -1,6 +1,6 @@
 {
   "version": 1,
-  "updatedAt": "2026-06-23T10:47:26.692Z",
+  "updatedAt": "2026-06-24T10:28:28.791Z",
   "policy": {
     "promote": {
       "minTrades": 10,
@@ -634,6 +634,18 @@
       "history": [
         {
           "at": "2026-06-23T10:47:26.692Z",
+          "from": null,
+          "to": "candidate",
+          "reason": "registered"
+        }
+      ]
+    },
+    "shadow-corrected": {
+      "state": "candidate",
+      "since": "2026-06-24T10:28:28.791Z",
+      "history": [
+        {
+          "at": "2026-06-24T10:28:28.791Z",
           "from": null,
           "to": "candidate",
           "reason": "registered"
