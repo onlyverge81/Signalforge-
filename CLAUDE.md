@@ -652,6 +652,20 @@ UNCHANGED — candidates only; only the OOS ledger under R1 (or the shadow-backt
 green); app mounts clean (driver, zero JS errors). The `shadow-corrected` OOS stream matures via the nightly pipeline;
 dispatch `shadow-backtest-study.yml` for the in-sample read.
 
+**Shadow-backtest run with the `corrected` team (DONE, in-sample) — branch `claude/signalforge-profitability-wheel-qbclby`,
+run #4, LIQUID default (20 covered, 18 illiquid dropped from cap 60, survivorship-free):** the immediate flashlight on
+R5. **Full team:** 1463 trades, win 41.3%, expectancy −0.467 (t −2.60, significantly losing), alpha −97.1. **The R5
+`corrected` re-build (Div/Trend/Pat → DivFix/TrendFix/PatFix) barely helps and ADDS churn:** expectancy −0.400 (t −2.29),
+alpha −94.6, 1581 trades — Δexp **+0.066**, Δalpha **+2.5pp**, Δtrades **+118**. The honest lesson: **correcting the votes
+is a much weaker lever than DROPPING them in-sample** — fixing the bugs keeps Div/Trend/Pat contributing (still correlated,
+still churning +118 trades), whereas removing the nuisances cuts trades and recovers alpha. By contrast the nuisance-DROP
+teams compound: −MACD alone Δalpha +17.6pp (−331 trades, worst single offender, confirms angle F); the full cleanup
+**−MACD+Pat+ADX+Div** is the best team at expectancy −0.083 (t −0.36), alpha −66.7, 882 trades (Δexp **+0.383**, Δalpha
+**+30.5pp**, −581 trades). **HONEST BOUNDS (unchanged):** only 20 liquid names, in-sample, and even the best cleanup STILL
+loses to passive (alpha −66.7, t −0.36 = a coin toss) — the R3 corrected-conclusion holds (on tradeable names the cleanup
+is "a much less bad loser," not an edge). This POINTS toward demote-over-correct for the nuisance set; the OOS
+`shadow-corrected` vs `shadow-noDeadDiv` ledger under FDR is the arbiter — NO in-sample re-wire.
+
 **Next — Track B:**
 - Mature the `momentum-on` / `merits-on` / `news-*` / `earnings-recent-on` OOS ledgers to n≥10; human-ratify
   only if they clear FDR. PASSIVE — the nightly `forward-log → forward-perf → promote` already partitions every
