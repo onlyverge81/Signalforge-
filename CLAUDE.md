@@ -666,6 +666,69 @@ loses to passive (alpha −66.7, t −0.36 = a coin toss) — the R3 corrected-c
 is "a much less bad loser," not an edge). This POINTS toward demote-over-correct for the nuisance set; the OOS
 `shadow-corrected` vs `shadow-noDeadDiv` ledger under FDR is the arbiter — NO in-sample re-wire.
 
+**Regime card → actionable VERIFY/CONFIRM checklist (DONE, display-only) — "make awareness-only ACTIONABLE":** the
+user's read of the OUTLOOK 🧭 MARKET REGIME card — it stated the regime (BULL · RANGING · ER 0.07 · NORMAL VOL) as
+vague prose ("✓ Favored here / ⚠ Fights the room / Awareness only"), not something you can ACT on. Rebuilt as a
+pre-trade **A–D Verify/Confirm checklist** via pure `regimeChecklist(regime,{resLabel,intraday})` (`engine.mjs`,
+mirrored byte-for-byte into `index.html`, parity verified): **A · DIRECTION** (vs ~200-DMA → tailwind/headwind),
+**B · MODE** (TRENDING/RANGING + ER → the toolkit to trust, folding in favored/cautioned), **C · VOLATILITY**
+(21d vs 6-mo norm → the sizing dial), **D · HORIZON** (the regime is a DAILY/swing read — flags a mismatch when the
+chart is INTRADAY, the user's IMG_1189 confusion). Each line carries `{value, status:confirm|verify|caution, read
+(the fact), action (→ DO)}`; the card renders lettered rows colored by status with an explicit "→ DO:" action and a
+⚑ BOTTOM-LINE risk banner. The SIGNALS hero regime chip tooltip was made consistent (same A–D action summary). STRICTLY
+display — `marketRegime`/`analyze`/the verdict are byte-identical; `regimeChecklist` is a pure read-out, never an input.
+Tests +4 (311 green; A–D mapping, intraday→HORIZON verify, BEAR+STORMY→caution, null→[]); app mounts clean (driver,
+zero JS errors). **Other-tab vagueness AUDIT (reported, not yet built):** the same "status-without-action" pattern still
+lives in the SIGNALS macro chip ("🌐 RISK-OFF · CONTEXT" — "CONTEXT" = "not yet proven", unexplained) and the
+"UNCONFIRMED EDGE" badge; the ENGINE-DIVIDED advisory is already actionable (gives camp directions + a regime room-read).
+Offered as the next one-at-a-time pass.
+
+**"Why is the regime ALWAYS BULL·RANGING·NORMAL?" — diagnosis + market-wide labeling fix #1 (DONE, display-only):**
+the user spotted that the OUTLOOK 🧭 regime and the SIGNALS "ENGINE DIVIDED" read identically no matter which stock is
+loaded. Root cause (traced, not guessed): the regime is `marketRegime(idx["SPY"])` (`index.html`) — it reads the **S&P
+proxy, NOT the stock**, so it is correctly IDENTICAL for every ticker (it's "read the room" = the broad market) and only
+moves day-to-day. The 🌐 MACRO chip is the twin (computed from `outlook.combined`, the SPY·DIA·QQQ session sum) — also
+market-wide. Neither was LABELED as market-wide, so both looked like stuck per-stock reads. Two further mechanisms recorded
+for later passes: (a) the ER mode thresholds (TRENDING≥0.45 / RANGING<0.25, `engine.mjs`) are mis-calibrated for DAILY
+INDEX data — net 21-day index progress is small vs the summed daily path, so ER sits structurally low (~0.07) and pins the
+MODE to RANGING almost always (display heuristic, not a gate — fix #2, deferred); (b) "ENGINE DIVIDED" fires on most names
+because the engine genuinely conflicts nearly always (Headline #2, the real pathology) and its "Room read" lead-camp line is
+fed by the stuck-RANGING regime, so it always says "weight mean-reversion" (fix #3, deferred). **Fix #1 SHIPPED:** both the
+🧭 regime card (header → "US MARKET REGIME · SPY" + a clarifier that it's the room your stock trades inside, same for every
+ticker, NOT a read on the stock) and the 🌐 macro card/chips (→ "US MARKET MACRO · SPY·DIA·QQQ · same for every ticker") are
+now explicitly labeled market-wide; the SIGNALS chips show "🧭 MKT · …" / "🌐 MKT · …" with tooltips that lead with the
+market-wide caveat. STRICTLY display (no engine/gate/verdict touched); app mounts clean (driver, zero JS errors). Fix #3 (de-boilerplate
+ENGINE DIVIDED) remains offered as the next pass.
+
+**Fix #2 — ER trend-MODE recalibrated for daily-index data (DONE) — "stop pinning the regime to RANGING":** the old
+absolute cut-points (`er>=0.45` TRENDING / `er<0.25` RANGING, `marketRegime` in `engine.mjs`) were mis-tuned for DAILY
+INDEX bars — net 21-day index drift is small vs the summed daily path, so the efficiency ratio sits structurally low
+(~0.07–0.20) and the mode read RANGING almost always. Fix (mirrors the EXISTING `vol` classifier, which is relative to a
+6-month baseline): keep absolute calls only at the UNAMBIGUOUS extremes (`er>=0.45` = clean trend, `er<=0.10` = clear
+chop), and classify the wide MID-RANGE where daily data actually lives RELATIVE to the market's OWN efficiency norm — the
+MEDIAN of its trailing rolling 21-bar ER (`baseER`): TRENDING if `er>=baseER*1.35`, RANGING if `er<=baseER*0.75`, else
+TRANSITIONAL (short-history fallback uses daily-calibrated absolutes 0.30/0.18). Self-calibrating across resolutions/assets;
+the absolute ER is still surfaced for transparency. Now it DISCRIMINATES (a trend emerging from chop reads TRENDING at a
+mid-range ER the old 0.45 bar never reached) instead of being stuck. **Honest limitation:** a persistent moderate trend
+whose ER stays near its own (now-elevated) baseline reads TRANSITIONAL rather than TRENDING — relative classification's
+known tradeoff; the absolute ≥0.45 ceiling still catches strong trends. Mirrored byte-for-byte into `index.html` (parity
+verified); display-only, touches no gate/verdict. Tests: updated the "choppy" case to genuine bar-to-bar chop (the old
+smooth-sine series is locally directional → correctly TRANSITIONAL now) + added an emergent-trend discrimination test
+(312 green); app mounts clean.
+
+**Fix #3 — de-boilerplate ENGINE DIVIDED (DONE, display-only):** the advisory read like static boilerplate because (a) it
+fires on most names (the engine genuinely conflicts nearly always) and (b) its old "Room read" line only weighted a camp
+("weight the MEAN-REVERSION camp") without an actionable conclusion, and was dropped entirely when the regime was
+TRANSITIONAL. Rebuilt (`index.html`, SIGNALS advisory + hero chip tooltip): the regime now RESOLVES the split to an honest
+LEAN — "the US market is RANGING → trust the MEAN-REVERSION camp, which says **BUY** → honest lean: BUY; discount the trend
+camp as out-of-regime noise" — using the camp's OWN direction (`trendDir`/`meanRevDir` already on `analysis.confluence`).
+When the regime is TRANSITIONAL/unread it says so explicitly ("neither camp is favored — a genuine stand-aside") instead of
+omitting the line. Added a calibration line: the split is the engine's NORMAL state, not a rare alarm (it conflicts on most
+names — the t −12.6 pathology, Headline #2). Combined with fix #2 (the regime now varies), the read now changes with the
+room + the two camps' directions instead of being fixed prose. STRICTLY display — reads existing `confluence` fields; the
+verdict is byte-identical; no engine/gate touched. App mounts clean (driver, zero JS errors). All three regime-clarity
+passes (#1 label market-wide, #2 recalibrate ER, #3 de-boilerplate) now done.
+
 **Next — Track B:**
 - Mature the `momentum-on` / `merits-on` / `news-*` / `earnings-recent-on` OOS ledgers to n≥10; human-ratify
   only if they clear FDR. PASSIVE — the nightly `forward-log → forward-perf → promote` already partitions every

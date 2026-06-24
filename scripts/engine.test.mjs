@@ -11,7 +11,7 @@
 
 import { test } from "node:test";
 import assert from "node:assert/strict";
-import { analyze, runBacktest, scoreAt, scorePosition, checkBarExit, checkBarExitFine, isAmbiguousBar, tradeNet, realizedStats, convergenceBreakout, backtestPattern, edgeStatus, avgIndexGainByDate, correctionLevels, backtestCorrection, efficiencyRatio, marketRegime, computeSignal, valueScore, divergenceFixed, recentTrend, patternsContext, correctedVotes, divergence, patterns } from "./engine.mjs";
+import { analyze, runBacktest, scoreAt, scorePosition, checkBarExit, checkBarExitFine, isAmbiguousBar, tradeNet, realizedStats, convergenceBreakout, backtestPattern, edgeStatus, avgIndexGainByDate, correctionLevels, backtestCorrection, efficiencyRatio, marketRegime, regimeChecklist, computeSignal, valueScore, divergenceFixed, recentTrend, patternsContext, correctedVotes, divergence, patterns } from "./engine.mjs";
 
 // ─── Helper: deterministic OHLC series (no RNG, fixed formula) ───────────────
 function gen(n){
@@ -400,11 +400,27 @@ test("marketRegime: a rising trend reads BULL · TRENDING and favors trend-follo
   assert.match(r.label, /BULL/);
 });
 
-test("marketRegime: a choppy, flat market reads RANGING and favors mean-reversion", () => {
-  const bars = Array.from({ length: 220 }, (_, i) => ({ close: 100 + Math.sin(i / 2) * 3 }));  // oscillating, no trend
+test("marketRegime: a genuinely choppy market reads RANGING and favors mean-reversion", () => {
+  // True bar-to-bar chop (a sawtooth that reverses every bar) → ER ≈ 0.05, below the unambiguous-chop
+  // floor → RANGING. (A smooth sine is NOT this: it's locally directional, so the relative classifier
+  // correctly reads it TRANSITIONAL — that's the whole point of the daily-index recalibration.)
+  const bars = Array.from({ length: 220 }, (_, i) => ({ close: 100 + (i % 2) * 2 }));
   const r = marketRegime(bars);
   assert.equal(r.trend, "RANGING");
   assert.match(r.favored, /Mean-reversion/);
+});
+
+test("marketRegime: a trend EMERGING from chop reads TRENDING at a mid-range ER (the daily-index fix)", () => {
+  // 190 bars of chop (low ER baseline) then a noisy drift up. The recent 21-bar ER lands in the MID-RANGE
+  // (~0.35) — BELOW the old absolute 0.45 TRENDING bar (so the old code mislabeled it), but well ABOVE the
+  // market's own efficiency norm, so the relative classifier correctly calls it TRENDING.
+  const bars = [];
+  for (let i = 0; i < 190; i++) bars.push({ close: 100 + (i % 2) * 2 });   // choppy baseline
+  let p = 100;
+  for (let i = 0; i < 30; i++) { p += 0.3 + (i % 2 ? 0.8 : -0.8); bars.push({ close: p }); } // drift up, noisy
+  const r = marketRegime(bars);
+  assert.ok(r.er < 0.45, "absolute ER is mid-range, under the old TRENDING bar (er=" + r.er + ")");
+  assert.equal(r.trend, "TRENDING");                                       // relative-to-own-norm catches it
 });
 
 test("marketRegime: a falling, volatile tape flags ELEVATED risk; <40 bars → null (honest)", () => {
@@ -563,4 +579,45 @@ test("analyze shadow-corrected config drops Div/Trend/Pat and injects the correc
   assert.ok(a.shadows && ["BUY","SELL","HOLD"].includes(a.shadows["shadow-corrected"]));
   // The live verdict is untouched by the shadow computation.
   assert.equal(a.signal, analyze(s,"TEST","SPY","tactical",1.5,2.0).signal);
+});
+
+// ─── regimeChecklist — actionable VERIFY/CONFIRM preflight (display-only) ──────
+
+test("regimeChecklist: null regime → empty list", () => {
+  assert.deepEqual(regimeChecklist(null), []);
+});
+
+test("regimeChecklist: BULL·RANGING·NORMAL maps each line to a verifiable fact + action", () => {
+  const g={ direction:"BULL", trend:"RANGING", vol:"NORMAL", er:0.07, approxMA:false,
+            favored:"Mean-reversion — oversold bounces (RSI / Stoch / BB) are favored",
+            cautioned:"Breakouts: likely bull-traps; trend votes misfire in chop", risk:null, label:"BULL · RANGING" };
+  const cl=regimeChecklist(g,{resLabel:"Daily",intraday:false});
+  assert.deepEqual(cl.map(i=>i.key), ["A","B","C","D"]);                 // four lettered lines
+  const A=cl.find(i=>i.key==="A"), B=cl.find(i=>i.key==="B"), C=cl.find(i=>i.key==="C"), D=cl.find(i=>i.key==="D");
+  assert.equal(A.label,"DIRECTION"); assert.equal(A.status,"confirm");   // BULL = tailwind
+  assert.equal(B.label,"MODE");      assert.equal(B.status,"confirm");   // RANGING is a decisive mode
+  assert.match(B.value, /ER 0\.07/);                                     // ER surfaced on the MODE line
+  assert.ok(B.action.includes("Mean-reversion"));                       // toolkit folded into the action
+  assert.equal(C.label,"VOLATILITY"); assert.equal(C.status,"confirm");  // NORMAL vol → standard size
+  assert.equal(D.label,"HORIZON");   assert.equal(D.status,"confirm");   // daily chart matches the daily regime
+  assert.ok(D.action.includes("matches"));
+});
+
+test("regimeChecklist: an INTRADAY chart flips the HORIZON line to VERIFY with the timeframe", () => {
+  const g={ direction:"BULL", trend:"TRENDING", vol:"NORMAL", er:0.6, approxMA:false,
+            favored:"Trend-following is reliable here", cautioned:"Mean-reversion fights the tape", risk:null, label:"BULL · TRENDING" };
+  const D=regimeChecklist(g,{resLabel:"15-min",intraday:true}).find(i=>i.key==="D");
+  assert.equal(D.status,"verify");                                       // mismatch must be flagged, not silent
+  assert.match(D.value, /15-min/);
+  assert.ok(D.action.includes("INTRADAY") && D.action.includes("swing"));
+});
+
+test("regimeChecklist: BEAR + STORMY raise DIRECTION/VOLATILITY to caution", () => {
+  const g={ direction:"BEAR", trend:"TRANSITIONAL", vol:"STORMY", er:0.3, approxMA:true,
+            favored:"Mixed — demand stronger confluence", cautioned:"Single-signal conviction is risky", risk:"ELEVATED — bear + high volatility: reduce size.", label:"BEAR · TRANSITIONAL" };
+  const cl=regimeChecklist(g);
+  assert.equal(cl.find(i=>i.key==="A").status,"caution");               // BEAR headwind
+  assert.equal(cl.find(i=>i.key==="C").status,"caution");               // STORMY → trim size
+  assert.equal(cl.find(i=>i.key==="B").status,"verify");                // TRANSITIONAL is unresolved
+  assert.match(cl.find(i=>i.key==="A").value, /\(≈\)/);                 // approxMA surfaced honestly
 });
