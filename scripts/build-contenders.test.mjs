@@ -7,8 +7,24 @@ import assert from "node:assert/strict";
 import {
   metricMap, parseSnapshotPrices, parsePolygonFinancials, crossCheck,
   techVerdict, momentumFromMonthly, indexUniverse, buildContender, rankContenders,
-  classifyWatch, rankWatchlist,
+  classifyWatch, rankWatchlist, parseTickerDetails,
 } from "./build-contenders.mjs";
+
+test("parseTickerDetails: extracts name/industry/homepage/description, truncates, rejects non-http homepages", () => {
+  const a = parseTickerDetails({ results: { name: "EOG Resources, Inc.", sic_description: "Crude Petroleum & Natural Gas",
+    homepage_url: "https://www.eogresources.com", description: "EOG explores for oil and gas." } });
+  assert.equal(a.name, "EOG Resources, Inc.");
+  assert.equal(a.industry, "Crude Petroleum & Natural Gas");
+  assert.equal(a.homepage, "https://www.eogresources.com");
+  assert.equal(a.description, "EOG explores for oil and gas.");
+  // non-http(s) homepage is dropped (only safe outbound links survive)
+  assert.equal(parseTickerDetails({ results: { homepage_url: "javascript:alert(1)" } }).homepage, null);
+  // long description is truncated with an ellipsis
+  const long = parseTickerDetails({ results: { description: "x".repeat(900) } });
+  assert.ok(long.description.length <= 501 && long.description.endsWith("…"));
+  // empty payload → all-null, never throws
+  assert.deepEqual(parseTickerDetails({}), { name: null, homepage: null, industry: null, description: null });
+});
 
 const REC = { entity:"Apple Inc.", asof:"2026-03-28", epsTTM:8.26, bvps:7.25, de:0.78, roe:1.15, npm:0.27, cr:1.07, revG:0.17, epsG:0.22 };
 

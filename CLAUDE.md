@@ -729,6 +729,34 @@ room + the two camps' directions instead of being fixed prose. STRICTLY display 
 verdict is byte-identical; no engine/gate touched. App mounts clean (driver, zero JS errors). All three regime-clarity
 passes (#1 label market-wide, #2 recalibrate ER, #3 de-boilerplate) now done.
 
+**FORWARD-TEST "duplicate rows" fix (DONE, display-only) — shadow streams polluting the human ledger view:** the user
+spotted the FORWARD TEST · OPEN POSITIONS table showing the SAME name 4–5× with IDENTICAL entry/SL/TP (BAC ×4, V ×5, CAT
+×5). Root cause (traced): the tab derived `opens`/`closed`/`obs`/segments from the RAW `paper-ledger.json` with NO mode
+scoping (`index.html`), so the internal team-minus-vote **shadow-* research streams** — which reuse the tactical entry/SL/TP
+VERBATIM — rendered as exact-duplicate rows (one per shadow team that fired the same BUY; ~8 shadow configs after the
+shadow-corrected merge). The POSITION stream added a second (differently-stopped) row per name too. Fix (display-only — the
+tab "only reads the ledger"): hide `shadow-*` rows from the OPEN/CLOSED/OBS tables AND the segmented-performance card (their
+home is the OOS SCOREBOARD on EVIDENCE, not the paper-trade view), scope the REALIZED-PERFORMANCE segments to TACTICAL-only
+(POSITION is a distinct philosophy with its own scoreboard variant — pooling months-long trailing holds with tactical
+expectancy was apples-to-oranges), and add a **MODE** column (TACTICAL/POSITION, color-coded) to the OPEN + CLOSED tables so
+the two legitimate streams are labeled and never mistaken for a duplicate. A footnote reports how many shadow rows were
+hidden. NO engine/ledger-file change (the file correctly carries shadow rows for the scoreboard); app mounts clean (driver,
+zero JS errors). 312 tests green (no tested code touched).
+
+**CONTENDERS "🏢 COMPANY" button (DONE) — context on-ramp beside ANALYZE (user idea, kids-friendly):** each contender
+card now has a secondary **🏢 COMPANY** button stacked ABOVE the primary **ANALYZE →** (kept both per the user's call —
+ANALYZE is the core action, never replaced). It toggles an inline ABOUT panel: company name · industry · a short "what it
+does" description · a **"Visit official website ↗"** outbound link (`target=_blank rel=noopener noreferrer`, http(s)-only).
+Data is Polygon ticker-details (`/v3/reference/tickers`, `homepage_url`/`description`/`sic_description`) — charter-clean,
+no new vendor. Wired two ways: `build-contenders.mjs` BAKES `about:{name,homepage,industry,description}` (pure
+`parseTickerDetails`, description truncated 500, non-http homepages dropped) onto every DISPLAYED name (A/B shortlist + C
+watch tier) so it works with NO key; the app lazy-fetches via `polyTickerDetails` as a fallback when a key is set but the
+JSON has no baked profile, and shows a gentle "loads after the next build / add a key" note otherwise. STRICTLY context —
+never touches the grade/signal/gate (a company's homepage is marketing, not edge; framed "context, not a signal"). Tests
++1 (313 green; parseTickerDetails extraction/truncation/non-http rejection/empty-safe). App mounts clean (driver, zero JS
+errors). The baked profiles populate on the next `contenders.yml` CI run; until then the button lazy-fetches with a key.
+Planned NEXT add-on (user, queued): a Not/👍/🌟 watchlist with filing-anchored ⬆/⬇ delta arrows (grade/price/health/growth).
+
 **Next — Track B:**
 - Mature the `momentum-on` / `merits-on` / `news-*` / `earnings-recent-on` OOS ledgers to n≥10; human-ratify
   only if they clear FDR. PASSIVE — the nightly `forward-log → forward-perf → promote` already partitions every
