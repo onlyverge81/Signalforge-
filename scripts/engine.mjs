@@ -254,6 +254,101 @@ export function regimeChecklist(regime, opts={}){
                    :"Your chart matches the regime's daily/swing horizon." });
   return items;
 }
+// 🧑‍🏫 GUIDE — synthesize the already-computed `analysis` + market `regime` into a plain-English COACHED
+// read: where you are, what to look for, which SignalForge tool to apply NOW, and the next step. Pure &
+// display-only — reads existing fields, NEVER changes the verdict/gate/long-only policy. Channels two proven,
+// teachable mentors: Edward Thorp (only bet a MEASURED edge; size by it; no edge → don't trade) and Richard
+// Dennis / the Turtles (mechanical rules; ATR-based sizing; cut losses fast, let winners run). `opts` =
+// {mode,resLabel,intraday,macro}. status ∈ confirm|verify|caution mirrors regimeChecklist.
+export function guideBrief(analysis, regime, opts={}){
+  if(!analysis) return null;
+  const a=analysis, I=a.indicators||{}, C=a.confluence||{};
+  const mode=opts.mode||null, resLabel=opts.resLabel||null, intraday=!!opts.intraday;
+  const sig=a.signal, muted=sig==="SELL", trend=regime?regime.trend:null;
+  const rsi=I.rsi&&typeof I.rsi.v==="number"?I.rsi.v:null;
+  const score=typeof a.score==="number"?a.score:0;
+  // ── here: state at a glance
+  const here={ verdict:sig, muted, confidence:typeof a.confidence==="number"?a.confidence:null,
+    regimeLabel:regime?regime.label:null, mode, resLabel, intraday };
+  // ── cliffs: prioritized plain-English read, in the mentors' voice
+  const cliffs=[];
+  if(regime&&regime.favored) cliffs.push("Read the room first — the market is "+regime.label+". "+regime.favored+".");
+  if(C.famConflict){
+    const camp = trend==="RANGING" ? {name:"mean-reversion (RSI/Stoch/BB)", dir:C.meanRevDir}
+      : trend==="TRENDING" ? {name:"trend (MACD/MA/Trend)", dir:C.trendDir} : null;
+    cliffs.push(camp
+      ? "The engine is DIVIDED — its two camps disagree. In this regime, trust the "+camp.name+" camp ("+(camp.dir>0?"BUY":camp.dir<0?"AVOID":"neutral")+") and discount the other as out-of-regime noise."
+      : "The engine is DIVIDED — its two camps disagree and the regime is transitional, so neither is favored: a genuine stand-aside.");
+  }
+  if(typeof C.icBackedShare==="number" && C.icBackedShare<0.34 && sig==="BUY")
+    cliffs.push("Caution — most of this BUY's weight rests on votes that did NOT prove out in testing; treat the conviction as thin.");
+  if(rsi!=null){
+    if(rsi<30) cliffs.push("RSI "+rsi+" is OVERSOLD — a bounce is possible, but only 'buy the dip' when the tape is RANGING (mean-reversion's home).");
+    else if(rsi>70) cliffs.push("RSI "+rsi+" is OVERBOUGHT — momentum may stall; chasing here buys the worst entry.");
+  }
+  cliffs.push(sig==="BUY"
+    ? "If you take it: size by ATR — risk a fixed small % on the stop distance, not on conviction — and let the SIZE tab set the shares (Thorp + Turtle rule)."
+    : "No proven edge is a position — a HOLD/AVOID protects capital. The Turtle rule (small losses, large wins) starts with NOT forcing a trade.");
+  // ── watch: status-coded checklist of what to look 👀 for on the chart
+  const watch=[];
+  if(rsi!=null) watch.push({ key:"RSI", label:"RSI MOMENTUM", value:String(rsi),
+    status:rsi<30?"confirm":rsi>70?"caution":"verify",
+    read:rsi<30?"Oversold — selling may be exhausted.":rsi>70?"Overbought — buyers may be exhausted.":"Mid-range — no extreme.",
+    action:rsi<30?"In a RANGING tape, wait for a higher close to confirm the bounce.":rsi>70?"Don't chase — wait for a pullback or fresh confirmation.":"Not a trigger alone — combine with the trend read." });
+  const adx=I.adx&&typeof I.adx.adx==="number"?I.adx.adx:null;
+  if(adx!=null) watch.push({ key:"ADX", label:"TREND STRENGTH", value:String(adx),
+    status:adx>25?"confirm":"verify",
+    read:adx>25?"ADX>25 — a strong, tradeable trend is present.":adx<20?"ADX<20 — weak/absent trend (chop).":"ADX mid — the trend is marginal.",
+    action:adx>25?"Trend-following votes are reliable — favor breakouts / momentum.":"Favor mean-reversion; trend signals misfire without strength." });
+  if(I.bb&&I.bb.sig&&I.bb.sig!=="N/A") watch.push({ key:"BB", label:"BOLLINGER BANDS", value:I.bb.sig,
+    status:I.bb.sig==="BULLISH"?"confirm":I.bb.sig==="BEARISH"?"caution":"verify",
+    read:I.bb.sig==="BULLISH"?"Price tagged the LOWER band — stretched low.":I.bb.sig==="BEARISH"?"Price tagged the UPPER band — stretched high.":"Price mid-band — no stretch.",
+    action:I.bb.sig==="BULLISH"?"A lower-band tag is a mean-reversion BUY setup in a range.":I.bb.sig==="BEARISH"?"An upper-band tag warns of a pullback.":"Wait for a band tag to act." });
+  if(I.vwap&&I.vwap.sig) watch.push({ key:"VWAP", label:"PRICE vs VWAP", value:I.vwap.sig,
+    status:I.vwap.sig==="BULLISH"?"confirm":"caution",
+    read:I.vwap.sig==="BULLISH"?"Price is ABOVE the 20-bar VWAP — buyers in control.":"Price is BELOW the 20-bar VWAP — sellers in control.",
+    action:I.vwap.sig==="BULLISH"?"Holding above VWAP supports a long.":"A reclaim of VWAP would improve a long entry." });
+  if(I.vol&&I.vol.sig) watch.push({ key:"VOL", label:"VOLUME", value:I.vol.sig,
+    status:I.vol.sig==="CONFIRMING"?"confirm":I.vol.sig==="DIVERGING"?"caution":"verify",
+    read:I.vol.sig==="DIVERGING"?"Volume is fading — the move lacks conviction.":I.vol.sig==="CONFIRMING"?"Volume confirms the move.":"Volume is unremarkable.",
+    action:I.vol.sig==="DIVERGING"?"Distrust a breakout on falling volume.":I.vol.sig==="CONFIRMING"?"Volume backs the read — a cleaner signal.":"Wait for volume to pick a side." });
+  if(I.macd&&I.macd.sig&&I.macd.sig!=="N/A") watch.push({ key:"MACD", label:"MACD (use with care)", value:I.macd.sig,
+    status:"verify",
+    read:"MACD reads "+I.macd.sig+", but testing showed it is WEAK / often backwards at swing horizons.",
+    action:"Don't let MACD alone drive the call — it is the engine's least reliable vote." });
+  // ── apply: which mode / resolution / strategy to use NOW
+  const apply={};
+  apply.mode = (trend==="TRENDING"&&!intraday)
+    ? { rec:"POSITION", why:"A real trend on a daily horizon is where long-hold position trades (let winners run on a trailing stop) pay best."+(mode==="position"?" You're already in POSITION mode.":" Consider switching from "+(mode||"the current")+" mode.") }
+    : { rec:"TACTICAL", why:"A ranging / intraday tape suits shorter tactical trades with defined targets."+(mode==="tactical"?" You're already in TACTICAL mode.":"") };
+  apply.resolution = intraday
+    ? { rec:"DAILY swing", why:"The regime read is a DAILY view and the feed is 15-min delayed — an intraday chart mismatches it. Switch to a daily / swing timeframe." }
+    : { rec:resLabel||"DAILY", why:"Your timeframe matches the regime's daily / swing horizon." };
+  apply.strategy = trend==="TRENDING"
+    ? { rec:"Trend-following / momentum", why:"Buy strength and ride breakouts; momentum-12-1 is the one robust edge here." }
+    : trend==="RANGING"
+    ? { rec:"Mean-reversion", why:"Buy oversold dips (RSI/Stoch/BB) toward the range middle; fade the extremes." }
+    : { rec:"Stand-aside / demand confluence", why:"A transitional tape rewards patience — wait for the regime to resolve before committing." };
+  // SHORT awareness (un-muted) — the bearish read is surfaced even though long-only never TAKES it.
+  apply.short = (sig==="SELL"||score<=-5)
+    ? { score, bears:typeof C.bear==="number"?C.bear:null,
+        read:"Conditions present a SHORT setup (score "+score+(typeof C.bear==="number"?", "+C.bear+" bear votes":"")+"). It is NOT taken — SignalForge is long-only by default. The bearish read: bears outweigh bulls here, so a long faces a headwind. Awareness only — wait for a long re-entry, or simply note the downside risk." }
+    : null;
+  // ── formation: the chart's current candle story + what to watch next
+  const pats=Array.isArray(a.patterns)?a.patterns.map(p=>({name:p.name,type:p.type,desc:p.desc})):[];
+  const div=a.divergence?{type:a.divergence.type,desc:a.divergence.desc}:null;
+  const nextWatch = trend==="RANGING"
+    ? "In this range, watch for a bullish reversal candle (hammer / bullish engulfing) at support with a higher close to confirm a bounce."
+    : trend==="TRENDING"
+    ? ((regime&&regime.direction==="BULL")?"In this uptrend, watch for a higher-low pullback that holds and resumes — the lower-risk continuation entry.":"In this downtrend, a long needs a clear base + a reclaim of resistance before it's worth the headwind.")
+    : "Watch the next few candles for the regime to resolve — a decisive close with volume tips the toolkit.";
+  const formation={ patterns:pats, divergence:div, nextWatch };
+  // ── next: the guided next step in the verify-first flow
+  const next = (sig==="BUY"&&!muted)
+    ? { tab:"size", label:"SIZE the trade →", why:"You have a long signal — set position size by ATR risk before acting." }
+    : { tab:"evidence", label:"Check the EVIDENCE →", why:"No actionable long — see whether any edge is OOS-proven before risking capital." };
+  return { here, cliffs, watch, apply, formation, next };
+}
 export function obvCalc(data){
   if(data.length<16)return null;
   let obv=0;const series=[0];
