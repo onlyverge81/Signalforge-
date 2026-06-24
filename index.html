@@ -4649,14 +4649,26 @@ function App() {
 
         {tab==="paper"&&(()=>{
           const MUT="#90a4ae";
-          const closed=ledger.filter(e=>e.status==="WIN"||e.status==="LOSS");
-          const opens=ledger.filter(e=>e.status==="OPEN");
-          const obs=ledger.filter(e=>e.status==="OBSERVATION");
+          // The committed ledger ALSO carries internal A/B research streams: the team-minus-vote SHADOW
+          // teams (mode:"shadow-…") reuse the tactical entry/SL/TP verbatim, so they render as EXACT-duplicate
+          // rows here (one per shadow team that fired the same BUY). They belong to the OOS SCOREBOARD on the
+          // EVIDENCE tab, NOT this human paper-trade view — so we hide them. POSITION is a distinct philosophy
+          // (its own wider/ trailing stops) — kept, but LABELED so it's never mistaken for a tactical duplicate.
+          const isShadow=e=>!!(e.tags&&typeof e.tags.mode==="string"&&e.tags.mode.startsWith("shadow-"));
+          const isPosition=e=>!!(e.tags&&e.tags.mode==="position");
+          const modeLabel=e=>isPosition(e)?"POSITION":"TACTICAL";
+          const modeCol=e=>isPosition(e)?"#00bcd4":"#00e676";
+          const visible=ledger.filter(e=>!isShadow(e));
+          const shadowHidden=ledger.length-visible.length;
+          const closed=visible.filter(e=>e.status==="WIN"||e.status==="LOSS");
+          const opens=visible.filter(e=>e.status==="OPEN");
+          const obs=visible.filter(e=>e.status==="OBSERVATION");
+          const tacticalClosed=closed.filter(e=>!isPosition(e));
           const seg=arr=>realizedStats(arr.map(e=>({result:e.status,pnlPct:e.pnlPct,grossPct:e.grossPct}))).stats;
           const segments=[
-            ["ALL CLOSED", closed, "every logged BUY/SELL that has resolved"],
-            ["NON-MUTED", closed.filter(e=>!(e.tags&&e.tags.signalMuted)), "only signals the gates did NOT mute"],
-            ["DATA-CLEAN", closed.filter(e=>!(e.tags&&e.tags.dataSuspect)), "only signals on inputs that passed the integrity audit"],
+            ["ALL CLOSED", tacticalClosed, "every tactical BUY/SELL that has resolved (POSITION tracked separately)"],
+            ["NON-MUTED", tacticalClosed.filter(e=>!(e.tags&&e.tags.signalMuted)), "only signals the gates did NOT mute"],
+            ["DATA-CLEAN", tacticalClosed.filter(e=>!(e.tags&&e.tags.dataSuspect)), "only signals on inputs that passed the integrity audit"],
           ];
           const freshClose=sym=>(rows&&rows.length&&ticker.trim().toUpperCase()===sym)?rows[rows.length-1].close:null;
           const sCol=(s,muted)=>muted?MUT:(s==="BUY"?"#00e676":s==="SELL"?"#ff5252":"#ffd740");
@@ -4725,7 +4737,7 @@ function App() {
                 ):(
                   <table style={{width:"100%",borderCollapse:"collapse",fontSize:11}}>
                     <thead><tr style={{color:DIM,fontSize:9,letterSpacing:1}}>
-                      {["AS OF","TICKER","SIGNAL","ENTRY","SL","TP1","RR","UNREAL.","EDGE"].map(h=>(
+                      {["AS OF","TICKER","MODE","SIGNAL","ENTRY","SL","TP1","RR","UNREAL.","EDGE"].map(h=>(
                         <td key={h} style={{padding:"4px 8px",borderBottom:"1px solid "+BORD}}>{h}</td>))}
                     </tr></thead>
                     <tbody>
@@ -4737,6 +4749,7 @@ function App() {
                         <tr key={i} style={{borderBottom:"1px solid "+BG2}}>
                           <td style={{padding:"8px 8px",color:FADE}}>{e.dataAsOf?e.dataAsOf.date:"—"}</td>
                           <td style={{padding:"8px 8px",color:"#dce6f0",fontWeight:700}}>{e.ticker}</td>
+                          <td style={{padding:"8px 8px",fontSize:9,fontWeight:700,color:modeCol(e)}}>{modeLabel(e)}</td>
                           <td style={{padding:"8px 8px",color:sCol(e.signal,muted),fontWeight:700}}>{e.signal==="BUY"?"▲ ":"▼ "}{e.signal}{muted?" ·":""}</td>
                           <td style={{padding:"8px 8px",color:"#90a4ae"}}>{fmt(e.entry)}</td>
                           <td style={{padding:"8px 8px",color:"#ff8a80"}}>{fmt(e.sl)}</td>
@@ -4750,7 +4763,7 @@ function App() {
                     </tbody>
                   </table>
                 )}
-                <div style={{marginTop:8,fontSize:9,color:FADE}}>Unrealized P&L shows only for a ticker you currently have loaded above; the CI job marks every open trade to market on each run.</div>
+                <div style={{marginTop:8,fontSize:9,color:FADE}}>Unrealized P&L shows only for a ticker you currently have loaded above; the CI job marks every open trade to market on each run. <b style={{color:"#00bcd4"}}>MODE</b> distinguishes the TACTICAL engine from the POSITION (dip-buy) philosophy — same name in both is two strategies, not a duplicate.{shadowHidden>0?(<> {shadowHidden} internal team-minus-vote <b>shadow</b> rows (which copy the tactical entry/SL/TP verbatim) are hidden here — they're A/B research, scored on the <b>EVIDENCE</b> scoreboard, not paper trades.</>):null}</div>
               </div>
 
               {/* Closed trades */}
@@ -4761,7 +4774,7 @@ function App() {
                 ):(
                   <table style={{width:"100%",borderCollapse:"collapse",fontSize:11}}>
                     <thead><tr style={{color:DIM,fontSize:9,letterSpacing:1}}>
-                      {["AS OF","TICKER","SIGNAL","ENTRY","EXIT","P&L%","BARS","EXITED","TAG"].map(h=>(
+                      {["AS OF","TICKER","MODE","SIGNAL","ENTRY","EXIT","P&L%","BARS","EXITED","TAG"].map(h=>(
                         <td key={h} style={{padding:"4px 8px",borderBottom:"1px solid "+BORD}}>{h}</td>))}
                     </tr></thead>
                     <tbody>
@@ -4772,6 +4785,7 @@ function App() {
                         <tr key={i} style={{borderBottom:"1px solid "+BG2}}>
                           <td style={{padding:"8px 8px",color:FADE}}>{e.dataAsOf?e.dataAsOf.date:"—"}</td>
                           <td style={{padding:"8px 8px",color:"#dce6f0",fontWeight:700}}>{e.ticker}</td>
+                          <td style={{padding:"8px 8px",fontSize:9,fontWeight:700,color:modeCol(e)}}>{modeLabel(e)}</td>
                           <td style={{padding:"8px 8px",color:sCol(e.signal,muted),fontWeight:700}}>{e.signal}{muted?" ·":""}</td>
                           <td style={{padding:"8px 8px",color:"#90a4ae"}}>{fmt(e.entry)}</td>
                           <td style={{padding:"8px 8px",color:"#90a4ae"}}>{fmt(e.exit)}</td>

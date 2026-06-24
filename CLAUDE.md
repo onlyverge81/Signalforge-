@@ -729,6 +729,20 @@ room + the two camps' directions instead of being fixed prose. STRICTLY display 
 verdict is byte-identical; no engine/gate touched. App mounts clean (driver, zero JS errors). All three regime-clarity
 passes (#1 label market-wide, #2 recalibrate ER, #3 de-boilerplate) now done.
 
+**FORWARD-TEST "duplicate rows" fix (DONE, display-only) — shadow streams polluting the human ledger view:** the user
+spotted the FORWARD TEST · OPEN POSITIONS table showing the SAME name 4–5× with IDENTICAL entry/SL/TP (BAC ×4, V ×5, CAT
+×5). Root cause (traced): the tab derived `opens`/`closed`/`obs`/segments from the RAW `paper-ledger.json` with NO mode
+scoping (`index.html`), so the internal team-minus-vote **shadow-* research streams** — which reuse the tactical entry/SL/TP
+VERBATIM — rendered as exact-duplicate rows (one per shadow team that fired the same BUY; ~8 shadow configs after the
+shadow-corrected merge). The POSITION stream added a second (differently-stopped) row per name too. Fix (display-only — the
+tab "only reads the ledger"): hide `shadow-*` rows from the OPEN/CLOSED/OBS tables AND the segmented-performance card (their
+home is the OOS SCOREBOARD on EVIDENCE, not the paper-trade view), scope the REALIZED-PERFORMANCE segments to TACTICAL-only
+(POSITION is a distinct philosophy with its own scoreboard variant — pooling months-long trailing holds with tactical
+expectancy was apples-to-oranges), and add a **MODE** column (TACTICAL/POSITION, color-coded) to the OPEN + CLOSED tables so
+the two legitimate streams are labeled and never mistaken for a duplicate. A footnote reports how many shadow rows were
+hidden. NO engine/ledger-file change (the file correctly carries shadow rows for the scoreboard); app mounts clean (driver,
+zero JS errors). 312 tests green (no tested code touched).
+
 **Next — Track B:**
 - Mature the `momentum-on` / `merits-on` / `news-*` / `earnings-recent-on` OOS ledgers to n≥10; human-ratify
   only if they clear FDR. PASSIVE — the nightly `forward-log → forward-perf → promote` already partitions every
