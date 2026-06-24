@@ -268,6 +268,28 @@ async function fetchMonthlyCloses(sym, key, months = 16){
   return Array.isArray(j.results) ? j.results.map(b => b.c).filter(c => c > 0) : [];
 }
 
+// Pure: extract the displayable COMPANY profile from a Polygon ticker-details payload. Context for the
+// human (what the business does + a link out) — NOT a signal input, so it never touches the grade. The
+// description is truncated to keep contenders.json lean; only http(s) homepages are honored.
+export function parseTickerDetails(json){
+  const r = (json && json.results) || {};
+  const homepage = (typeof r.homepage_url === "string" && /^https?:\/\//i.test(r.homepage_url)) ? r.homepage_url : null;
+  const desc = (typeof r.description === "string") ? r.description.trim() : null;
+  return {
+    name: r.name || null,
+    homepage,
+    industry: r.sic_description || null,
+    description: desc ? (desc.length > 500 ? desc.slice(0, 500).trimEnd() + "…" : desc) : null,
+  };
+}
+async function fetchTickerDetails(sym, key){
+  const u = `${POLY}/v3/reference/tickers/${encodeURIComponent(sym)}?apiKey=${encodeURIComponent(key)}`;
+  const r = await fetch(u);
+  if (r.status === 429) throw new Error("rate limited (429)");
+  if (!r.ok) throw new Error("HTTP " + r.status);
+  return parseTickerDetails(await r.json());
+}
+
 function parseArgs(argv){
   const a = { preview:false, dryRun:false, tickersFile:null,
               pace: +(process.env.POLYGON_PACE_MS || 13000) }; // 5 req/min free tier
@@ -323,6 +345,13 @@ async function main(){
 
       const c = buildContender({ sym, rec, price, patternRow: patternMap[sym], signalRow: signalMap[sym], fin, momo });
       if (!c) continue;
+      // Bake a COMPANY profile for every name that will be DISPLAYED (A/B shortlist + C watch tier) so the
+      // app's "🏢 COMPANY" button works without an API key. Non-fatal: a miss just leaves the button to
+      // lazy-fetch (or show a note). Context only — never feeds the grade.
+      if (c.grade === "A" || c.grade === "B" || c.grade === "C"){
+        try{ c.about = await fetchTickerDetails(sym, key); }
+        catch(_){ /* no profile — app falls back to a lazy fetch / note */ }
+      }
       graded.push(c);
       const momoStr = c.tech.box === "nodata" ? "momo n/a" : "momo " + pct(c.tech.momo);
       if (c.grade === "A" || c.grade === "B"){

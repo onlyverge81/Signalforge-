@@ -900,6 +900,16 @@ function polyErr(j){
   return m;
 }
 async function polyGet(url){ const r=await fetch(url); const j=await r.json(); if(j&&(j.status==="ERROR"||j.error)) throw new Error(polyErr(j)); return j; }
+// Company profile (CONTENDERS · COMPANY button) — the official site + a short "what it does" blurb from
+// Polygon ticker details. Context only, never a signal input. Mirrors build-contenders' parseTickerDetails:
+// only http(s) homepages are honored, description is truncated. Lazy fallback when contenders.json lacks a baked profile.
+async function polyTickerDetails(sym, key){
+  const j=await polyGet("https://api.polygon.io/v3/reference/tickers/"+encodeURIComponent(sym)+"?apiKey="+encodeURIComponent(key));
+  const r=(j&&j.results)||{};
+  const homepage=(typeof r.homepage_url==="string"&&/^https?:\/\//i.test(r.homepage_url))?r.homepage_url:null;
+  const desc=(typeof r.description==="string")?r.description.trim():null;
+  return { name:r.name||null, homepage, industry:r.sic_description||null, description: desc?(desc.length>500?desc.slice(0,500).trimEnd()+"…":desc):null };
+}
 function polyBars(results,span){ return (results||[]).map(b=>({date:polyBarDate(b.t,span),open:+(+b.o).toFixed(4),high:+(+b.h).toFixed(4),low:+(+b.l).toFixed(4),close:+(+b.c).toFixed(4),volume:+b.v||0})).filter(d=>d.close>0); }
 
 // ─── Intraday regular-hours filter (US EQUITIES only) ────────────────────────
@@ -2072,6 +2082,8 @@ function App() {
   const [contenders, setContenders] = useState(null);
   const [contenderOpen, setContenderOpen] = useState(null); // sym whose checklist is expanded
   const [contenderAllBoxesOnly, setContenderAllBoxesOnly] = useState(false); // strict shortlist filter
+  const [contenderAbout, setContenderAbout] = useState(null); // sym whose COMPANY profile panel is open
+  const [companyInfo, setCompanyInfo] = useState({}); // sym -> {name,homepage,industry,description,loading,error,needKey,loaded}
   useEffect(()=>{ let alive=true;
     fetch("./fundamentals.json").then(r=>r.ok?r.json():null).then(j=>{ if(alive&&j&&typeof j==="object") setFundaDB(j); }).catch(()=>{});
     fetch("./pattern-study.json").then(r=>r.ok?r.json():null).then(j=>{ if(alive&&j&&j.aggregate) setPatternStudy(j); }).catch(()=>{});
@@ -4071,6 +4083,19 @@ function App() {
               const pctEdge=v=>v!=null?(v*100>=0?"+":"")+(v*100).toFixed(2)+"%":"—";
               const watch=contenders.watchlist||[];
               const WATCH_LABELS={borderline:"BORDERLINE",techEdge:"TECH EDGE",deepValue:"DEEP VALUE",highGrowth:"HIGH GROWTH"};
+              // COMPANY panel: prefer the baked profile (works with no key); else lazy-fetch from Polygon if a
+              // key is set; else a gentle note. Context only — never touches the grade/signal.
+              const openAbout=(c)=>{
+                if(contenderAbout===c.sym){ setContenderAbout(null); return; }
+                setContenderAbout(c.sym);
+                if(c.about&&(c.about.homepage||c.about.description||c.about.industry)){ setCompanyInfo(m=>({...m,[c.sym]:{...c.about,loaded:true}})); return; }
+                const cached=companyInfo[c.sym];
+                if(cached&&(cached.loaded||cached.loading)) return;
+                const key=(polyKey||"").trim();
+                if(!key){ setCompanyInfo(m=>({...m,[c.sym]:{needKey:true}})); return; }
+                setCompanyInfo(m=>({...m,[c.sym]:{loading:true}}));
+                polyTickerDetails(c.sym,key).then(d=>setCompanyInfo(m=>({...m,[c.sym]:{...d,loaded:true}}))).catch(e=>setCompanyInfo(m=>({...m,[c.sym]:{error:(e&&e.message)||"lookup failed"}})));
+              };
               const renderCard=(c)=>{
                 const gc=gradeColors[c.grade]||"#90a4ae";
                 const open=contenderOpen===c.sym;
@@ -4089,7 +4114,10 @@ function App() {
                         </div>
                         <div style={{fontSize:10,color:FADE,marginTop:2}}>{c.entity||""}</div>
                       </div>
-                      <button style={{...pill(false),marginBottom:0,whiteSpace:"nowrap",color:"#00bcd4",borderColor:"#00bcd499"}} onClick={()=>{setTicker(c.sym);fetchLive(c.sym);}}>ANALYZE →</button>
+                      <div style={{display:"flex",flexDirection:"column",gap:6,minWidth:118}}>
+                        <button style={{...pill(contenderAbout===c.sym),marginBottom:0,whiteSpace:"nowrap",fontSize:9,padding:"5px 10px"}} onClick={()=>openAbout(c)}>🏢 {contenderAbout===c.sym?"HIDE":"COMPANY"}</button>
+                        <button style={{...pill(false),marginBottom:0,whiteSpace:"nowrap",color:"#00bcd4",borderColor:"#00bcd499"}} onClick={()=>{setTicker(c.sym);fetchLive(c.sym);}}>ANALYZE →</button>
+                      </div>
                     </div>
 
                     <div style={{display:"grid",gridTemplateColumns:"repeat(auto-fit,minmax(92px,1fr))",gap:8,marginTop:12}}>
@@ -4148,6 +4176,31 @@ function App() {
                         {(c.flags||[]).map((f,i)=>(<div key={"f"+i} style={{fontSize:10,color:"#ff8a80",padding:"4px 0",lineHeight:1.5}}>⚠ {f}</div>))}
                       </div>
                     )}
+
+                    {contenderAbout===c.sym&&(()=>{
+                      const info=companyInfo[c.sym]||{};
+                      const hasLink=info.homepage&&/^https?:\/\//i.test(info.homepage);
+                      return (
+                        <div style={{marginTop:8,paddingTop:8,borderTop:"1px solid "+BG2}}>
+                          <div style={{fontSize:8,color:DIM,letterSpacing:1,marginBottom:5}}>🏢 COMPANY · context, not a signal</div>
+                          {info.loading?(
+                            <div style={{fontSize:11,color:FADE}}>Loading company profile…</div>
+                          ):info.needKey?(
+                            <div style={{fontSize:10,color:FADE,lineHeight:1.6}}>Company profile loads after the next nightly build — or instantly if you add a Polygon key in the <b>DATA</b> tab.</div>
+                          ):info.error?(
+                            <div style={{fontSize:10,color:"#ff8a80"}}>Couldn't load profile: {info.error}</div>
+                          ):(
+                            <>
+                              {(info.name||c.entity)&&<div style={{fontSize:12,fontWeight:700,color:"#eceff1"}}>{info.name||c.entity}</div>}
+                              {info.industry&&<div style={{fontSize:10,color:"#90a4ae",marginTop:2}}>{info.industry}</div>}
+                              {info.description&&<div style={{fontSize:10,color:"#90a4ae",lineHeight:1.6,marginTop:6}}>{info.description}</div>}
+                              {hasLink&&<a href={info.homepage} target="_blank" rel="noopener noreferrer" style={{display:"inline-block",marginTop:8,fontSize:10,fontWeight:700,color:"#00bcd4",textDecoration:"none"}}>Visit official website ↗</a>}
+                              {!info.description&&!hasLink&&!info.industry&&<div style={{fontSize:10,color:FADE}}>No company profile available for {c.sym} yet.</div>}
+                            </>
+                          )}
+                        </div>
+                      );
+                    })()}
                   </div>
                 );
               };
