@@ -768,6 +768,48 @@ function marketRegime(bars){
   const label=[direction!=="NEUTRAL"?direction:null,trend!=="UNKNOWN"?trend:null].filter(Boolean).join(" · ")||"INDETERMINATE";
   return { direction, trend, vol, er:er==null?null:+er.toFixed(2), approxMA, favored, cautioned, risk, label };
 }
+// Turn the regime read into an ACTIONABLE pre-trade VERIFY/CONFIRM checklist: each line is a concrete
+// fact to confirm + the action it implies, so "awareness only" becomes a usable preflight instead of
+// vague prose. Pure & display-only — NEVER changes the verdict. `resLabel`/`intraday` describe the CHART
+// the user is actually on, so the horizon line can flag a timeframe mismatch. status ∈ confirm|verify|caution.
+function regimeChecklist(regime, opts={}){
+  if(!regime) return [];
+  const g=regime, resLabel=opts.resLabel||null, intraday=!!opts.intraday, items=[];
+  // A · DIRECTION — the tape's bias vs its ~200-day average.
+  items.push({ key:"A", label:"DIRECTION", value:g.direction+(g.approxMA?" (≈)":""),
+    status:g.direction==="BULL"?"confirm":g.direction==="BEAR"?"caution":"verify",
+    read:g.direction==="BULL"?"Price is ABOVE its ~200-day average — the tape leans up."
+        :g.direction==="BEAR"?"Price is BELOW its ~200-day average — the tape leans down."
+        :"Price is hugging its ~200-day average — no clear bias.",
+    action:g.direction==="BULL"?"Longs trade WITH the tape; shorts fight it."
+          :g.direction==="BEAR"?"Longs fight a headwind — demand more confluence or stand aside."
+          :"Neither side has the tape's help — wait for direction or trade smaller." });
+  // B · MODE — trending vs ranging picks the WHOLE toolkit (the core 'which votes to trust').
+  items.push({ key:"B", label:"MODE", value:g.trend+(g.er!=null?(" · ER "+g.er):""),
+    status:(g.trend==="TRENDING"||g.trend==="RANGING")?"confirm":"verify",
+    read:g.trend==="TRENDING"?"Price travels efficiently (ER "+g.er+") — a real trend, not noise."
+        :g.trend==="RANGING"?"Price churns, covering little ground (ER "+g.er+") — chop."
+        :"Mixed (ER "+(g.er!=null?g.er:"n/a")+") — the regime is in transition.",
+    action:(g.favored||"")+(g.cautioned?(" "+g.cautioned+"."):"") });
+  // C · VOLATILITY — the sizing dial (21-day realized vs its 6-month norm).
+  items.push({ key:"C", label:"VOLATILITY", value:g.vol,
+    status:g.vol==="STORMY"?"caution":(g.vol==="CALM"||g.vol==="NORMAL")?"confirm":"verify",
+    read:g.vol==="STORMY"?"21-day vol is well ABOVE its 6-month norm — a wild tape."
+        :g.vol==="CALM"?"21-day vol is BELOW its 6-month norm — a quiet tape."
+        :g.vol==="NORMAL"?"21-day vol is in line with its 6-month norm."
+        :"Not enough history to read volatility.",
+    action:g.vol==="STORMY"?"Widen stops or TRIM size — fixed stops get whipped here."
+          :g.vol==="CALM"?"Calm favors mean-reversion; watch for a vol expansion breaking the range."
+          :g.vol==="NORMAL"?"Standard position size — no vol-driven adjustment."
+          :"Treat size conservatively until vol can be read." });
+  // D · HORIZON — the regime is read on DAILY bars; confirm the chart timeframe matches the intent.
+  items.push({ key:"D", label:"HORIZON", value:"DAILY swing"+(resLabel?(" vs "+resLabel+" chart"):""),
+    status:intraday?"verify":"confirm",
+    read:"This regime is measured on DAILY index bars — a multi-day SWING view.",
+    action:intraday?("Your chart is INTRADAY "+(resLabel||"")+" — confirm you're trading the swing horizon this describes, not scalping against it.")
+                   :"Your chart matches the regime's daily/swing horizon." });
+  return items;
+}
 
 // ─── Phase-3 macro regime — condition conviction on the market, when earned ───
 // Reuses buildOutlook's DIA/SPY/QQQ overlay (no new data path). `combined` is the
@@ -2796,7 +2838,10 @@ function App() {
                     })()}
                     {outlook&&outlook.regime&&(()=>{
                       const g=outlook.regime, tc=g.trend==="TRENDING"?"#26c6da":g.trend==="RANGING"?"#ffd740":"#90a4ae";
-                      return <span title={"Market regime (read the room): "+g.label+".\n✓ Favored: "+g.favored+"\n⚠ Fights the room: "+g.cautioned+(g.risk?("\n⚑ "+g.risk):"")+"\nAwareness only — never changes the verdict. See OUTLOOK for detail."} style={{fontSize:9,fontWeight:700,letterSpacing:1,padding:"4px 10px",borderRadius:3,color:tc,background:tc+"1a",border:"1px solid "+tc+"44"}}>🧭 {g.label}</span>;
+                      const intraday=["1","5","15","30","60"].includes(liveMeta?.resolution);
+                      const cl=regimeChecklist(g,{resLabel:RES_LABEL[liveMeta?.resolution]||liveMeta?.resolution,intraday});
+                      const tip="MARKET REGIME · "+g.label+" — verify/confirm before you act:\n"+cl.map(i=>i.key+" "+i.label+": "+i.value+" → "+i.action).join("\n")+(g.risk?("\n⚑ "+g.risk):"")+"\nAwareness only — never changes the verdict. Full A–D checklist in OUTLOOK.";
+                      return <span title={tip} style={{fontSize:9,fontWeight:700,letterSpacing:1,padding:"4px 10px",borderRadius:3,color:tc,background:tc+"1a",border:"1px solid "+tc+"44"}}>🧭 {g.label}</span>;
                     })()}
                     {analysis.confluence&&analysis.confluence.famConflict&&(
                       <span title={"The engine is fighting itself: its MEAN-REVERSION votes (RSI/Stoch/BB) and TREND votes (MACD/MA/MAlong/Trend) point opposite ways. They're each valid in a DIFFERENT regime, so one camp is noise right now. Display only — the verdict is unchanged. Measured OOS via the votes-aligned ledger (Headline #2)."} style={{fontSize:9,fontWeight:700,letterSpacing:1,padding:"4px 10px",borderRadius:3,color:"#ffb74d",background:"rgba(255,183,77,0.10)",border:"1px solid #ffb74d55"}}>⚠ ENGINE DIVIDED</span>
@@ -3118,22 +3163,40 @@ function App() {
                     const dCol=g.direction==="BULL"?"#00e676":g.direction==="BEAR"?"#ff5252":"#90a4ae";
                     const tCol=g.trend==="TRENDING"?"#26c6da":g.trend==="RANGING"?"#ffd740":"#90a4ae";
                     const vCol=g.vol==="STORMY"?"#ff5252":g.vol==="CALM"?"#00e676":"#90a4ae";
+                    const intraday=["1","5","15","30","60"].includes(liveMeta?.resolution);
+                    const checklist=regimeChecklist(g,{resLabel:RES_LABEL[liveMeta?.resolution]||liveMeta?.resolution,intraday});
+                    const stCol=s=>s==="confirm"?"#00e676":s==="caution"?"#ff5252":"#ffd740";
+                    const stIco=s=>s==="confirm"?"✓":s==="caution"?"⚑":"?";
                     return (
                       <div style={{...card,borderLeft:"3px solid "+tCol}}>
-                        <span style={lbl}>🧭 MARKET REGIME · read the room before you pick the tool</span>
-                        <div style={{display:"flex",gap:8,flexWrap:"wrap",alignItems:"center",marginBottom:10}}>
+                        <span style={lbl}>🧭 MARKET REGIME · VERIFY / CONFIRM before you pick the tool</span>
+                        <div style={{display:"flex",gap:8,flexWrap:"wrap",alignItems:"center",marginBottom:12}}>
                           <span style={{fontSize:20,fontWeight:800,letterSpacing:1,color:tCol}}>{g.label}</span>
                           <span style={{padding:"2px 8px",borderRadius:4,border:"1px solid "+dCol,color:dCol,fontSize:11,fontWeight:700}}>{g.direction}</span>
                           <span style={{padding:"2px 8px",borderRadius:4,border:"1px solid "+tCol,color:tCol,fontSize:11,fontWeight:700}}>{g.trend}{g.er!=null?(" · ER "+g.er):""}</span>
                           <span style={{padding:"2px 8px",borderRadius:4,border:"1px solid "+vCol,color:vCol,fontSize:11,fontWeight:700}}>{g.vol} VOL</span>
                           {g.approxMA&&<span style={{fontSize:9,color:FADE}}>(trend MA approx — &lt;200 bars)</span>}
                         </div>
-                        <div style={{fontSize:12,color:"#cfd8dc",lineHeight:1.7}}>
-                          <span style={{color:"#00e676"}}>✓ Favored here:</span> {g.favored}<br/>
-                          <span style={{color:"#ff8a80"}}>⚠ Fights the room:</span> {g.cautioned}
+                        <div style={{display:"flex",flexDirection:"column",gap:1,marginBottom:4}}>
+                          {checklist.map(it=>{
+                            const c=stCol(it.status);
+                            return (
+                              <div key={it.key} style={{display:"flex",gap:10,alignItems:"flex-start",background:BG3,borderLeft:"2px solid "+c,borderRadius:3,padding:"8px 12px"}}>
+                                <span style={{fontSize:13,fontWeight:800,color:c,minWidth:14,textAlign:"center"}}>{it.key}</span>
+                                <div style={{flex:1,minWidth:0}}>
+                                  <div style={{display:"flex",gap:8,alignItems:"baseline",flexWrap:"wrap"}}>
+                                    <span style={{fontSize:10,fontWeight:700,letterSpacing:1,color:DIM}}>{it.label}</span>
+                                    <span style={{fontSize:12,fontWeight:800,color:c}}>{stIco(it.status)} {it.value}</span>
+                                  </div>
+                                  <div style={{fontSize:11,color:"#cfd8dc",lineHeight:1.5,marginTop:2}}>{it.read}</div>
+                                  <div style={{fontSize:11,color:"#90caf9",lineHeight:1.5,marginTop:2}}><b style={{color:FADE,fontWeight:700}}>→ DO:</b> {it.action}</div>
+                                </div>
+                              </div>
+                            );
+                          })}
                         </div>
-                        {g.risk&&<div style={{marginTop:8,fontSize:11,color:g.risk.startsWith("ELEVATED")?"#ff5252":"#ffd740",fontWeight:600}}>⚑ {g.risk}</div>}
-                        <div style={{fontSize:9,color:DIM,marginTop:8}}>Awareness only — this never changes the SIGNALS verdict. It tells you which of the engine's votes to TRUST: the confluence fires trend AND mean-reversion votes at once, so in the wrong regime half of them are noise. (Diagnosis: factor-interaction angles C + F.)</div>
+                        {g.risk&&<div style={{marginTop:8,fontSize:11,color:g.risk.startsWith("ELEVATED")?"#ff5252":"#ffd740",fontWeight:600}}>⚑ BOTTOM LINE: {g.risk}</div>}
+                        <div style={{fontSize:9,color:DIM,marginTop:8}}>Awareness only — this confirms WHICH of the engine's votes to trust; it never changes the SIGNALS verdict. The confluence fires trend AND mean-reversion votes at once, so in the wrong regime half are noise. (Diagnosis: factor-interaction angles C + F.)</div>
                       </div>
                     );
                   })()}

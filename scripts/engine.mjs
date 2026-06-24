@@ -196,6 +196,48 @@ export function marketRegime(bars){
   const label=[direction!=="NEUTRAL"?direction:null,trend!=="UNKNOWN"?trend:null].filter(Boolean).join(" · ")||"INDETERMINATE";
   return { direction, trend, vol, er:er==null?null:+er.toFixed(2), approxMA, favored, cautioned, risk, label };
 }
+// Turn the regime read into an ACTIONABLE pre-trade VERIFY/CONFIRM checklist: each line is a concrete
+// fact to confirm + the action it implies, so "awareness only" becomes a usable preflight instead of
+// vague prose. Pure & display-only — NEVER changes the verdict. `resLabel`/`intraday` describe the CHART
+// the user is actually on, so the horizon line can flag a timeframe mismatch. status ∈ confirm|verify|caution.
+export function regimeChecklist(regime, opts={}){
+  if(!regime) return [];
+  const g=regime, resLabel=opts.resLabel||null, intraday=!!opts.intraday, items=[];
+  // A · DIRECTION — the tape's bias vs its ~200-day average.
+  items.push({ key:"A", label:"DIRECTION", value:g.direction+(g.approxMA?" (≈)":""),
+    status:g.direction==="BULL"?"confirm":g.direction==="BEAR"?"caution":"verify",
+    read:g.direction==="BULL"?"Price is ABOVE its ~200-day average — the tape leans up."
+        :g.direction==="BEAR"?"Price is BELOW its ~200-day average — the tape leans down."
+        :"Price is hugging its ~200-day average — no clear bias.",
+    action:g.direction==="BULL"?"Longs trade WITH the tape; shorts fight it."
+          :g.direction==="BEAR"?"Longs fight a headwind — demand more confluence or stand aside."
+          :"Neither side has the tape's help — wait for direction or trade smaller." });
+  // B · MODE — trending vs ranging picks the WHOLE toolkit (the core 'which votes to trust').
+  items.push({ key:"B", label:"MODE", value:g.trend+(g.er!=null?(" · ER "+g.er):""),
+    status:(g.trend==="TRENDING"||g.trend==="RANGING")?"confirm":"verify",
+    read:g.trend==="TRENDING"?"Price travels efficiently (ER "+g.er+") — a real trend, not noise."
+        :g.trend==="RANGING"?"Price churns, covering little ground (ER "+g.er+") — chop."
+        :"Mixed (ER "+(g.er!=null?g.er:"n/a")+") — the regime is in transition.",
+    action:(g.favored||"")+(g.cautioned?(" "+g.cautioned+"."):"") });
+  // C · VOLATILITY — the sizing dial (21-day realized vs its 6-month norm).
+  items.push({ key:"C", label:"VOLATILITY", value:g.vol,
+    status:g.vol==="STORMY"?"caution":(g.vol==="CALM"||g.vol==="NORMAL")?"confirm":"verify",
+    read:g.vol==="STORMY"?"21-day vol is well ABOVE its 6-month norm — a wild tape."
+        :g.vol==="CALM"?"21-day vol is BELOW its 6-month norm — a quiet tape."
+        :g.vol==="NORMAL"?"21-day vol is in line with its 6-month norm."
+        :"Not enough history to read volatility.",
+    action:g.vol==="STORMY"?"Widen stops or TRIM size — fixed stops get whipped here."
+          :g.vol==="CALM"?"Calm favors mean-reversion; watch for a vol expansion breaking the range."
+          :g.vol==="NORMAL"?"Standard position size — no vol-driven adjustment."
+          :"Treat size conservatively until vol can be read." });
+  // D · HORIZON — the regime is read on DAILY bars; confirm the chart timeframe matches the intent.
+  items.push({ key:"D", label:"HORIZON", value:"DAILY swing"+(resLabel?(" vs "+resLabel+" chart"):""),
+    status:intraday?"verify":"confirm",
+    read:"This regime is measured on DAILY index bars — a multi-day SWING view.",
+    action:intraday?("Your chart is INTRADAY "+(resLabel||"")+" — confirm you're trading the swing horizon this describes, not scalping against it.")
+                   :"Your chart matches the regime's daily/swing horizon." });
+  return items;
+}
 export function obvCalc(data){
   if(data.length<16)return null;
   let obv=0;const series=[0];

@@ -666,6 +666,23 @@ loses to passive (alpha −66.7, t −0.36 = a coin toss) — the R3 corrected-c
 is "a much less bad loser," not an edge). This POINTS toward demote-over-correct for the nuisance set; the OOS
 `shadow-corrected` vs `shadow-noDeadDiv` ledger under FDR is the arbiter — NO in-sample re-wire.
 
+**Regime card → actionable VERIFY/CONFIRM checklist (DONE, display-only) — "make awareness-only ACTIONABLE":** the
+user's read of the OUTLOOK 🧭 MARKET REGIME card — it stated the regime (BULL · RANGING · ER 0.07 · NORMAL VOL) as
+vague prose ("✓ Favored here / ⚠ Fights the room / Awareness only"), not something you can ACT on. Rebuilt as a
+pre-trade **A–D Verify/Confirm checklist** via pure `regimeChecklist(regime,{resLabel,intraday})` (`engine.mjs`,
+mirrored byte-for-byte into `index.html`, parity verified): **A · DIRECTION** (vs ~200-DMA → tailwind/headwind),
+**B · MODE** (TRENDING/RANGING + ER → the toolkit to trust, folding in favored/cautioned), **C · VOLATILITY**
+(21d vs 6-mo norm → the sizing dial), **D · HORIZON** (the regime is a DAILY/swing read — flags a mismatch when the
+chart is INTRADAY, the user's IMG_1189 confusion). Each line carries `{value, status:confirm|verify|caution, read
+(the fact), action (→ DO)}`; the card renders lettered rows colored by status with an explicit "→ DO:" action and a
+⚑ BOTTOM-LINE risk banner. The SIGNALS hero regime chip tooltip was made consistent (same A–D action summary). STRICTLY
+display — `marketRegime`/`analyze`/the verdict are byte-identical; `regimeChecklist` is a pure read-out, never an input.
+Tests +4 (311 green; A–D mapping, intraday→HORIZON verify, BEAR+STORMY→caution, null→[]); app mounts clean (driver,
+zero JS errors). **Other-tab vagueness AUDIT (reported, not yet built):** the same "status-without-action" pattern still
+lives in the SIGNALS macro chip ("🌐 RISK-OFF · CONTEXT" — "CONTEXT" = "not yet proven", unexplained) and the
+"UNCONFIRMED EDGE" badge; the ENGINE-DIVIDED advisory is already actionable (gives camp directions + a regime room-read).
+Offered as the next one-at-a-time pass.
+
 **Next — Track B:**
 - Mature the `momentum-on` / `merits-on` / `news-*` / `earnings-recent-on` OOS ledgers to n≥10; human-ratify
   only if they clear FDR. PASSIVE — the nightly `forward-log → forward-perf → promote` already partitions every

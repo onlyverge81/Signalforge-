@@ -11,7 +11,7 @@
 
 import { test } from "node:test";
 import assert from "node:assert/strict";
-import { analyze, runBacktest, scoreAt, scorePosition, checkBarExit, checkBarExitFine, isAmbiguousBar, tradeNet, realizedStats, convergenceBreakout, backtestPattern, edgeStatus, avgIndexGainByDate, correctionLevels, backtestCorrection, efficiencyRatio, marketRegime, computeSignal, valueScore, divergenceFixed, recentTrend, patternsContext, correctedVotes, divergence, patterns } from "./engine.mjs";
+import { analyze, runBacktest, scoreAt, scorePosition, checkBarExit, checkBarExitFine, isAmbiguousBar, tradeNet, realizedStats, convergenceBreakout, backtestPattern, edgeStatus, avgIndexGainByDate, correctionLevels, backtestCorrection, efficiencyRatio, marketRegime, regimeChecklist, computeSignal, valueScore, divergenceFixed, recentTrend, patternsContext, correctedVotes, divergence, patterns } from "./engine.mjs";
 
 // ─── Helper: deterministic OHLC series (no RNG, fixed formula) ───────────────
 function gen(n){
@@ -563,4 +563,45 @@ test("analyze shadow-corrected config drops Div/Trend/Pat and injects the correc
   assert.ok(a.shadows && ["BUY","SELL","HOLD"].includes(a.shadows["shadow-corrected"]));
   // The live verdict is untouched by the shadow computation.
   assert.equal(a.signal, analyze(s,"TEST","SPY","tactical",1.5,2.0).signal);
+});
+
+// ─── regimeChecklist — actionable VERIFY/CONFIRM preflight (display-only) ──────
+
+test("regimeChecklist: null regime → empty list", () => {
+  assert.deepEqual(regimeChecklist(null), []);
+});
+
+test("regimeChecklist: BULL·RANGING·NORMAL maps each line to a verifiable fact + action", () => {
+  const g={ direction:"BULL", trend:"RANGING", vol:"NORMAL", er:0.07, approxMA:false,
+            favored:"Mean-reversion — oversold bounces (RSI / Stoch / BB) are favored",
+            cautioned:"Breakouts: likely bull-traps; trend votes misfire in chop", risk:null, label:"BULL · RANGING" };
+  const cl=regimeChecklist(g,{resLabel:"Daily",intraday:false});
+  assert.deepEqual(cl.map(i=>i.key), ["A","B","C","D"]);                 // four lettered lines
+  const A=cl.find(i=>i.key==="A"), B=cl.find(i=>i.key==="B"), C=cl.find(i=>i.key==="C"), D=cl.find(i=>i.key==="D");
+  assert.equal(A.label,"DIRECTION"); assert.equal(A.status,"confirm");   // BULL = tailwind
+  assert.equal(B.label,"MODE");      assert.equal(B.status,"confirm");   // RANGING is a decisive mode
+  assert.match(B.value, /ER 0\.07/);                                     // ER surfaced on the MODE line
+  assert.ok(B.action.includes("Mean-reversion"));                       // toolkit folded into the action
+  assert.equal(C.label,"VOLATILITY"); assert.equal(C.status,"confirm");  // NORMAL vol → standard size
+  assert.equal(D.label,"HORIZON");   assert.equal(D.status,"confirm");   // daily chart matches the daily regime
+  assert.ok(D.action.includes("matches"));
+});
+
+test("regimeChecklist: an INTRADAY chart flips the HORIZON line to VERIFY with the timeframe", () => {
+  const g={ direction:"BULL", trend:"TRENDING", vol:"NORMAL", er:0.6, approxMA:false,
+            favored:"Trend-following is reliable here", cautioned:"Mean-reversion fights the tape", risk:null, label:"BULL · TRENDING" };
+  const D=regimeChecklist(g,{resLabel:"15-min",intraday:true}).find(i=>i.key==="D");
+  assert.equal(D.status,"verify");                                       // mismatch must be flagged, not silent
+  assert.match(D.value, /15-min/);
+  assert.ok(D.action.includes("INTRADAY") && D.action.includes("swing"));
+});
+
+test("regimeChecklist: BEAR + STORMY raise DIRECTION/VOLATILITY to caution", () => {
+  const g={ direction:"BEAR", trend:"TRANSITIONAL", vol:"STORMY", er:0.3, approxMA:true,
+            favored:"Mixed — demand stronger confluence", cautioned:"Single-signal conviction is risky", risk:"ELEVATED — bear + high volatility: reduce size.", label:"BEAR · TRANSITIONAL" };
+  const cl=regimeChecklist(g);
+  assert.equal(cl.find(i=>i.key==="A").status,"caution");               // BEAR headwind
+  assert.equal(cl.find(i=>i.key==="C").status,"caution");               // STORMY → trim size
+  assert.equal(cl.find(i=>i.key==="B").status,"verify");                // TRANSITIONAL is unresolved
+  assert.match(cl.find(i=>i.key==="A").value, /\(≈\)/);                 // approxMA surfaced honestly
 });
