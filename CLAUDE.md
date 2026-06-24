@@ -755,7 +755,18 @@ JSON has no baked profile, and shows a gentle "loads after the next build / add 
 never touches the grade/signal/gate (a company's homepage is marketing, not edge; framed "context, not a signal"). Tests
 +1 (313 green; parseTickerDetails extraction/truncation/non-http rejection/empty-safe). App mounts clean (driver, zero JS
 errors). The baked profiles populate on the next `contenders.yml` CI run; until then the button lazy-fetches with a key.
-Planned NEXT add-on (user, queued): a Not/👍/🌟 watchlist with filing-anchored ⬆/⬇ delta arrows (grade/price/health/growth).
+**CONTENDERS personal watchlist — Not/👍/🌟 + change-since-you-reacted (DONE) — user idea, kids-friendly:** each
+contender card gets a **WATCHLIST** toolbar (🌟 Star · 👍 Like · 🚫 Not). Reacting **pins** the name to the TOP of its
+list (starred above liked; Not sinks) and **snapshots** its metrics, so the card then shows a "**SINCE YOU STARRED**"
+row with ⬆/⬇ deltas vs that snapshot: **GRADE** (A→B with arrow), **PRICE** (%), **HEALTH**, **GROWTH** — auto-updating
+as the nightly rebuild moves the numbers. A **📄 NEW FILING** flag lights when the company files a new 10-Q/10-K since you
+reacted (the snapshot's `filing.date` vs current — the "until next filings update" anchor the user described); the
+baseline is kept so the deltas span the filing. A **MY PICKS** header stat + an **⊞ ALL NAMES / ★ MY PICKS ONLY** view
+toggle round it out. Persistence is **`localStorage` (`sf_contender_picks`)** — DEVICE-LOCAL by design (the app is a
+static single file, no backend/accounts; charter-clean, no new vendor), survives reloads + CI rebuilds. STRICTLY a
+personal overlay — never touches the grade/signal/gate. Pure display + localStorage (no engine/data change; 313 tests
+green). Verified via a Playwright drive of the CONTENDERS tab: 385 reaction toolbars render, a 🌟 click pins + shows the
+SINCE-YOU-STARRED delta row, MY PICKS stat present, zero JS errors. (Earlier queued; now shipped.)
 
 **Next — Track B:**
 - Mature the `momentum-on` / `merits-on` / `news-*` / `earnings-recent-on` OOS ledgers to n≥10; human-ratify
