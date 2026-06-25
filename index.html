@@ -2421,10 +2421,17 @@ function App() {
   // happening. Built by scripts/contender-monitor.mjs on a schedule; read-only, same-origin,
   // display-only. 15-MIN DELAYED feed; the pattern is a measured loser shown as a trigger only.
   const [monitor, setMonitor] = useState(null);
-  useEffect(()=>{ let alive=true;
-    fetch("./contender-monitor.json").then(r=>r.ok?r.json():null).then(j=>{ if(alive&&j&&Array.isArray(j.leads)) setMonitor(j); }).catch(()=>{});
-    return ()=>{ alive=false; };
-  },[]);
+  const [monitorAt, setMonitorAt] = useState(0);                 // wall-clock of the last successful fetch
+  const [contenderFocus, setContenderFocus] = useState(null);    // a sym to scroll-to + highlight on CONTENDERS (from a MONITOR lead)
+  const loadMonitor = ()=> fetch("./contender-monitor.json?t="+Date.now()).then(r=>r.ok?r.json():null).then(j=>{ if(j&&Array.isArray(j.leads)){ setMonitor(j); setMonitorAt(Date.now()); } }).catch(()=>{});
+  useEffect(()=>{ let alive=true; const tick=()=>{ if(alive) loadMonitor(); }; tick(); const id=setInterval(tick,60000); return ()=>{ alive=false; clearInterval(id); }; },[]);
+  // From a MONITOR lead, jump to that name's CONTENDERS card (baseline + react-to-track) and scroll it into view.
+  useEffect(()=>{
+    if(tab!=="contenders"||!contenderFocus) return;
+    const t1=setTimeout(()=>{ try{ const el=document.getElementById("ct-"+contenderFocus); if(el) el.scrollIntoView({behavior:"smooth",block:"center"}); }catch(_){} },120);
+    const t2=setTimeout(()=>setContenderFocus(null),5000);
+    return ()=>{ clearTimeout(t1); clearTimeout(t2); };
+  },[tab,contenderFocus]);
   // Out-of-sample variant scoreboard (forward-perf.json) — the alpha/FDR verdict per
   // propose-only variant (merits-on, momentum-on, news-*, earnings-recent-on, position).
   const [forwardPerf, setForwardPerf] = useState(null);
@@ -3313,12 +3320,15 @@ function App() {
             <div style={{...card,borderLeft:"3px solid #26c6da"}}>
               <div style={{display:"flex",justifyContent:"space-between",alignItems:"baseline",flexWrap:"wrap",gap:8}}>
                 <span style={lbl}>📡 MONITOR — capture setups across the contenders while they're happening</span>
-                <span style={{fontSize:9,fontWeight:800,letterSpacing:1,color:"#ffb74d",border:"1px solid #ffb74d55",borderRadius:3,padding:"2px 6px"}}>⏱ 15-MIN DELAYED</span>
+                <span style={{display:"flex",gap:6,alignItems:"center"}}>
+                  <span style={{fontSize:9,fontWeight:800,letterSpacing:1,color:"#ffb74d",border:"1px solid #ffb74d55",borderRadius:3,padding:"2px 6px"}}>⏱ 15-MIN DELAYED</span>
+                  <button title="Re-fetch the latest committed scan" style={{...pill(false),marginBottom:0,marginRight:0,whiteSpace:"nowrap",color:"#26c6da",borderColor:"#26c6da99"}} onClick={()=>loadMonitor()}>↻ REFRESH</button>
+                </span>
               </div>
               {monitor?(
                 <div style={{fontSize:11,color:"#cfd8dc",lineHeight:1.6,marginTop:6}}>
-                  {monitor.marketOpen?"Market OPEN — ":"Market CLOSED — "}as of <b>{new Date(monitor.generatedAt).toLocaleString()}</b>
-                  {" · "}<b style={{color:"#26c6da"}}>{(monitor.counts&&monitor.counts.leads)||0}</b> leads ({(monitor.counts&&monitor.counts.grounded)||0} grounded · {(monitor.counts&&monitor.counts.buys)||0} BUY · {(monitor.counts&&monitor.counts.convergence)||0} coil→pop) over {monitor.withData||0}/{monitor.scanned||0} names scanned.
+                  {monitor.marketOpen?"Market OPEN — ":"Market CLOSED — "}scan as of <b>{new Date(monitor.generatedAt).toLocaleString()}</b>{(()=>{const m=Math.max(0,Math.round((Date.now()-new Date(monitor.generatedAt).getTime())/60000));return <span style={{color:m>20?"#ffb74d":FADE}}> ({m}m old)</span>;})()}
+                  {" · "}<b style={{color:"#26c6da"}}>{(monitor.counts&&monitor.counts.leads)||0}</b> leads ({(monitor.counts&&monitor.counts.grounded)||0} grounded · {(monitor.counts&&monitor.counts.buys)||0} BUY · {(monitor.counts&&monitor.counts.convergence)||0} coil→pop) over {monitor.withData||0}/{monitor.scanned||0} names scanned.<span style={{color:FADE}}> · auto-refreshes every 60s.</span>
                 </div>
               ):(
                 <div style={{fontSize:11,color:FADE,lineHeight:1.6,marginTop:6}}>No scan published yet. The monitor runs every ~15 min during market hours (09:50–16:00 ET) once <code>contender-monitor.yml</code> is on <code>main</code>, committing <code>contender-monitor.json</code> here.</div>
@@ -3346,12 +3356,12 @@ function App() {
                         {l.conv&&l.conv.detected&&<span style={{fontSize:10,color:"#26c6da"}}>coil→pop{l.conv.strength!=null?(" "+Math.round(l.conv.strength*100)+"%"):""}</span>}
                         <span style={{flex:1,minWidth:120,fontSize:10,color:FADE,lineHeight:1.4}}>{(l.reasons||[]).join(" · ")}</span>
                         <span style={{fontSize:10,color:DIM}}>{l.price!=null?("$"+(+l.price).toFixed(2)):""}</span>
-                        <button style={{...pill(false),marginBottom:0,whiteSpace:"nowrap",color:"#00bcd4",borderColor:"#00bcd499"}} onClick={()=>{setTicker(l.sym);fetchLive(l.sym);}}>ANALYZE →</button>
+                        <button title="Open this name's CONTENDERS baseline card — see the grade & react (🌟/👍) to start tracking it" style={{...pill(false),marginBottom:0,whiteSpace:"nowrap",color:"#26c6da",borderColor:"#26c6da99"}} onClick={()=>{setContenderFocus(l.sym);setTab("contenders");}}>★ BASELINE →</button>
                       </div>
                     );
                   })}
                 </div>
-                <div style={{fontSize:9,color:FADE,lineHeight:1.5,marginTop:8}}>Leads are candidates for YOUR eyes, not proven signals — the intraday engine read is unproven and the coil→pop pattern loses universe-wide. Verify each on LIVE / SIGNALS before acting.</div>
+                <div style={{fontSize:9,color:FADE,lineHeight:1.5,marginTop:8}}>Leads are candidates for YOUR eyes, not proven signals — the intraday engine read is unproven and the coil→pop pattern loses universe-wide. <b>★ BASELINE →</b> opens the name's CONTENDERS card for the grade + react-to-track (🌟/👍); analyze it from there before acting.</div>
               </div>
             ):monitor&&(
               <div style={{...card,textAlign:"center",color:FADE,fontSize:12,padding:"30px 20px"}}>
@@ -4655,7 +4665,7 @@ function App() {
                 const pk=picks[c.sym];
                 const filingChanged=!!(pk&&pk.snap&&pk.snap.filed&&c.filing&&c.filing.date&&pk.snap.filed!==c.filing.date);
                 return(
-                  <div key={c.sym} style={{...card,border:"1px solid "+(c.allBoxes?"rgba(0,230,118,0.35)":BORD),background:c.allBoxes?"rgba(0,230,118,0.04)":BG2}}>
+                  <div key={c.sym} id={"ct-"+c.sym} style={{...card,border:"1px solid "+(c.sym===contenderFocus?"#26c6da":(c.allBoxes?"rgba(0,230,118,0.35)":BORD)),background:c.allBoxes?"rgba(0,230,118,0.04)":BG2,...(c.sym===contenderFocus?{outline:"2px solid #26c6da",outlineOffset:2}:{})}}>
                     <div style={{display:"flex",alignItems:"center",gap:12,flexWrap:"wrap"}}>
                       <div style={{fontSize:34,fontWeight:700,color:gc,lineHeight:1,minWidth:34,textAlign:"center"}}>{c.grade}</div>
                       <div style={{flex:1,minWidth:140}}>
