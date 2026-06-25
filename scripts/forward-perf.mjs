@@ -237,6 +237,16 @@ export function defaultVariants() {
     { label: "contenders-off", where: t => tac(t) && !(t.tags && t.tags.contenderAllBoxes) },
     { label: "contenders-ab-on", where: t => tac(t) && !!(t.tags && t.tags.contenderAB) },
     { label: "contenders-ab-off", where: t => tac(t) && !(t.tags && t.tags.contenderAB) },
+    //   conv-grounded — the user's "convergence as a TRIGGER, not a signal" insight made DECIDABLE. The
+    //   coil→pop geometry alone is a measured LOSER (≈ −0.71% universe-wide), so it can't be a signal — but
+    //   it is a legitimate ATTENTION trigger (narrow ~490 names → a few). conv-grounded-ON = tactical BUYs
+    //   where the coil→pop fired AND the name is a vetted contender all-boxes pick (grade A/B + 12-1 momentum
+    //   + SEC↔Polygon filing cross-check). The A/B: does a GROUNDED coil→pop beat a matched total-return
+    //   buy-&-hold under FDR — i.e. does GROUNDING rescue the negative-edge geometry OOS? Propose-only; the
+    //   convergence trigger never enters the gate. (v1 = convergence + all-boxes; a regime co-filter is a
+    //   clean future refinement.)
+    { label: "conv-grounded-on", where: t => bothTac(t, "convergence", "contenderAllBoxes") },
+    { label: "conv-grounded-off", where: t => tac(t) && !bothTac(t, "convergence", "contenderAllBoxes") },
     // SHADOW ENGINES (team-minus-nuisance): each scores the trades the TEAM took WITHOUT a suspect vote
     // (mirrors forward-log's SHADOW_CONFIGS). The A/B is each shadow stream vs the full team's `all`: if a
     // shadow team's alpha beats `all` under FDR, that vote is a net NUISANCE — evidence to demote it

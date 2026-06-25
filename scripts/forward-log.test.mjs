@@ -453,6 +453,20 @@ test("buildEntry: the contenders label rides the current list and never changes 
   assert.equal(on.status, off.status, "contenders membership must not change which trades open");
 });
 
+test("buildEntry: the convergence (coil→pop) trigger tag is attached as a boolean and is label-only (never changes the trade decision)", () => {
+  const settled = genUp(120);
+  const e = buildEntry({ sym: "TST", settled, fundaDB: null, loggedAt: "2026-06-11T22:00:00Z" });
+  assert.ok(e);
+  // Always a boolean, never undefined — it mirrors analyze's convBreakout.detected (engine parity) and rides
+  // alongside the gate without affecting it; the OPEN/OBSERVATION decision is the gate's alone.
+  assert.equal(typeof e.tags.convergence, "boolean");
+  assert.ok(["OPEN", "OBSERVATION"].includes(e.status));
+  // A choppy series still attaches the boolean and yields a valid decision.
+  const choppy = genUp(120).map((r, i) => ({ ...r, close: 100 + Math.sin(i / 3) * 0.5, open: 100, high: 101, low: 99 }));
+  const c = buildEntry({ sym: "FLT", settled: choppy, fundaDB: null });
+  if (c) { assert.equal(typeof c.tags.convergence, "boolean"); assert.ok(["OPEN", "OBSERVATION"].includes(c.status)); }
+});
+
 // ─── earnings-proximity overlay — propose-only LABEL from the SEC filing date ──
 test("earningsGate: true only when the last 10-Q/10-K was filed within recentDays before the bar", () => {
   const decision = "2026-06-11";

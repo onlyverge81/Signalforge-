@@ -383,6 +383,11 @@ export function buildEntry({ sym, settled, fundaDB, contendersDB = null, news = 
       quality: (q => q == null ? null : parseFloat(q.toFixed(4)))(qualityValue(fundaDB && fundaDB[sym])),
       qualityActivated: false, ...eventTags(eventsAtSignal),
       earningsRecent: earningsGate(fundaDB && fundaDB[sym], decision.date),
+      // Convergence (coil→pop) TRIGGER label: did the SMA5/10·SFA12 coil fire at the decision bar? The
+      // geometry alone is a measured LOSER (≈ −0.71% universe-wide) — an ATTENTION trigger, not a signal;
+      // paired with contenderAllBoxes it forms the propose-only conv-grounded hypothesis (does a GROUNDED
+      // coil→pop beat buy-&-hold OOS?). Read off analyze (engine parity, no engine change); never a gate.
+      convergence: !!(a.convBreakout && a.convBreakout.detected),
       // Contenders shortlist membership (propose-only label; never enters the gate).
       ...contenderTag(contendersDB, sym) },
     status: isObs ? "OBSERVATION" : "OPEN",
