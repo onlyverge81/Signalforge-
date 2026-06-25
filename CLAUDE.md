@@ -788,6 +788,39 @@ EVIDENCE). **A SHORT setup is surfaced as AWARENESS** (read from the raw `analys
 (driver: GUIDE empty state renders, full JSX transpiles, zero JS errors). Loaded-state cards populate on a live fetch
 (needs a key in a real browser — egress-blocked in CI).
 
+**🧭 THE WORK-UP — reframe the whole app as a REAL expert's guided stock work-up (DONE) — branch
+`claude/signalforge-profitability-wheel-qbclby`:** the user (and their kids — beginners in training) asked: what does a
+PROFESSIONAL's full work-up of a stock look like, and make the app match it across ALL tabs. Researched + synthesized the
+canonical pro sequence (O'Neil **CAN SLIM**, Minervini **SEPA / 8-point Trend Template**, Weinstein **Stage Analysis**,
+top-down, the pre-trade/risk checklist, journaling) and mapped it onto the app. Key finding: SignalForge already holds
+EVERY piece a pro uses — and on risk + proof it is MORE rigorous than the retail frameworks (FDR-gated OOS evidence, ATR
+sizing, a forward journal); what it lacked was the plain-English numbered SEQUENCE and two teachable reads it could compute
+but never surfaced. Shipped (user picked **Full** + **reorder tabs into the 1–9 funnel**), STRICTLY display-only:
+- **Two NEW pure expert reads** (`engine.mjs`, exported + tested, mirrored byte-for-byte into `index.html`): `stockStage(bars)`
+  (Weinstein Stage 1–4 from price vs a ~150-bar/30-week SMA + its SLOPE — Stage 2 = above a rising MA = the buy zone; the
+  slope uses a window that always FITS so Stage 2/4 read on sub-150-bar series) and `trendTemplate(bars)` (Minervini's 8
+  points — price>50MA, 50>150>200 stack, 200 rising, within 25% of 52-wk high, ≥30% above low, RS 12-mo proxy [labelled],
+  holds-above-50MA; checks whose window isn't met return `pass:null`, counted out via `applicable`, NEVER failed). Both take
+  the bar SERIES (analyze() only carries SMA5/10/20/50) and degrade HONESTLY to `nodata`.
+- **`workupChecklist(ctx)` conductor** (`engine.mjs`, exported + tested, mirrored): a pure ASSEMBLER over already-computed
+  inputs → 9 ordered steps `{n,phase,tab,title,proCheck,status,value,read,action,why}` (status ∈ pass|fail|caution|nodata|info,
+  reusing the regimeChecklist item shape). 1 READ THE MARKET→outlook · 2 KNOW THE COMPANY→contenders · 3 STAGE & TREND→signals ·
+  4 FUNDAMENTALS→value · 5 CATALYST→value · 6 **PROVEN EDGE?→evidence (the honesty gate)** · 7 THE PLAN (R:R≥2)→signals ·
+  8 SIZE IT→position · 9 JOURNAL→paper. **Honesty invariant (unit-locked):** Step 6 is INDEPENDENT of the technical boxes and
+  stays `caution` "NOT YET PROVEN" until the OOS ledger proves an edge — all-technical-green NEVER implies a trade; the summary
+  carries "NOT PROVEN" and a footer disclaimer says so. Plus tiny `provenSummary(forwardPerf)` (provenAny = any variant
+  `promotable`; currently false = the app's identity). NEVER touches `analyze`/`computeSignal`/`scoreAt`/any gate (verdict
+  byte-identical; `analyze` snapshot unchanged).
+- **GUIDE = the conductor:** a **🧭 THE WORK-UP** card (9-step progress list, `X/9 confirmed`, status icons, per-step "GO TO
+  <TAB>" buttons, the disclaimer) renders ABOVE the existing guideBrief cards. A shared **`proLens(n)`** banner ("STEP n OF 9 ·
+  <phase>" + what-a-pro-checks + status + "← back to THE WORK-UP") indexes into ONE computed `wu` result and is dropped on
+  every funnel tab (OUTLOOK→1, CONTENDERS→2, SIGNALS→3&7, AUTOPSY→4&5, EVIDENCE→6, SIZE→8, FORWARD TEST/HISTORY→9) — no
+  duplicated logic. **Tab bar reordered** into the funnel: `DATA · LIVE · GUIDE · OUTLOOK · CONTENDERS · SIGNALS · AUTOPSY ·
+  EVIDENCE · SIZE · FORWARD TEST · BACKTEST · REPLAY · HISTORY`.
+- Tests +15 (**334 green**); engine↔app parity byte-identical for all 4 functions; app mounts clean, new tab order + GUIDE/
+  OUTLOOK/SIGNALS/SIZE render with zero JS errors (driver). Loaded-state populates on a live fetch (needs a key in a real
+  browser — egress-blocked in CI). Catalyst step 5 is `nodata` until a per-symbol filing date is surfaced in-app (honest TODO).
+
 **Next — Track B:**
 - Mature the `momentum-on` / `merits-on` / `news-*` / `earnings-recent-on` OOS ledgers to n≥10; human-ratify
   only if they clear FDR. PASSIVE — the nightly `forward-log → forward-perf → promote` already partitions every
