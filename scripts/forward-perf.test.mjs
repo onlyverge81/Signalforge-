@@ -10,7 +10,7 @@ import {
 import { markToMarket } from "./forward-log.mjs";
 
 // A minimal closed-trade row, mirroring the ledger schema.
-function closed({ id = "T", ticker = "X", signal = "BUY", entry = 100, exit, benchClose, benchDiv, grade = null, merits = false, momentum = false, reversal = false, lowVol = false, quality = false, newsPositive = false, newsQuiet = true, earningsRecent = false, contenderAllBoxes = false, contenderAB = false }) {
+function closed({ id = "T", ticker = "X", signal = "BUY", entry = 100, exit, benchClose, benchDiv, grade = null, merits = false, momentum = false, reversal = false, lowVol = false, quality = false, newsPositive = false, newsQuiet = true, earningsRecent = false, contenderAllBoxes = false, contenderAB = false, convergence = false }) {
   const grossPct = (exit - entry) / entry * 100;
   return {
     id, ticker, signal, entry, exit,
@@ -18,7 +18,7 @@ function closed({ id = "T", ticker = "X", signal = "BUY", entry = 100, exit, ben
     pnlPct: parseFloat((grossPct - COST_PER_TRADE).toFixed(4)),
     status: grossPct >= 0 ? "WIN" : "LOSS",
     benchClose, benchDiv,
-    tags: { fundamentalGrade: grade, meritsActivated: merits, momentumActivated: momentum, reversalActivated: reversal, lowVolActivated: lowVol, qualityActivated: quality, newsPositive, newsQuiet, earningsRecent, contenderAllBoxes, contenderAB },
+    tags: { fundamentalGrade: grade, meritsActivated: merits, momentumActivated: momentum, reversalActivated: reversal, lowVolActivated: lowVol, qualityActivated: quality, newsPositive, newsQuiet, earningsRecent, contenderAllBoxes, contenderAB, convergence },
   };
 }
 
@@ -166,6 +166,20 @@ test("scoreLedger: contenders-on / contenders-off partition the SAME population 
   assert.equal(perf.variants["contenders-ab-on"].n, 2);
   assert.ok(perf.variants["contenders-on"].alphaGrowthPct > 0);
   assert.ok(perf.variants["contenders-off"].alphaGrowthPct < 0);
+});
+
+test("scoreLedger: conv-grounded-on requires BOTH the coil→pop trigger AND a grounded all-boxes name; -off is the complement; -on is an FDR hypothesis", () => {
+  const ledger = [
+    closed({ id: "A", entry: 100, exit: 108, benchClose: 102, convergence: true,  contenderAllBoxes: true  }), // coil→pop AND grounded → ON
+    closed({ id: "B", entry: 100, exit: 109, benchClose: 103, convergence: true,  contenderAllBoxes: false }), // coil→pop but NOT grounded → OFF
+    closed({ id: "C", entry: 100, exit: 107, benchClose: 104, convergence: false, contenderAllBoxes: true  }), // grounded but no trigger → OFF
+    closed({ id: "D", entry: 100, exit: 101, benchClose: 110, convergence: false, contenderAllBoxes: false }), // neither → OFF
+  ];
+  const perf = scoreLedger(ledger);
+  assert.equal(perf.variants["conv-grounded-on"].n, 1, "only the coil→pop × grounded row is ON");
+  assert.equal(perf.variants["conv-grounded-on"].n + perf.variants["conv-grounded-off"].n, perf.variants["all"].n, "on/off re-union to the tactical population");
+  assert.equal(perf.variants["conv-grounded-on"].fdr, true, "the -on hypothesis is in the FDR family");
+  assert.equal(perf.variants["conv-grounded-off"].fdr, false, "the -off complement is a control, excluded from the FDR denominator");
 });
 
 test("scoreLedger: reversal-on / reversal-off partition the SAME population by the reversalActivated tag", () => {
