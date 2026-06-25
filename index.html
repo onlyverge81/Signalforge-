@@ -1953,7 +1953,7 @@ function fmt(v,dec) {
 }
 
 // ─── Candlestick Chart ─────────────────────────────────────────────────────
-function Chart({rows,analysis,muted}) {
+function Chart({rows,analysis,muted,convStartIdx}) {
   const ref=useRef(null);
   useEffect(()=>{
     const cv=ref.current; if(!cv||rows.length<2) return;
@@ -2088,6 +2088,17 @@ function Chart({rows,analysis,muted}) {
           ctx.fillStyle="#ffa726";ctx.font="bold 8px monospace";ctx.textAlign="left";
           ctx.fillText("◀ ANALYSIS START (c30)",x+3,PAD.t+10);
         }
+      }
+    }
+    // ⚡ Convergence-coil START marker (MONITOR setup chart) — a vertical line at the bar the coil began.
+    if(convStartIdx!=null && convStartIdx>=0){
+      const off=rows.length-n, vis=convStartIdx-off;
+      if(vis>=0&&vis<n){
+        const x=toX(vis);
+        ctx.beginPath();ctx.strokeStyle="#26c6da";ctx.lineWidth=1.4;ctx.setLineDash([2,2]);
+        ctx.moveTo(x,PAD.t);ctx.lineTo(x,PAD.t+cH);ctx.stroke();ctx.setLineDash([]);
+        ctx.fillStyle="#26c6da";ctx.font="bold 8px monospace";ctx.textAlign="left";
+        ctx.fillText("⚡ CONVERGENCE START",x+3,PAD.t+cH-5);
       }
     }
     // Latest-signal marker on the most recent candle
@@ -2432,6 +2443,24 @@ function App() {
     const t2=setTimeout(()=>setContenderFocus(null),5000);
     return ()=>{ clearTimeout(t1); clearTimeout(t2); };
   },[tab,contenderFocus]);
+  // MONITOR setup chart — a live 15-min fetch (your key) for ONE lead, with the convergence-coil START marked.
+  const [monChart, setMonChart] = useState(null); // {sym, rows, analysis, convStartIdx, convStartDate, detected, loading, error}
+  const loadMonChart = async (sym)=>{
+    const key=(polyKey||"").trim();
+    if(!key){ setMonChart({sym, loading:false, error:"Enter your Polygon key in the LIVE tab first — the setup chart loads live (15-min)."}); return; }
+    setMonChart({sym, loading:true, error:null});
+    try{
+      const r=await polyFetchCandles(sym, "15", key);
+      const candles=(r&&r.candles)||[];
+      if(candles.length<20) throw new Error("Only "+candles.length+" intraday bars returned for "+sym+".");
+      const a=analyze(candles, sym, "Stocks", "Trend Following", 1.5, 2.0);
+      const cb=a&&a.convBreakout;
+      const bsc=cb&&typeof cb.barsSinceCoil==="number"?cb.barsSinceCoil:null;
+      const convStartIdx=bsc!=null?Math.max(0,candles.length-1-bsc):null;
+      const convStartDate=(convStartIdx!=null&&candles[convStartIdx])?candles[convStartIdx].date:null;
+      setMonChart({sym, rows:candles, analysis:a, convStartIdx, convStartDate, detected:!!(cb&&cb.detected), loading:false, error:null});
+    }catch(e){ setMonChart({sym, loading:false, error:(e&&e.message)||"Fetch failed."}); }
+  };
   // Out-of-sample variant scoreboard (forward-perf.json) — the alpha/FDR verdict per
   // propose-only variant (merits-on, momentum-on, news-*, earnings-recent-on, position).
   const [forwardPerf, setForwardPerf] = useState(null);
@@ -2461,7 +2490,7 @@ function App() {
     }).catch(()=>{});
     return ()=>{ alive=false; };
   },[]);
-  const [resolution,setResolution]= useState("D");
+  const [resolution,setResolution]= useState("15");   // default INTRADAY (15-min) — matches the monitor + the 15-min-delayed feed, so a mid-session analyze shows TODAY's bars, not a day-behind unfinished daily bar
   const [fetching,  setFetching]  = useState(false);
   const [liveMeta,  setLiveMeta]  = useState(null);
   const [streaming, setStreaming] = useState(false); // Polygon WebSocket on/off
@@ -3356,7 +3385,10 @@ function App() {
                         {l.conv&&l.conv.detected&&<span style={{fontSize:10,color:"#26c6da"}}>coil→pop{l.conv.strength!=null?(" "+Math.round(l.conv.strength*100)+"%"):""}</span>}
                         <span style={{flex:1,minWidth:120,fontSize:10,color:FADE,lineHeight:1.4}}>{(l.reasons||[]).join(" · ")}</span>
                         <span style={{fontSize:10,color:DIM}}>{l.price!=null?("$"+(+l.price).toFixed(2)):""}</span>
-                        <button title="Open this name's CONTENDERS baseline card — see the grade & react (🌟/👍) to start tracking it" style={{...pill(false),marginBottom:0,whiteSpace:"nowrap",color:"#26c6da",borderColor:"#26c6da99"}} onClick={()=>{setContenderFocus(l.sym);setTab("contenders");}}>★ BASELINE →</button>
+                        <div style={{display:"flex",flexDirection:"column",gap:4,alignItems:"stretch"}}>
+                          <button title="Open this name's CONTENDERS baseline card — see the grade & react (🌟/👍) to start tracking it" style={{...pill(false),marginBottom:0,marginRight:0,whiteSpace:"nowrap",color:"#26c6da",borderColor:"#26c6da99"}} onClick={()=>{setContenderFocus(l.sym);setTab("contenders");}}>★ BASELINE →</button>
+                          {l.conv&&l.conv.detected&&<button title="Load this name's 15-min chart and mark where the convergence coil started" style={{...pill(false),marginBottom:0,marginRight:0,whiteSpace:"nowrap",color:"#ffd740",borderColor:"#ffd74099"}} onClick={()=>loadMonChart(l.sym)}>📈 SETUP CHART</button>}
+                        </div>
                       </div>
                     );
                   })}
@@ -3373,6 +3405,26 @@ function App() {
                 <div style={{fontSize:34,marginBottom:8}}>📡</div>
                 <div style={{fontSize:13,fontWeight:800,letterSpacing:1,marginBottom:6}}>MONITOR STANDING BY</div>
                 <div style={{fontSize:11,color:FADE,lineHeight:1.6,maxWidth:520,margin:"0 auto"}}>Once the scheduled scan runs on <code>main</code> during market hours, this board lists every contender whose engine read or coil→pop setup is firing right now — grounded leads first — so you catch them as they form (within ~15 min on the delayed feed).</div>
+              </div>
+            )}
+            {monChart&&(
+              <div style={{...card,borderLeft:"3px solid #ffd740"}}>
+                <div style={{display:"flex",justifyContent:"space-between",alignItems:"baseline",flexWrap:"wrap",gap:8}}>
+                  <span style={lbl}>📈 {monChart.sym} — SETUP CHART · 15-min · ⚡ convergence start marked</span>
+                  <span style={{display:"flex",gap:6,alignItems:"center"}}>
+                    <span style={{fontSize:9,fontWeight:800,letterSpacing:1,color:"#ffb74d",border:"1px solid #ffb74d55",borderRadius:3,padding:"2px 6px"}}>⏱ 15-MIN DELAYED</span>
+                    <button style={{...pill(false),marginBottom:0,marginRight:0,color:DIM}} onClick={()=>setMonChart(null)}>✕ CLOSE</button>
+                  </span>
+                </div>
+                {monChart.loading&&<div style={{fontSize:11,color:FADE,marginTop:8}}>Loading {monChart.sym} 15-min bars…</div>}
+                {monChart.error&&<div style={{fontSize:11,color:"#ff8a80",lineHeight:1.5,marginTop:8}}>{monChart.error}</div>}
+                {monChart.rows&&monChart.rows.length>0&&(
+                  <>
+                    <div style={{fontSize:11,color:"#cfd8dc",lineHeight:1.5,margin:"6px 0"}}>{monChart.convStartDate?(<><b style={{color:"#26c6da"}}>⚡ Convergence coil started:</b> {monChart.convStartDate}{monChart.detected?" — firing now":" — most recent coil (not currently firing)"}</>):"No coil→pop located on the latest 15-min bars."}</div>
+                    <Chart rows={monChart.rows} analysis={monChart.analysis} convStartIdx={monChart.convStartIdx}/>
+                    <div style={{fontSize:9,color:FADE,lineHeight:1.5,marginTop:6}}>The ⚡ cyan line marks where the SMA5/10·SFA12 coil began. Geometry only — the convergence edge is ≈ −0.71% universe-wide; not a proven signal.</div>
+                  </>
+                )}
               </div>
             )}
           </>
