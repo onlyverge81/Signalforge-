@@ -2416,6 +2416,15 @@ function App() {
     fetch("./factor-interaction-study.json").then(r=>r.ok?r.json():null).then(j=>{ if(alive&&j&&j.pie) setFactorPie(j); }).catch(()=>{});
     return ()=>{ alive=false; };
   },[]);
+  // Contender MONITOR (contender-monitor.json) — the market-hours sweep that CAPTURES the
+  // convergence (coil→pop) setup + the engine's live read across all contenders while it's
+  // happening. Built by scripts/contender-monitor.mjs on a schedule; read-only, same-origin,
+  // display-only. 15-MIN DELAYED feed; the pattern is a measured loser shown as a trigger only.
+  const [monitor, setMonitor] = useState(null);
+  useEffect(()=>{ let alive=true;
+    fetch("./contender-monitor.json").then(r=>r.ok?r.json():null).then(j=>{ if(alive&&j&&Array.isArray(j.leads)) setMonitor(j); }).catch(()=>{});
+    return ()=>{ alive=false; };
+  },[]);
   // Out-of-sample variant scoreboard (forward-perf.json) — the alpha/FDR verdict per
   // propose-only variant (merits-on, momentum-on, news-*, earnings-recent-on, position).
   const [forwardPerf, setForwardPerf] = useState(null);
@@ -3006,7 +3015,7 @@ function App() {
 
       {/* Tabs */}
       <div style={{background:BG3,borderBottom:"1px solid "+BORD,padding:"0 20px",display:"flex"}}>
-        {[["input","▣ DATA"],["live","⚡ LIVE"],["guide","🧑‍🏫 GUIDE"],["outlook","◎ OUTLOOK"],["contenders","★ CONTENDERS"],["signals","◈ SIGNALS"],["value","✚ AUTOPSY"],["evidence","🔬 EVIDENCE"],["position","⊞ SIZE"],["paper","📒 FORWARD TEST"],["backtest","⟲ BACKTEST"],["replay","▶ REPLAY"],["history","◷ HISTORY"]].map(([k,l])=>(
+        {[["input","▣ DATA"],["live","⚡ LIVE"],["guide","🧑‍🏫 GUIDE"],["outlook","◎ OUTLOOK"],["contenders","★ CONTENDERS"],["monitor","📡 MONITOR"],["signals","◈ SIGNALS"],["value","✚ AUTOPSY"],["evidence","🔬 EVIDENCE"],["position","⊞ SIZE"],["paper","📒 FORWARD TEST"],["backtest","⟲ BACKTEST"],["replay","▶ REPLAY"],["history","◷ HISTORY"]].map(([k,l])=>(
           <button key={k} style={tBtn(tab===k)} onClick={()=>setTab(k)}>{l}</button>
         ))}
       </div>
@@ -3295,6 +3304,67 @@ function App() {
                 </>
               );
             })()}
+          </>
+        )}
+
+        {/* ── MONITOR TAB ── capture setups across the contenders while they're happening ── */}
+        {tab==="monitor"&&(
+          <>
+            <div style={{...card,borderLeft:"3px solid #26c6da"}}>
+              <div style={{display:"flex",justifyContent:"space-between",alignItems:"baseline",flexWrap:"wrap",gap:8}}>
+                <span style={lbl}>📡 MONITOR — capture setups across the contenders while they're happening</span>
+                <span style={{fontSize:9,fontWeight:800,letterSpacing:1,color:"#ffb74d",border:"1px solid #ffb74d55",borderRadius:3,padding:"2px 6px"}}>⏱ 15-MIN DELAYED</span>
+              </div>
+              {monitor?(
+                <div style={{fontSize:11,color:"#cfd8dc",lineHeight:1.6,marginTop:6}}>
+                  {monitor.marketOpen?"Market OPEN — ":"Market CLOSED — "}as of <b>{new Date(monitor.generatedAt).toLocaleString()}</b>
+                  {" · "}<b style={{color:"#26c6da"}}>{(monitor.counts&&monitor.counts.leads)||0}</b> leads ({(monitor.counts&&monitor.counts.grounded)||0} grounded · {(monitor.counts&&monitor.counts.buys)||0} BUY · {(monitor.counts&&monitor.counts.convergence)||0} coil→pop) over {monitor.withData||0}/{monitor.scanned||0} names scanned.
+                </div>
+              ):(
+                <div style={{fontSize:11,color:FADE,lineHeight:1.6,marginTop:6}}>No scan published yet. The monitor runs every ~15 min during market hours (09:50–16:00 ET) once <code>contender-monitor.yml</code> is on <code>main</code>, committing <code>contender-monitor.json</code> here.</div>
+              )}
+            </div>
+            {monitor&&(
+              <div style={{...card,borderLeft:"3px solid #ffb74d",background:"rgba(255,183,77,0.05)"}}>
+                <div style={{fontSize:11,color:"#ffd180",lineHeight:1.55}}><b>⚠ Honest read:</b> {monitor.patternEdgeNote}</div>
+              </div>
+            )}
+            {monitor&&monitor.leads&&monitor.leads.length>0?(
+              <div style={card}>
+                <span style={lbl}>CURRENT LEADS · grounded first (vetted A/B + live BUY), then BUYs, then coil→pop strength</span>
+                <div style={{display:"flex",flexDirection:"column",gap:1,marginTop:6}}>
+                  {monitor.leads.map((l,i)=>{
+                    const buy=l.engine&&l.engine.signal==="BUY";
+                    const vc=buy?"#00e676":l.engine&&l.engine.signal==="SELL"?"#ff5252":"#ffd740";
+                    const gc=l.grade==="A"?"#00e676":l.grade==="B"?"#9ccc65":l.grade==="C"?"#ffd740":DIM;
+                    return(
+                      <div key={l.sym+i} style={{display:"flex",gap:10,alignItems:"center",background:BG3,borderLeft:"2px solid "+(l.grounded?"#00e676":vc),borderRadius:3,padding:"8px 12px",flexWrap:"wrap"}}>
+                        <span style={{fontSize:14,fontWeight:800,minWidth:54}}>{l.sym}</span>
+                        {l.grade&&<span style={{fontSize:10,fontWeight:800,color:gc,border:"1px solid "+gc+"66",borderRadius:3,padding:"1px 5px"}}>{l.grade}</span>}
+                        {l.grounded&&<span style={{fontSize:9,fontWeight:800,letterSpacing:1,color:"#00e676",border:"1px solid #00e67666",borderRadius:3,padding:"1px 5px"}}>⭐ GROUNDED</span>}
+                        <span style={{fontSize:11,fontWeight:800,color:vc}}>{l.engine?l.engine.signal:"—"}</span>
+                        {l.conv&&l.conv.detected&&<span style={{fontSize:10,color:"#26c6da"}}>coil→pop{l.conv.strength!=null?(" "+Math.round(l.conv.strength*100)+"%"):""}</span>}
+                        <span style={{flex:1,minWidth:120,fontSize:10,color:FADE,lineHeight:1.4}}>{(l.reasons||[]).join(" · ")}</span>
+                        <span style={{fontSize:10,color:DIM}}>{l.price!=null?("$"+(+l.price).toFixed(2)):""}</span>
+                        <button style={{...pill(false),marginBottom:0,whiteSpace:"nowrap",color:"#00bcd4",borderColor:"#00bcd499"}} onClick={()=>{setTicker(l.sym);fetchLive(l.sym);}}>ANALYZE →</button>
+                      </div>
+                    );
+                  })}
+                </div>
+                <div style={{fontSize:9,color:FADE,lineHeight:1.5,marginTop:8}}>Leads are candidates for YOUR eyes, not proven signals — the intraday engine read is unproven and the coil→pop pattern loses universe-wide. Verify each on LIVE / SIGNALS before acting.</div>
+              </div>
+            ):monitor&&(
+              <div style={{...card,textAlign:"center",color:FADE,fontSize:12,padding:"30px 20px"}}>
+                {monitor.marketOpen?"Scanned the contenders — no setups firing right now. Check back in ~15 min.":"Market is closed — this is the last in-session scan. The monitor resumes at 09:50 ET."}
+              </div>
+            )}
+            {!monitor&&(
+              <div style={{...card,textAlign:"center",padding:"36px 20px"}}>
+                <div style={{fontSize:34,marginBottom:8}}>📡</div>
+                <div style={{fontSize:13,fontWeight:800,letterSpacing:1,marginBottom:6}}>MONITOR STANDING BY</div>
+                <div style={{fontSize:11,color:FADE,lineHeight:1.6,maxWidth:520,margin:"0 auto"}}>Once the scheduled scan runs on <code>main</code> during market hours, this board lists every contender whose engine read or coil→pop setup is firing right now — grounded leads first — so you catch them as they form (within ~15 min on the delayed feed).</div>
+              </div>
+            )}
           </>
         )}
 

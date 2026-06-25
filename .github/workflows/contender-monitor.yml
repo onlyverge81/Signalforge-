@@ -1,0 +1,59 @@
+name: Contender monitor
+
+# Captures the convergence (coil→pop) setup + the engine's live read across ALL contenders
+# WHILE IT'S HAPPENING — a market-hours sweep that commits contender-monitor.json, which the
+# app's MONITOR tab renders. The feed is 15-MINUTE DELAYED, so this is awareness within ~15 min,
+# never real-time; the convergence pattern is a measured loser shown as a geometry trigger only.
+#
+# Schedule fires ~every 15 min across the UTC window that covers US market hours in both EDT and
+# EST; the script's ET gate trims to 09:50–16:00 ET on weekdays and exits early (no commit) off-window.
+# GitHub cron is BEST-EFFORT (it can lag a few minutes / rarely skip under load) and runs only from
+# the default branch — so cadence is "~every 15 min", not exact. Requires the repo secret POLYGON_API_KEY.
+
+on:
+  schedule:
+    - cron: "5,20,35,50 13-21 * * 1-5"   # ~every 15 min, 13:05–21:50 UTC, Mon–Fri (script gates to 09:50–16:00 ET)
+  workflow_dispatch: {}                   # manual run any time (also gated to market hours by the script)
+
+permissions:
+  contents: write   # to commit contender-monitor.json
+
+concurrency:
+  group: contender-monitor
+  cancel-in-progress: false   # let an in-flight scan finish; skip overlapping ticks
+
+jobs:
+  monitor:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Set up Node
+        uses: actions/setup-node@v4
+        with:
+          node-version: 20
+
+      - name: Run offline unit tests
+        run: node --test scripts/*.test.mjs
+
+      - name: Scan contenders (Polygon intraday)
+        env:
+          POLYGON_API_KEY: ${{ secrets.POLYGON_API_KEY }}
+          POLYGON_PACE_MS: "0"
+        run: node scripts/contender-monitor.mjs || echo "monitor skipped (no key, or market closed — nothing to commit)"
+
+      - name: Commit contender-monitor.json if it changed
+        run: |
+          git config user.name "github-actions[bot]"
+          git config user.email "github-actions[bot]@users.noreply.github.com"
+          git add contender-monitor.json
+          if git diff --cached --quiet; then
+            echo "contender-monitor.json unchanged — nothing to commit."
+          else
+            git commit -m "chore: contender monitor scan"
+            for i in 1 2 3; do
+              git pull --rebase origin "${GITHUB_REF_NAME}" && git push && break
+              echo "push race (attempt $i) — retrying"; sleep 3
+            done
+          fi

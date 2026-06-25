@@ -821,6 +821,31 @@ but never surfaced. Shipped (user picked **Full** + **reorder tabs into the 1–
   OUTLOOK/SIGNALS/SIZE render with zero JS errors (driver). Loaded-state populates on a live fetch (needs a key in a real
   browser — egress-blocked in CI). Catalyst step 5 is `nodata` until a per-symbol filing date is surfaced in-app (honest TODO).
 
+**📡 CONTENDER MONITOR — capture the convergence setup live across all contenders (DONE) — branch
+`claude/signalforge-profitability-wheel-qbclby`:** the user wanted to "capture the strategy WHILE it's happening" — the
+convergence (coil→pop) detector already existed (`convergenceBreakout` + the app's SETUP-PRESENT read), but only one
+stock at a time; what was missing is a live recurring sweep across ALL contenders. Shipped (user picked: convergence +
+real edge · all ~490 names · in-app panel + committed report) as a scheduled GitHub Actions job, STRICTLY display/awareness:
+- **`scripts/contender-monitor.mjs`** — market-hours sweep: pure `withinSession(weekday,etMin)` gate (09:50–16:00 ET,
+  weekdays; DST-correct via `etParts`/`etMinutes`), reads `contenders.json` (all ~490), fetches 15-min RTH bars
+  (`fetchPolygonAggs`+`filterRegularHours`), runs `analyze()` per name → reads `a.signal`/`a.convBreakout`. Pure
+  `classifyLead` (lead = engine BUY OR coil→pop; **grounded = allBoxes && BUY** — vetted quality + live BUY) + `rankLeads`
+  (grounded → BUY → conv strength, so the dead pattern NEVER outranks a grounded read) + `buildReport` (honesty caveats +
+  the −0.71% pattern note ALWAYS present, unit-locked). Writes `contender-monitor.json`. Off-window ticks exit clean WITHOUT
+  rewriting (no commit churn); no-ops without the key.
+- **`.github/workflows/contender-monitor.yml`** — `cron: "5,20,35,50 13-21 * * 1-5"` (~every 15 min across the UTC window
+  covering ET market hours in both EDT/EST; the script's ET gate trims to 09:50–16:00) + `workflow_dispatch`, `concurrency`
+  so runs never overlap, commits the JSON with the 3-retry push (mirrors `convergence-scan.yml`). Best-effort cron, runs
+  only from `main` → **activates after merge.** Public repo ⇒ free Actions minutes.
+- **MONITOR tab** (`index.html`, after CONTENDERS in the funnel) — same-origin fetch of `contender-monitor.json`; a leads
+  board (grounded ⭐ first), each row sym·grade·engine-verdict chip·coil→pop strength·reasons·ANALYZE→ (`fetchLive`), a
+  bold **15-MIN DELAYED** badge + the amber −0.71% "geometry trigger, not a proven signal" caveat, market-open/closed +
+  standing-by states. Display-only — touches no gate/verdict.
+- **Honesty (binding):** 15-min delayed (never "real-time"); convergence is a measured loser shown as a TRIGGER only; the
+  intraday engine read is itself unproven (t −12.6) → leads are candidates for the human, never proven signals. Tests +11
+  (**345 green**); app mounts clean, MONITOR renders zero JS errors (driver). Populates once the workflow is merged to main
+  and runs during market hours.
+
 **Next — Track B:**
 - Mature the `momentum-on` / `merits-on` / `news-*` / `earnings-recent-on` OOS ledgers to n≥10; human-ratify
   only if they clear FDR. PASSIVE — the nightly `forward-log → forward-perf → promote` already partitions every
