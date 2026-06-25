@@ -11,7 +11,7 @@
 
 import { test } from "node:test";
 import assert from "node:assert/strict";
-import { analyze, runBacktest, scoreAt, scorePosition, checkBarExit, checkBarExitFine, isAmbiguousBar, tradeNet, realizedStats, convergenceBreakout, backtestPattern, edgeStatus, avgIndexGainByDate, correctionLevels, backtestCorrection, efficiencyRatio, marketRegime, regimeChecklist, guideBrief, computeSignal, valueScore, divergenceFixed, recentTrend, patternsContext, correctedVotes, divergence, patterns } from "./engine.mjs";
+import { analyze, runBacktest, scoreAt, scorePosition, checkBarExit, checkBarExitFine, isAmbiguousBar, tradeNet, realizedStats, convergenceBreakout, backtestPattern, edgeStatus, avgIndexGainByDate, correctionLevels, backtestCorrection, efficiencyRatio, marketRegime, regimeChecklist, guideBrief, stockStage, trendTemplate, workupChecklist, provenSummary, computeSignal, valueScore, divergenceFixed, recentTrend, patternsContext, correctedVotes, divergence, patterns } from "./engine.mjs";
 
 // ─── Helper: deterministic OHLC series (no RNG, fixed formula) ───────────────
 function gen(n){
@@ -686,4 +686,106 @@ test("regimeChecklist: BEAR + STORMY raise DIRECTION/VOLATILITY to caution", () 
   assert.equal(cl.find(i=>i.key==="C").status,"caution");               // STORMY → trim size
   assert.equal(cl.find(i=>i.key==="B").status,"verify");                // TRANSITIONAL is unresolved
   assert.match(cl.find(i=>i.key==="A").value, /\(≈\)/);                 // approxMA surfaced honestly
+});
+
+// ─── THE WORK-UP — stockStage / trendTemplate / workupChecklist / provenSummary ───
+// Pure expert reads + the 9-step conductor. Display-only: never recompute a signal, never touch a gate.
+// Deterministic OHLC ramps (no RNG) so stage / template boundaries are exact.
+function ramp(n, slope, start=100){
+  const rows=[];
+  for(let i=0;i<n;i++){ const close=+(start+slope*i).toFixed(4);
+    rows.push({date:"2025-01-01", open:close, high:+(close+1).toFixed(4), low:+(close-1).toFixed(4), close, volume:1000000}); }
+  return rows;
+}
+
+test("stockStage: rising series above a rising MA → Stage 2 (confirm)", () => {
+  const s=stockStage(ramp(252,0.5));
+  assert.equal(s.stage,2); assert.equal(s.status,"confirm");
+  assert.equal(s.maRising,true); assert.equal(s.priceAboveMA,true); assert.equal(s.approx,false);
+});
+test("stockStage: falling series below a falling MA → Stage 4 (caution)", () => {
+  const s=stockStage(ramp(252,-0.3,200));
+  assert.equal(s.stage,4); assert.equal(s.status,"caution"); assert.equal(s.priceAboveMA,false);
+});
+test("stockStage: flat series → Stage 1 (basing)", () => {
+  const s=stockStage(ramp(60,0));
+  assert.equal(s.stage,1);
+});
+test("stockStage: <30 bars → honest nodata", () => {
+  const s=stockStage(ramp(20,0.5));
+  assert.equal(s.status,"nodata"); assert.equal(s.stage,null); assert.equal(s.approx,true);
+});
+test("stockStage: <150 bars but ≥30 → approx flagged, still reads a stage", () => {
+  const s=stockStage(ramp(120,0.5));
+  assert.equal(s.approx,true); assert.equal(s.stage,2);                 // slope window fits → Stage 2 still readable
+});
+
+test("trendTemplate: clean uptrend (252 bars) → PASS, all applicable", () => {
+  const t=trendTemplate(ramp(252,0.5));
+  assert.equal(t.overall,"PASS"); assert.equal(t.status,"confirm");
+  assert.equal(t.applicable,8); assert.equal(t.passedCount,8);
+});
+test("trendTemplate: downtrend → FAIL", () => {
+  const t=trendTemplate(ramp(252,-0.3,200));
+  assert.equal(t.overall,"FAIL"); assert.equal(t.status,"caution");
+});
+test("trendTemplate: 120 bars → MA-stack checks null (counted out, never failed), no crash", () => {
+  const t=trendTemplate(ramp(120,0.5));
+  assert.equal(t.checks.find(c=>c.key==="3").pass,null);               // 150>200 needs 200 bars
+  assert.equal(t.checks.find(c=>c.key==="4").pass,null);               // 200MA-rising needs 220+
+  assert.ok(t.applicable<8);                                           // nulls excluded from the denominator
+  assert.notEqual(t.overall,"NODATA");
+});
+test("trendTemplate: <50 bars → NODATA", () => {
+  assert.equal(trendTemplate(ramp(40,0.5)).overall,"NODATA");
+});
+
+const BUY_ANALYSIS={ signal:"BUY", rr:2.5, entry:100, sl:96, tp1:110, confluence:{} };
+const FULL_CTX={
+  analysis:BUY_ANALYSIS,
+  regime:{ direction:"BULL", label:"BULL · TRENDING" },
+  stage:{ stage:2, read:"advancing" },
+  template:{ overall:"PASS", passedCount:8, applicable:8, read:"leader" },
+  fundamentals:{ grade:"A", verdict:"strong" },
+  proven:{ provenAny:false, label:"NOT YET PROVEN", detail:"no proof yet" },
+  sizing:{ posSize:100, riskPct:1, capped:false, maxPosPct:20 },
+  company:{ name:"Test Co", industry:"Software" },
+};
+test("workupChecklist: full clean BUY ctx → technical steps pass, but PROVEN gate stays caution", () => {
+  const w=workupChecklist(FULL_CTX);
+  assert.equal(w.steps.length,9);
+  assert.equal(w.steps.find(s=>s.n===1).status,"pass");                // market BULL
+  assert.equal(w.steps.find(s=>s.n===3).status,"pass");                // Stage 2 + template PASS
+  assert.equal(w.steps.find(s=>s.n===4).status,"pass");                // grade A
+  assert.equal(w.steps.find(s=>s.n===7).status,"pass");                // R:R 2.5
+  assert.equal(w.steps.find(s=>s.n===8).status,"pass");                // sized, not capped
+  assert.equal(w.steps.find(s=>s.n===6).status,"caution");             // PROVEN edge — independent of the boxes
+  assert.equal(w.passCount,5); assert.equal(w.techPassCount,4);        // {1,3,7,8}
+});
+test("workupChecklist: HONESTY INVARIANT — all technical boxes green, edge still NOT PROVEN", () => {
+  const w=workupChecklist(FULL_CTX);
+  assert.equal(w.steps[5].status,"caution");                           // step 6 (index 5)
+  assert.match(w.summary,/NOT PROVEN/);                                // the summary refuses to imply a trade
+});
+test("workupChecklist: empty ctx → no throw, nothing passes, PROVEN stays caution", () => {
+  const w=workupChecklist({});
+  assert.equal(w.passCount,0);
+  assert.equal(w.steps.find(s=>s.n===6).status,"caution");             // no evidence → honest default
+  assert.ok(w.steps.every(s=>["nodata","info","caution"].includes(s.status)));
+});
+test("workupChecklist: HOLD verdict → plan step is info (long-only stand-aside), not a fail", () => {
+  const w=workupChecklist({ ...FULL_CTX, analysis:{ signal:"HOLD", rr:0 } });
+  assert.equal(w.steps.find(s=>s.n===7).status,"info");
+});
+test("workupChecklist: intraday → stage step forced to nodata (multi-week read)", () => {
+  const w=workupChecklist({ ...FULL_CTX, intraday:true });
+  assert.equal(w.steps.find(s=>s.n===3).status,"nodata");
+  assert.match(w.steps.find(s=>s.n===3).value,/INTRADAY/);
+});
+
+test("provenSummary: a promotable variant → provenAny true; none → candidate label", () => {
+  assert.equal(provenSummary({variants:[{promotable:false},{promotable:true}]}).provenAny,true);
+  assert.equal(provenSummary({variants:[{promotable:false}]}).provenAny,false);
+  assert.equal(provenSummary({variants:{a:{promotable:true}}}).provenAny,true);   // keyed-object form
+  assert.match(provenSummary(null).label,/NOT YET PROVEN/);
 });

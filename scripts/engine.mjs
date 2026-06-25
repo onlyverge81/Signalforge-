@@ -254,6 +254,85 @@ export function regimeChecklist(regime, opts={}){
                    :"Your chart matches the regime's daily/swing horizon." });
   return items;
 }
+// ── STAGE & TREND-TEMPLATE — two classic EXPERT reads the app never surfaced, computed straight from the bar
+// SERIES (analyze() only carries SMA5/10/20/50; the 50/150/200 stack & 52-week extremes need the series). Pure
+// & display-only: they DESCRIBE the chart for THE WORK-UP checklist, NEVER feed the verdict/gate. Both degrade
+// HONESTLY to a nodata state when history is too short. status ∈ confirm|verify|caution|nodata.
+
+// Stan Weinstein's 4 market stages from price vs its ~30-week (≈150-bar) SMA + the SMA's SLOPE: Stage 1 basing
+// (flat) · Stage 2 advancing (above a RISING MA — the buy zone) · Stage 3 topping (above a flattening MA) ·
+// Stage 4 declining (below a FALLING MA — avoid).
+export function stockStage(bars, opts={}){
+  const closes=(bars||[]).map(b=>b&&b.close).filter(c=>c>0);
+  const len=closes.length;
+  if(len<30) return { stage:null, label:"NOT ENOUGH HISTORY", ma:null, maRising:false, priceAboveMA:false,
+    pctFromMA:0, approx:len<150, status:"nodata", read:"Need ~30+ bars for stage analysis; have "+len+".",
+    action:"Load more daily history to read the market stage." };
+  const last=closes[len-1], win=Math.min(150,len), approx=len<150;
+  const ma=sma(closes,win), slopeLook=Math.max(5,Math.min(20,len>>2));
+  // slope over a window that always FITS (so Stage 2/4 can read on sub-150-bar series, not just long history)
+  const mwin=Math.min(win,len-slopeLook), maNow=mwin>=10?sma(closes,mwin):ma;
+  const maPrev=mwin>=10?sma(closes.slice(0,len-slopeLook),mwin):null;
+  const slopePct=(maNow!=null&&maPrev!=null&&maPrev>0)?((maNow-maPrev)/maPrev*100):0;
+  const maRising=slopePct>0.2, maFalling=slopePct<-0.2;
+  const priceAboveMA=ma!=null&&last>=ma, pctFromMA=(ma!=null&&ma>0)?+(((last/ma)-1)*100).toFixed(1):0;
+  let stage;
+  if(priceAboveMA&&maRising) stage=2;
+  else if(!priceAboveMA&&maFalling) stage=4;
+  else if(priceAboveMA&&!maRising) stage=3;
+  else stage=1;
+  if(!maRising&&!maFalling&&Math.abs(pctFromMA)<3) stage=1;       // a flat MA with price hugging it is a base
+  const label={1:"STAGE 1 — BASING",2:"STAGE 2 — ADVANCING",3:"STAGE 3 — TOPPING",4:"STAGE 4 — DECLINING"}[stage];
+  const status=stage===2?"confirm":stage===4?"caution":"verify";
+  const read={1:"Price chops sideways around a flat ~30-week average — accumulation, no trend yet.",
+    2:"Price is ABOVE a RISING ~30-week average — the textbook advancing stage (the buy zone).",
+    3:"Price is above a FLATTENING ~30-week average after a run — momentum is fading (topping).",
+    4:"Price is BELOW a FALLING ~30-week average — a confirmed downtrend (avoid)."}[stage];
+  const action={1:"Monitor — wait for a Stage-2 breakout above the average on volume before buying.",
+    2:"The trend is your friend — pullbacks that HOLD the average are the lower-risk entries.",
+    3:"Tighten stops / take profits; don't add — a break below the average flips it to Stage 4.",
+    4:"Stand aside — let it base into a new Stage 1; longs fight the tape here."}[stage];
+  return { stage, label, ma:ma!=null?+ma.toFixed(4):null, maRising, priceAboveMA, pctFromMA, approx, status, read, action };
+}
+// Mark Minervini's 8-point Trend Template — the institutional-leader screen. Each check is true/false, or NULL
+// when its window isn't met (counted out via `applicable`, NEVER as a fail). RS uses a 12-mo self-momentum proxy
+// (labelled) since a true relative-strength line needs a benchmark (clean upgrade path: opts.bench).
+export function trendTemplate(bars, opts={}){
+  const arr=(bars||[]).filter(b=>b&&b.close>0), closes=arr.map(b=>b.close), len=closes.length;
+  if(len<50) return { checks:[], passedCount:0, applicable:0, overall:"NODATA", approx:true, status:"nodata",
+    read:"Need ~50+ bars (ideally 250) for the trend template; have "+len+".",
+    action:"Load more daily history to run Minervini's 8-point leader screen." };
+  const last=closes[len-1];
+  const s50=sma(closes,Math.min(50,len)), s150=len>=150?sma(closes,150):null, s200=len>=200?sma(closes,200):null;
+  const s200prev=len>=222?sma(closes.slice(0,len-22),200):null;
+  const win52=Math.min(252,len), approx=len<252, seg52=arr.slice(-win52);
+  const high52=Math.max(...seg52.map(b=>b.high!=null?b.high:b.close));
+  const low52=Math.min(...seg52.map(b=>b.low!=null?b.low:b.close));
+  const rsLook=Math.min(252,len-1), priceThen=closes[len-1-rsLook];
+  const recentMin=Math.min(...closes.slice(-Math.min(10,len)));
+  const f2=n=>n!=null?n.toFixed(2):"-", pct=(x,y)=>(((x/y)-1)*100).toFixed(0);
+  const ck=(key,label,pass,detail)=>({key,label,pass,detail});
+  const checks=[
+    ck("1","Price > 50-day MA", s50!=null?last>s50:null, s50!=null?("price "+f2(last)+" vs 50MA "+f2(s50)):"n/a"),
+    ck("2","50MA > 150MA", (s50!=null&&s150!=null)?s50>s150:null, s150!=null?("50MA "+f2(s50)+" vs 150MA "+f2(s150)):"need 150 bars"),
+    ck("3","150MA > 200MA", (s150!=null&&s200!=null)?s150>s200:null, s200!=null?("150MA "+f2(s150)+" vs 200MA "+f2(s200)):"need 200 bars"),
+    ck("4","200-day MA rising", (s200!=null&&s200prev!=null)?s200>s200prev:null, s200prev!=null?("200MA "+(s200>s200prev?"rising":"falling")):"need 220+ bars"),
+    ck("5","Within 25% of 52-wk high", last>=high52*0.75, pct(last,high52)+"% from the 52-wk high"),
+    ck("6","30%+ above 52-wk low", last>=low52*1.30, pct(last,low52)+"% above the 52-wk low"),
+    ck("7","Relative strength (12-mo proxy)", priceThen>0?last>priceThen:null, priceThen>0?(pct(last,priceThen)+"% 12-mo change — self-momentum proxy"):"need more history"),
+    ck("8","Holds above the 50-day MA", s50!=null?(last>=s50&&recentMin>=s50*0.93):null, "recent closes vs 50MA"),
+  ];
+  const passedCount=checks.filter(c=>c.pass===true).length, applicable=checks.filter(c=>c.pass!==null).length;
+  const overall=(applicable>=6&&passedCount===applicable)?"PASS":(passedCount<=applicable/2)?"FAIL":"PARTIAL";
+  const status=overall==="PASS"?"confirm":overall==="PARTIAL"?"verify":"caution";
+  const read=overall==="PASS"?("All "+applicable+" applicable trend-template checks pass — a textbook Stage-2 leader.")
+    :overall==="PARTIAL"?(passedCount+"/"+applicable+" trend-template checks pass — a developing, not-yet-clean trend.")
+    :("Only "+passedCount+"/"+applicable+" checks pass — the chart fails the leader template.");
+  const action=overall==="PASS"?"Technically a clean uptrend leader — but a clean SETUP is not a proven EDGE (check EVIDENCE)."
+    :overall==="PARTIAL"?"Wait for the missing checks (MA stack / new highs) to line up before treating it as a leader."
+    :"Not a momentum-leader setup — a long here fights the chart structure.";
+  return { checks, passedCount, applicable, overall, approx, status, read, action };
+}
 // 🧑‍🏫 GUIDE — synthesize the already-computed `analysis` + market `regime` into a plain-English COACHED
 // read: where you are, what to look for, which SignalForge tool to apply NOW, and the next step. Pure &
 // display-only — reads existing fields, NEVER changes the verdict/gate/long-only policy. Channels two proven,
@@ -348,6 +427,117 @@ export function guideBrief(analysis, regime, opts={}){
     ? { tab:"size", label:"SIZE the trade →", why:"You have a long signal — set position size by ATR risk before acting." }
     : { tab:"evidence", label:"Check the EVIDENCE →", why:"No actionable long — see whether any edge is OOS-proven before risking capital." };
   return { here, cliffs, watch, apply, formation, next };
+}
+// 🧭 THE WORK-UP — assemble the already-computed reads into the 9-step sequence a REAL professional follows to
+// work up a stock (market → company → chart stage/trend → fundamentals → catalyst → PROVEN edge → plan → size →
+// journal). A pure ASSEMBLER over inputs the app already has — it NEVER recomputes a signal or touches any gate.
+// Every field is optional → honest `nodata`. The honesty invariant: Step 6 (proven edge) is INDEPENDENT of the
+// technical boxes and stays `caution` until the OOS ledger proves an edge — a clean setup is NOT a proven trade.
+// status ∈ pass|fail|caution|nodata|info. Frameworks: O'Neil CAN SLIM, Minervini SEPA, Weinstein stages, the pro
+// pre-trade/risk checklist, post-trade journaling.
+export function workupChecklist(ctx={}){
+  const a=ctx.analysis||null, regime=ctx.regime||null, stage=ctx.stage||null, template=ctx.template||null,
+    funda=ctx.fundamentals||null, proven=ctx.proven||null, sizing=ctx.sizing||null, events=ctx.events||null,
+    company=ctx.company||null, intraday=!!ctx.intraday;
+  const steps=[];
+  const S=(n,phase,tab,title,proCheck,status,value,read,action,why)=>steps.push({n,phase,tab,title,proCheck,status,value,read,action,why});
+  // 1 · READ THE MARKET — don't fight the tape.
+  if(!regime) S(1,"READ THE MARKET","outlook","Read the market","Is the broad market trending up or down? Don't fight the tape.",
+    "nodata","—","No market regime loaded yet.","Fetch a stock so OUTLOOK can read the market (SPY vs its ~200-day).",
+    "3 of 4 stocks follow the market — know its direction before anything else.");
+  else { const dir=regime.direction;
+    S(1,"READ THE MARKET","outlook","Read the market","Is the broad market trending up or down? Don't fight the tape.",
+      dir==="BULL"?"pass":dir==="BEAR"?"caution":"verify", regime.label,
+      dir==="BULL"?"The market is above its ~200-day average — a tailwind for longs."
+        :dir==="BEAR"?"The market is below its ~200-day average — a headwind for longs.":"The market has no clear direction.",
+      dir==="BULL"?"Longs trade WITH the tape — proceed.":dir==="BEAR"?"Longs fight the tape — demand more confluence or wait."
+        :"No tape help — trade smaller or wait for direction.",
+      "A rising tide lifts most stocks; a falling one sinks them."); }
+  // 2 · KNOW THE COMPANY — never trade a business you can't explain.
+  { const hasCo=!!(company&&(company.name||company.industry));
+    S(2,"KNOW THE COMPANY","contenders","Know the company","What does it do, and what sector is it in?",
+      hasCo?"info":"nodata", hasCo?(company.industry||company.name):"—",
+      hasCo?("This is "+(company.name||"the company")+(company.industry?(" — "+company.industry):"")+"."):"No company profile loaded.",
+      hasCo?"Open CONTENDERS for the profile & official website before you trade it.":"Open CONTENDERS or AUTOPSY to learn what the company does.",
+      "Knowing the name isn't an edge — but never trade a business you can't explain."); }
+  // 3 · STAGE & TREND — Weinstein Stage 2 + Minervini template (the chart read).
+  if(intraday) S(3,"STAGE & TREND","signals","Read the chart stage","Weinstein Stage 2? Minervini 8-point trend template?",
+    "nodata","INTRADAY","Stage analysis is a multi-WEEK read — meaningless on an intraday chart.",
+    "Switch to a DAILY timeframe to read the stage & trend template.","Momentum leaders are found on the daily/weekly chart, not intraday.");
+  else { const stOk=!!(stage&&stage.stage===2), tplPass=!!(template&&template.overall==="PASS"),
+      stBad=!!(stage&&stage.stage===4), tplFail=!!(template&&template.overall==="FAIL");
+    let st3; if(!stage&&!template) st3="nodata"; else if(stOk&&tplPass) st3="pass"; else if(stBad||tplFail) st3="caution"; else st3="verify";
+    const val3=(!stage&&!template)?"—":((stage&&stage.stage?("Stage "+stage.stage):"Stage —")+" · "+(template?("Template "+template.passedCount+"/"+template.applicable):"Template —"));
+    S(3,"STAGE & TREND","signals","Read the chart stage","Weinstein Stage 2 (above a rising 30-wk MA)? Minervini 8-point template?",
+      st3, val3, (((stage&&stage.read)||"")+((template&&template.read)?(" "+template.read):"")).trim()||"Not enough history for a stage read.",
+      st3==="pass"?"A clean Stage-2 leader — the textbook long setup. Confirm the plan & size."
+        :st3==="caution"?"Weak chart structure (Stage 4 / fails the template) — a long fights it."
+        :"A developing trend — wait for the stage & template to line up.",
+      "Only buy Stage 2 (advancing); avoid Stage 3 (topping) & Stage 4 (declining)."); }
+  // 4 · FUNDAMENTALS — strong technicals are the lure; strong fundamentals are the catch.
+  { const grade=funda&&funda.grade;
+    S(4,"FUNDAMENTALS","value","Check the fundamentals","CAN SLIM: real earnings growth, healthy balance sheet, leadership?",
+      !funda?"nodata":(grade==="A"||grade==="B")?"pass":grade==="C"?"verify":"caution", grade?("Grade "+grade):"—",
+      !funda?"No fundamentals loaded for this name.":("AUTOPSY grades the company "+grade+(funda.verdict?(" — "+funda.verdict):"")+"."),
+      !funda?"Open AUTOPSY (or enter a metric) to grade the company."
+        :(grade==="A"||grade==="B")?"Strong fundamentals back the chart — proceed."
+        :grade==="C"?"Middling fundamentals — a weaker backbone for a hold.":"Weak fundamentals — strong technicals on a poor business often fail.",
+      "Strong technicals are the lure; strong fundamentals are the catch."); }
+  // 5 · CATALYST — a catalyst-less stock can meander for months on a perfect setup.
+  { let st5="nodata", v5="—", r5="No catalyst / earnings data loaded.", a5="Open AUTOPSY — a recent filing or news is the trigger pros time around.";
+    if(events){ const ds=typeof events.daysSince==="number"?events.daysSince:null;
+      if(ds!=null&&ds<=30){ st5="info"; v5="Filed "+ds+"d ago"; r5="A 10-Q/10-K (≈ earnings) landed in the last "+ds+" days — post-earnings DRIFT is a known but UNPROVEN edge here."; a5="Treat fresh-earnings drift as a hypothesis, not a green light — size smaller around the event."; }
+      else { st5="info"; v5=(ds!=null?("Filed "+ds+"d ago"):"No recent filing"); r5="No near-term catalyst — the stock may drift without a trigger."; a5="A clean setup with no catalyst can sit dead — note it, don't force it."; } }
+    S(5,"CATALYST","value","Find the catalyst","Is a near-term trigger (earnings, news) coming?", st5, v5, r5, a5,
+      "A catalyst-less stock can meander for months even on a perfect setup."); }
+  // 6 · PROVEN EDGE? — the honesty gate. INDEPENDENT of the technical boxes; caution until the OOS ledger proves it.
+  { const pv=!!(proven&&proven.provenAny===true);
+    S(6,"PROVEN EDGE?","evidence","Is the edge PROVEN?","Does the signal have a MEASURED out-of-sample edge — or just a clean look?",
+      pv?"pass":"caution", proven?proven.label:"NOT YET PROVEN",
+      proven?proven.detail:"No SignalForge strategy has cleared the out-of-sample bar yet — the edge is a candidate, not a fact.",
+      pv?"A proven edge — you may trade it at the proven size.":"Paper-trade it or size small. A green technical setup with NO proven edge is a hypothesis, not a trade.",
+      "Pros only bet a MEASURED edge (Thorp). No edge → don't trade is itself a position."); }
+  // 7 · THE PLAN — know your exit BEFORE you enter; min 2:1 reward-to-risk.
+  { let st7,v7,r7,a7;
+    if(!a){ st7="nodata"; v7="—"; r7="No analysis loaded."; a7="Fetch a stock to build the entry / stop / target plan."; }
+    else { const rr=typeof a.rr==="number"?a.rr:null;
+      if(a.signal==="BUY"&&rr!=null&&rr>=2){ st7="pass"; v7="R:R "+rr+":1"; r7="A long plan — entry "+a.entry+", stop "+a.sl+", target "+a.tp1+" — reward ≥ 2× the risk."; a7="The plan clears the 2:1 bar — carry it to SIZE."; }
+      else if(a.signal==="BUY"){ st7="caution"; v7=rr!=null?("R:R "+rr+":1"):"R:R —"; r7="A long signal, but reward-to-risk is below the 2:1 pros demand."; a7="Skip or wait for a better entry — thin R:R loses over many trades."; }
+      else { st7="info"; v7=a.signal; r7="No long plan — the verdict is "+a.signal+", and SignalForge is long-only by default."; a7="Nothing to plan; a SELL/HOLD is a stand-aside here (shorts not taken)."; } }
+    S(7,"THE PLAN","signals","Plan the trade","Entry, stop, target defined — reward ≥ 2:1?", st7, v7, r7, a7,
+      "Know your exit BEFORE you enter; demand at least 2:1 reward-to-risk."); }
+  // 8 · SIZE IT — money management beats entry skill; risk 1–2% per trade.
+  { let st8,v8,r8,a8; const sz=sizing;
+    if(!sz||!(sz.posSize>0)){ st8="nodata"; v8="—"; r8="No position size yet (needs a live entry & stop)."; a8="Open SIZE and set your account + risk % once you have a BUY."; }
+    else { st8=sz.capped?"verify":"pass"; v8=sz.posSize+" sh"+(sz.riskPct!=null?(" · "+sz.riskPct+"% risk"):"");
+      r8=sz.capped?("The 1–2% risk size was CAPPED by the ≤"+(sz.maxPosPct||20)+"% concentration limit — you'd risk less than planned.")
+        :"Size = risk$ ÷ stop distance, within the concentration cap — textbook fixed-fractional sizing.";
+      a8=sz.capped?"Good — the cap stops you over-concentrating; trade the smaller size.":"Place the stop the moment you enter; never risk more than 1–2% per trade."; }
+    S(8,"SIZE IT","position","Size the trade","Risk only 1–2% per trade; cap concentration; size by ATR / stop.", st8, v8, r8, a8,
+      "Money management beats entry skill — small losses, large wins compound."); }
+  // 9 · JOURNAL & REVIEW — the trade ends when you journal it.
+  S(9,"JOURNAL & REVIEW","paper","Log & review","Did you record the thesis, and will you review the outcome?",
+    "info","FORWARD TEST","Every trade ends when you JOURNAL it — the ledger turns guesses into a measured track record.",
+    "Log this thesis so the OOS ledger can grade it; review FORWARD TEST & HISTORY regularly.",
+    "'I don't lose because my strategy is bad — I lose when I don't follow my rules.' The journal is the feedback loop.");
+  const passCount=steps.filter(s=>s.status==="pass").length;
+  const scored=steps.filter(s=>s.status==="pass"||s.status==="caution"||s.status==="fail").length;
+  const techPassCount=steps.filter(s=>(s.n===1||s.n===3||s.n===7||s.n===8)&&s.status==="pass").length;
+  const provenOk=!!(proven&&proven.provenAny===true);
+  const summary=passCount+"/9 work-up checks confirmed — "+(provenOk?"and an edge is OOS-PROVEN.":"but the edge is NOT PROVEN yet (a clean setup is not a proven trade).");
+  return { steps, passCount, scored, techPassCount, summary };
+}
+// Reduce the OOS scoreboard to the one honest bit THE WORK-UP needs: has ANY variant cleared the promotion bar?
+// Pure; reads forward-perf variants (array or keyed object). Default (no proven variant) is the app's identity.
+export function provenSummary(forwardPerf, bt){
+  let provenAny=false;
+  const variants=forwardPerf&&forwardPerf.variants;
+  if(Array.isArray(variants)) provenAny=variants.some(v=>v&&v.promotable===true);
+  else if(variants&&typeof variants==="object") provenAny=Object.values(variants).some(v=>v&&v.promotable===true);
+  if(provenAny) return { provenAny:true, label:"OOS-PROVEN",
+    detail:"At least one strategy has cleared the out-of-sample bar (≥10 trades, q≤0.05). Trade it at the proven size." };
+  return { provenAny:false, label:"NOT YET PROVEN",
+    detail:"No SignalForge strategy has cleared the out-of-sample bar (≥10 trades, q≤0.05 on both BH and BY, positive alpha). The edge is a candidate, not a fact — paper-trade it or size small." };
 }
 export function obvCalc(data){
   if(data.length<16)return null;
