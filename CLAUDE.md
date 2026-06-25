@@ -846,6 +846,31 @@ real edge · all ~490 names · in-app panel + committed report) as a scheduled G
   (**345 green**); app mounts clean, MONITOR renders zero JS errors (driver). Populates once the workflow is merged to main
   and runs during market hours.
 
+**MONITOR UX follow-ups + `conv-grounded` OOS variant (DONE) — merged via PR #66, branch
+`claude/signalforge-profitability-wheel-qbclby`, 347 tests green:** the MONITOR tab hardened from live use, plus the
+disciplined follow-through that turns the user's "convergence as a TRIGGER, not a signal" insight into a *decidable*
+OOS hypothesis. All display/ledger-only — no engine/gate/verdict change.
+- **MONITOR UX (display-only):** (1) **auto-refresh** every 60s (cache-busted) + a manual **↻ REFRESH** + a "scan as of
+  … (N m old)" age that ambers past 20 min (was: fetched once on mount, looked frozen); (2) the lead button is now
+  **★ BASELINE →** (jumps to the name's graded CONTENDERS card via `contenderFocus` → `setTab` + `scrollIntoView` +
+  highlight) instead of a day-behind daily LIVE chart; (3) **📈 SETUP CHART** on each coil→pop lead live-fetches its
+  **15-min** bars (your key) and renders the chart at the bottom of MONITOR with a **⚡ CONVERGENCE START** vertical
+  marker + coil-start timestamp (`Chart` gained an optional `convStartIdx` prop, mirroring the ANALYSIS-START marker).
+- **Default resolution "D" → "15" (root-cause "day behind" fix):** Daily returned yesterday's unfinished bar mid-session
+  (the user's 06/24 screenshot); 15-min matches the monitor + the 15-min-delayed feed, so a mid-session analyze shows
+  TODAY's bars. The OUTLOOK already fetches DAILY index/stock bars regardless of chart resolution (unchanged).
+- **`conv-grounded` propose-only OOS variant — making the trigger decidable:** the coil→pop geometry alone is a measured
+  LOSER (≈ −0.71% universe-wide), so it can't be a signal — but it's a legitimate ATTENTION trigger. Rather than decide
+  from observation, the ledger now answers: does a GROUNDED coil→pop (the trigger fires AND the name is a vetted contender
+  all-boxes pick — grade A/B + 12-1 momentum + filing cross-check) beat a total-return buy-&-hold under FDR? `forward-log`
+  tags every tactical row `convergence` = `analyze().convBreakout.detected` (point-in-time, engine parity; **never enters
+  `gate.actionable`**). `forward-perf` adds **`conv-grounded-on`** = `bothTac(convergence, contenderAllBoxes)` + the `-off`
+  complement (auto-excluded from the FDR denominator per R2); the `-on` is a genuine FDR promotion hypothesis under the
+  BH/BY family + the locked R1 bar. EVIDENCE scoreboard row added (hidden until data lands). Propose-only — in-sample never
+  trusted; only the `conv-grounded-on` ledger cleared through FDR counts. v1 = convergence + all-boxes; a regime co-filter
+  is a clean future refinement. Tests +2 (forward-log: the `convergence` tag is always boolean & label-only; forward-perf:
+  conv-grounded partitions by convergence×allBoxes with correct `fdr` flags). The variant matures via the nightly pipeline.
+
 **Next — Track B:**
 - Mature the `momentum-on` / `merits-on` / `news-*` / `earnings-recent-on` OOS ledgers to n≥10; human-ratify
   only if they clear FDR. PASSIVE — the nightly `forward-log → forward-perf → promote` already partitions every
