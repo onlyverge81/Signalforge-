@@ -2097,8 +2097,12 @@ function Chart({rows,analysis,muted,convStartIdx}) {
         const x=toX(vis);
         ctx.beginPath();ctx.strokeStyle="#26c6da";ctx.lineWidth=1.4;ctx.setLineDash([2,2]);
         ctx.moveTo(x,PAD.t);ctx.lineTo(x,PAD.t+cH);ctx.stroke();ctx.setLineDash([]);
-        ctx.fillStyle="#26c6da";ctx.font="bold 8px monospace";ctx.textAlign="left";
-        ctx.fillText("⚡ CONVERGENCE START",x+3,PAD.t+cH-5);
+        ctx.fillStyle="#26c6da";ctx.font="bold 8px monospace";
+        // Flip the label to the LEFT of the line when the coil started near the right edge, so the
+        // text never runs off the canvas (a coil that just fired sits at the newest bars → far right).
+        if(x+104 > W-PAD.r){ ctx.textAlign="right"; ctx.fillText("⚡ CONVERGENCE START",x-3,PAD.t+10); }
+        else { ctx.textAlign="left"; ctx.fillText("⚡ CONVERGENCE START",x+3,PAD.t+10); }
+        ctx.textAlign="left";
       }
     }
     // Latest-signal marker on the most recent candle
