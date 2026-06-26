@@ -11,7 +11,7 @@
 
 import { test } from "node:test";
 import assert from "node:assert/strict";
-import { analyze, runBacktest, scoreAt, scorePosition, checkBarExit, checkBarExitFine, isAmbiguousBar, tradeNet, realizedStats, convergenceBreakout, backtestPattern, edgeStatus, avgIndexGainByDate, correctionLevels, backtestCorrection, efficiencyRatio, marketRegime, regimeChecklist, guideBrief, stockStage, trendTemplate, workupChecklist, provenSummary, computeSignal, valueScore, divergenceFixed, recentTrend, patternsContext, correctedVotes, divergence, patterns } from "./engine.mjs";
+import { analyze, runBacktest, scoreAt, scorePosition, checkBarExit, checkBarExitFine, isAmbiguousBar, tradeNet, realizedStats, convergenceBreakout, convergenceForming, backtestPattern, edgeStatus, avgIndexGainByDate, correctionLevels, backtestCorrection, efficiencyRatio, marketRegime, regimeChecklist, guideBrief, stockStage, trendTemplate, workupChecklist, provenSummary, computeSignal, valueScore, divergenceFixed, recentTrend, patternsContext, correctedVotes, divergence, patterns } from "./engine.mjs";
 
 // ─── Helper: deterministic OHLC series (no RNG, fixed formula) ───────────────
 function gen(n){
@@ -282,6 +282,26 @@ test("trend filter: suppresses a breakout off a flat base", () => {
   const on =backtestPattern(series, {horizon:5, minBars:50, trendFilter:true});
   assert.ok(off.signals>0, "filter-off should still see the raw breakout, got "+off.signals);
   assert.ok(on.signals<off.signals, "filter-on must drop flat-base signals: on="+on.signals+" off="+off.signals);
+});
+
+// ─── 5b) FORMING-stage detector — the tightening squeeze BEFORE the breakout ──
+test("convergenceForming: false on too-short input", () => {
+  assert.equal(convergenceForming(genFlat(40)).forming, false);
+});
+test("convergenceForming: TRUE mid-coil — uptrend + ribbon tight + not yet popped", () => {
+  // Truncate the trend→coil→breakout fixture INSIDE the coil (before the breakout bars).
+  const cf = convergenceForming(genTrendCoilBreak().slice(0, 75));
+  assert.equal(cf.forming, true, "the tightening ribbon in an uptrend should read FORMING");
+  assert.ok(cf.barsForming >= 3, "the squeeze has persisted ≥ minFormingBars");
+  assert.ok(Number.isInteger(cf.formingStartIdx) && cf.formingStartIdx >= 0, "marks where the tightening began");
+  assert.ok(cf.tightness >= 0 && cf.tightness <= 1, "tightness is a 0..1 proximity-to-pinch");
+});
+test("convergenceForming: false once it has BROKEN OUT (that's a BREAKOUT, not FORMING)", () => {
+  // The full fixture ends deep in the breakout — the ribbon has expanded, so FORMING is off.
+  assert.equal(convergenceForming(genTrendCoilBreak()).forming, false);
+});
+test("convergenceForming: false on a flat base — no established uptrend", () => {
+  assert.equal(convergenceForming(genFlat(120)).forming, false);
 });
 
 // ─── 5) Custom-target seam — scorer-supplied TP/SL override the ATR default ───

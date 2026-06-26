@@ -527,6 +527,37 @@ function convergenceFizzle(bars, opts){
     censored:episodes.filter(e=>e.outcome==="censored").length };
 }
 
+// ─── Live FORMING-stage detector: the Uptrend Convergence WHILE the ribbon is still tightening,
+// BEFORE the breakout. Calibrated by the timing study: on 15-min bars the pinch→breakout median
+// is ~1 bar (>half pop the very next bar), so by the pinch the move is essentially here — the
+// early-warning lives in the FORMING (tightening-corridor) stage (~5h median runway on 15-min).
+// Fires when the SMA5/10·SFA12 ribbon sits inside the corridor (spread ≤ formingMult×coilPct, the
+// study's measured corridor) in an established uptrend and has NOT yet broken out; formingStartIdx
+// is the first bar of the current tight run (the timestamp). Pure; mirrors convergenceBreakout's
+// shape and is NOT wired to any signal/gate — awareness only.
+function convergenceForming(slice, opts){
+  const P=cbOpts(opts);
+  const need=P.trendFilter?50+P.trendLookback:21+P.slopeLookback;
+  if(!slice||slice.length<need) return {forming:false};
+  const cl=slice.map(d=>d.close), R=maRibbon(cl), i=cl.length-1;
+  if(R.s5[i]==null||R.s10[i]==null||R.comp[i]==null) return {forming:false};
+  const formingPct=(opts&&opts.formingPct!=null)?opts.formingPct:P.coilPct*((opts&&opts.formingMult)||2);
+  const minBars=(opts&&opts.minFormingBars!=null)?opts.minFormingBars:3;
+  const spreadPct=j=>(R.s5[j]==null||R.s10[j]==null||R.comp[j]==null)?null
+    :(Math.max(R.s5[j],R.s10[j],R.comp[j])-Math.min(R.s5[j],R.s10[j],R.comp[j]))/cl[j];
+  const sp=spreadPct(i);
+  const broke=cbDetectAt(R,cl,i,P).detected;   // already popped → it's a BREAKOUT, not FORMING
+  let trendOK=true;
+  if(P.trendFilter){ const j=i-P.trendLookback; trendOK=R.s50[i]!=null&&j>=0&&R.s50[j]!=null&&cl[i]>R.s50[i]&&(R.s50[i]-R.s50[j])/R.s50[j]>=P.trendMinSlope; }
+  if(sp==null||sp>formingPct||broke||!trendOK) return {forming:false, spreadPct:sp, broke, trendOK};
+  let start=i; while(start-1>=0){ const s=spreadPct(start-1); if(s!=null&&s<=formingPct) start--; else break; }
+  const barsForming=i-start+1;
+  if(barsForming<minBars) return {forming:false, barsForming, spreadPct:sp};
+  const tightness=Math.max(0,Math.min(1, 1-(sp-P.coilPct)/Math.max(1e-9,(formingPct-P.coilPct))));
+  return { forming:true, formingStartIdx:start, barsForming, spreadPct:parseFloat(sp.toFixed(5)),
+           tightness:parseFloat(tightness.toFixed(2)), nearPinch: sp<=P.coilPct*1.25 };
+}
+
 // ─── Shared signal logic: weighted votes + confluence + conflict penalty ─────
 // Used by BOTH analyze() and scoreAt() so live signals and backtest stay identical.
 // Each indicator casts a directional vote (+1 bullish / -1 bearish / 0 neutral)
@@ -2527,9 +2558,15 @@ function App() {
       const a=analyze(candles, sym, "Stocks", "Trend Following", 1.5, 2.0);
       const cb=a&&a.convBreakout;
       const bsc=cb&&typeof cb.barsSinceCoil==="number"?cb.barsSinceCoil:null;
-      const convStartIdx=bsc!=null?Math.max(0,candles.length-1-bsc):null;
+      let convStartIdx=bsc!=null?Math.max(0,candles.length-1-bsc):null;
+      let stage=(cb&&cb.detected)?"BREAKOUT":null;
+      // No breakout yet → if the ribbon is in the FORMING (tightening) stage, mark where it began.
+      if(convStartIdx==null){
+        const cf=convergenceForming(candles);
+        if(cf&&cf.forming&&typeof cf.formingStartIdx==="number"){ convStartIdx=cf.formingStartIdx; stage="FORMING"; }
+      }
       const convStartDate=(convStartIdx!=null&&candles[convStartIdx])?candles[convStartIdx].date:null;
-      setMonChart({sym, rows:candles, analysis:a, convStartIdx, convStartDate, detected:!!(cb&&cb.detected), loading:false, error:null});
+      setMonChart({sym, rows:candles, analysis:a, convStartIdx, convStartDate, detected:!!(cb&&cb.detected), stage, loading:false, error:null});
     }catch(e){ setMonChart({sym, loading:false, error:(e&&e.message)||"Fetch failed."}); }
   };
   // Out-of-sample variant scoreboard (forward-perf.json) — the alpha/FDR verdict per
@@ -3428,7 +3465,7 @@ function App() {
               {monitor?(
                 <div style={{fontSize:11,color:"#cfd8dc",lineHeight:1.6,marginTop:6}}>
                   {monitor.marketOpen?"Market OPEN — ":"Market CLOSED — "}scan as of <b>{new Date(monitor.generatedAt).toLocaleString()}</b>{(()=>{const m=Math.max(0,Math.round((Date.now()-new Date(monitor.generatedAt).getTime())/60000));return <span style={{color:m>20?"#ffb74d":FADE}}> ({m}m old)</span>;})()}
-                  {" · "}<b style={{color:"#26c6da"}}>{(monitor.counts&&monitor.counts.leads)||0}</b> leads ({(monitor.counts&&monitor.counts.grounded)||0} grounded · {(monitor.counts&&monitor.counts.buys)||0} BUY · {(monitor.counts&&monitor.counts.convergence)||0} coil→pop) over {monitor.withData||0}/{monitor.scanned||0} names scanned.<span style={{color:FADE}}> · auto-refreshes every 60s.</span>
+                  {" · "}<b style={{color:"#26c6da"}}>{(monitor.counts&&monitor.counts.leads)||0}</b> leads ({(monitor.counts&&monitor.counts.grounded)||0} grounded · {(monitor.counts&&monitor.counts.buys)||0} BUY · {(monitor.counts&&monitor.counts.convergence)||0} coil→pop{(monitor.counts&&monitor.counts.forming)?(" · "+monitor.counts.forming+" ⏳ forming"):""}) over {monitor.withData||0}/{monitor.scanned||0} names scanned.<span style={{color:FADE}}> · auto-refreshes every 60s.</span>
                 </div>
               ):(
                 <div style={{fontSize:11,color:FADE,lineHeight:1.6,marginTop:6}}>No scan published yet. The monitor runs every ~15 min during market hours (09:50–16:00 ET) once <code>contender-monitor.yml</code> is on <code>main</code>, committing <code>contender-monitor.json</code> here.</div>
@@ -3441,7 +3478,7 @@ function App() {
             )}
             {monitor&&monitor.leads&&monitor.leads.length>0?(
               <div style={card}>
-                <span style={lbl}>CURRENT LEADS · grounded first (vetted A/B + live BUY), then BUYs, then coil→pop strength</span>
+                <span style={lbl}>CURRENT LEADS · grounded first (vetted A/B + live BUY), then BUYs, then coil→pop BREAKOUT, then ⏳ FORMING (tightening, caught early)</span>
                 <div style={{display:"flex",flexDirection:"column",gap:1,marginTop:6}}>
                   {monitor.leads.map((l,i)=>{
                     const buy=l.engine&&l.engine.signal==="BUY";
@@ -3453,7 +3490,8 @@ function App() {
                         {l.grade&&<span style={{fontSize:10,fontWeight:800,color:gc,border:"1px solid "+gc+"66",borderRadius:3,padding:"1px 5px"}}>{l.grade}</span>}
                         {l.grounded&&<span style={{fontSize:9,fontWeight:800,letterSpacing:1,color:"#00e676",border:"1px solid #00e67666",borderRadius:3,padding:"1px 5px"}}>⭐ GROUNDED</span>}
                         <span style={{fontSize:11,fontWeight:800,color:vc}}>{l.engine?l.engine.signal:"—"}</span>
-                        {l.conv&&l.conv.detected&&<span style={{fontSize:10,color:"#26c6da"}}>coil→pop{l.conv.strength!=null?(" "+Math.round(l.conv.strength*100)+"%"):""}</span>}
+                        {l.conv&&l.conv.detected&&<span style={{fontSize:10,fontWeight:800,color:"#26c6da",border:"1px solid #26c6da66",borderRadius:3,padding:"1px 5px"}}>coil→pop BREAKOUT{l.conv.strength!=null?(" "+Math.round(l.conv.strength*100)+"%"):""}</span>}
+                        {l.stage==="FORMING"&&l.forming&&<span title={"Ribbon tightening "+(l.forming.barsForming||0)+" bars; ~1 bar to pop once it pinches (15-min). Early-warning, not a buy."} style={{fontSize:10,fontWeight:800,color:"#ffd740",border:"1px solid #ffd74066",borderRadius:3,padding:"1px 5px"}}>⏳ FORMING{l.forming.tightness!=null?(" "+Math.round(l.forming.tightness*100)+"%"):""}</span>}
                         <span style={{flex:1,minWidth:120,fontSize:10,color:FADE,lineHeight:1.4}}>{(l.reasons||[]).join(" · ")}</span>
                         <span style={{fontSize:10,color:DIM}}>{l.price!=null?("$"+(+l.price).toFixed(2)):""}</span>
                         <div style={{display:"flex",flexDirection:"column",gap:4,alignItems:"stretch"}}>
@@ -3491,7 +3529,7 @@ function App() {
                 {monChart.error&&<div style={{fontSize:11,color:"#ff8a80",lineHeight:1.5,marginTop:8}}>{monChart.error}</div>}
                 {monChart.rows&&monChart.rows.length>0&&(
                   <>
-                    <div style={{fontSize:11,color:"#cfd8dc",lineHeight:1.5,margin:"6px 0"}}>{monChart.convStartDate?(<><b style={{color:"#26c6da"}}>⚡ Convergence coil started:</b> {monChart.convStartDate}{monChart.detected?" — firing now":" — most recent coil (not currently firing)"}</>):"No coil→pop located on the latest 15-min bars."}</div>
+                    <div style={{fontSize:11,color:"#cfd8dc",lineHeight:1.5,margin:"6px 0"}}>{monChart.convStartDate?(monChart.stage==="FORMING"?(<><b style={{color:"#ffd740"}}>⏳ Convergence FORMING since:</b> {monChart.convStartDate} — ribbon tightening, not yet popped (early-warning; ~1 bar to pop once it pinches on 15-min)</>):(<><b style={{color:"#26c6da"}}>⚡ Convergence coil started:</b> {monChart.convStartDate}{monChart.detected?" — broke out (firing now)":" — most recent coil (not currently firing)"}</>)):"No coil→pop or forming squeeze located on the latest 15-min bars."}</div>
                     <Chart rows={monChart.rows} analysis={monChart.analysis} convStartIdx={monChart.convStartIdx}/>
                     <div style={{fontSize:9,color:FADE,lineHeight:1.5,marginTop:6}}>The ⚡ cyan line marks where the SMA5/10·SFA12 coil began. Geometry only — the convergence edge is ≈ −0.71% universe-wide; not a proven signal.</div>
                   </>
