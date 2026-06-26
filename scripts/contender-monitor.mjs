@@ -16,7 +16,7 @@
 import fs from "node:fs";
 import path from "node:path";
 import { fileURLToPath } from "node:url";
-import { analyze } from "./engine.mjs";
+import { analyze, convergenceForming } from "./engine.mjs";
 import { fetchPolygonAggs, filterRegularHours, etMinutes } from "./pattern-study.mjs";
 
 const ROOT = path.resolve(path.dirname(fileURLToPath(import.meta.url)), "..");
@@ -52,24 +52,34 @@ export function etParts(epochMs){
 export function classifyLead(rec){
   const buy  = !!(rec.engine && rec.engine.signal === "BUY");
   const conv = !!(rec.conv && rec.conv.detected);
-  const lead = buy || conv;
+  // FORMING is the EARLY stage — only while it has NOT yet broken out (once it pops it's a BREAKOUT).
+  const forming = !!(rec.forming && rec.forming.forming) && !conv;
+  const lead = buy || conv || forming;
   const grounded = !!(rec.allBoxes && buy);
+  const stage = conv ? "BREAKOUT" : forming ? "FORMING" : null; // convergence lifecycle stage (null = pure engine read)
   const reasons = [];
   if(buy)  reasons.push("engine BUY (intraday — tactical, unproven)");
-  if(conv) reasons.push("coil→pop setup (geometry only; pattern edge ≈ −0.71%)");
+  if(conv) reasons.push("coil→pop BREAKOUT (geometry only; pattern edge ≈ −0.71%)");
+  if(forming) reasons.push(`⏳ convergence FORMING — ribbon tightening ${(rec.forming && rec.forming.barsForming) || 0} bars (early-warning; ~1 bar to pop once it pinches)`);
   if(rec.allBoxes) reasons.push("vetted all-boxes (A/B + momentum + filing)");
-  return { lead, grounded, reasons };
+  // NOTE: return `stage` (not a `forming` boolean) so the spread {...rec, ...classifyLead(rec)} never
+  // clobbers rec.forming — the OBJECT carrying barsForming/tightness/startDate the UI needs.
+  return { lead, grounded, stage, reasons };
 }
 
-// Rank leads: grounded first, then live BUYs, then by convergence strength — so the dead-pattern
-// geometry can NEVER outrank a quality-grounded engine read.
+// Rank leads: grounded first, then live BUYs, then BREAKOUT before FORMING, then by strength/tightness
+// — so the dead-pattern geometry can NEVER outrank a quality-grounded engine read, and a confirmed pop
+// outranks a still-forming squeeze.
 export function rankLeads(records){
+  const stageRank = r => r.stage === "BREAKOUT" ? 2 : r.stage === "FORMING" ? 1 : 0;
   return (records || []).filter(r => r.lead).sort((a, b) => {
     if(a.grounded !== b.grounded) return a.grounded ? -1 : 1;
     const ab = a.engine && a.engine.signal === "BUY" ? 1 : 0;
     const bb = b.engine && b.engine.signal === "BUY" ? 1 : 0;
     if(ab !== bb) return bb - ab;
-    const as = (a.conv && a.conv.strength) || 0, bs = (b.conv && b.conv.strength) || 0;
+    if(stageRank(a) !== stageRank(b)) return stageRank(b) - stageRank(a); // BREAKOUT before FORMING
+    const as = a.stage === "FORMING" ? ((a.forming && a.forming.tightness) || 0) : ((a.conv && a.conv.strength) || 0);
+    const bs = b.stage === "FORMING" ? ((b.forming && b.forming.tightness) || 0) : ((b.conv && b.conv.strength) || 0);
     return bs - as;
   });
 }
@@ -91,6 +101,7 @@ export function buildReport({ generatedAt, session, records = [], scanned = 0, w
       grounded: grounded.length,
       buys: records.filter(r => r.engine && r.engine.signal === "BUY").length,
       convergence: records.filter(r => r.conv && r.conv.detected).length,
+      forming: records.filter(r => r.forming && r.forming.forming && !(r.conv && r.conv.detected)).length,
     },
     patternEdgeNote: PATTERN_EDGE_NOTE,
     leads: ranked.slice(0, 120),
@@ -143,10 +154,20 @@ async function main(){
       const fresh = Number.isFinite(last.time) ? (now - last.time) <= 45 * 60e3 : false; // ≤45 min ⇒ live-ish on a 15-min-delayed feed
       if(fresh) freshCount++;
       const cb = a.convBreakout || null;
+      // FORMING-stage read: the ribbon tightening BEFORE the pop (the early-warning the timing study
+      // located ~5h ahead of the pinch on 15-min). Captured here as its own lifecycle stage.
+      const cf = convergenceForming(bars) || { forming: false };
+      let forming = { forming: false };
+      if(cf.forming){
+        const startBar = bars[cf.formingStartIdx] || null;
+        forming = { forming: true, barsForming: cf.barsForming, tightness: cf.tightness, nearPinch: !!cf.nearPinch,
+          startMs: (startBar && startBar.time) || null, startDate: (startBar && startBar.date) || null };
+      }
       records.push({
         sym, entity: c.entity || null, grade: c.grade || null, allBoxes: !!c.allBoxes,
         price: a.entry, lastBarMs: last.time || null, fresh,
         conv: cb ? { detected: !!cb.detected, strength: cb.strength != null ? +(+cb.strength).toFixed(3) : null } : { detected: false, strength: null },
+        forming,
         patternEdge: a.convBreakoutTest && Number.isFinite(a.convBreakoutTest.edge) ? +(a.convBreakoutTest.edge * 100).toFixed(3) : null,
         engine: { signal: a.signal, score: a.score, confidence: a.confidence, entry: a.entry, sl: a.sl, tp1: a.tp1, rr: a.rr },
       });
@@ -160,7 +181,7 @@ async function main(){
     scanned: names.length, withData, dataFresh: freshCount > withData * 0.5,
   });
   write(report);
-  console.log(`wrote contender-monitor.json — ${report.counts.leads} leads (${report.counts.grounded} grounded, ${report.counts.buys} BUY, ${report.counts.convergence} coil→pop) over ${withData}/${names.length} names with data.`);
+  console.log(`wrote contender-monitor.json — ${report.counts.leads} leads (${report.counts.grounded} grounded, ${report.counts.buys} BUY, ${report.counts.convergence} coil→pop, ${report.counts.forming} ⏳forming) over ${withData}/${names.length} names with data.`);
 }
 
 if(process.argv[1] && path.resolve(process.argv[1]) === fileURLToPath(import.meta.url)){

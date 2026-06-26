@@ -788,6 +788,37 @@ export function convergenceEvents(bars, opts){
   return ev;
 }
 
+// ─── Live FORMING-stage detector: the Uptrend Convergence WHILE the ribbon is still tightening,
+// BEFORE the breakout. Calibrated by the timing study: on 15-min bars the pinch→breakout median
+// is ~1 bar (>half pop the very next bar), so by the pinch the move is essentially here — the
+// early-warning lives in the FORMING (tightening-corridor) stage (~5h median runway on 15-min).
+// Fires when the SMA5/10·SFA12 ribbon sits inside the corridor (spread ≤ formingMult×coilPct, the
+// study's measured corridor) in an established uptrend and has NOT yet broken out; formingStartIdx
+// is the first bar of the current tight run (the timestamp). Pure; mirrors convergenceBreakout's
+// shape and is NOT wired to any signal/gate — awareness only.
+export function convergenceForming(slice, opts){
+  const P=cbOpts(opts);
+  const need=P.trendFilter?50+P.trendLookback:21+P.slopeLookback;
+  if(!slice||slice.length<need) return {forming:false};
+  const cl=slice.map(d=>d.close), R=maRibbon(cl), i=cl.length-1;
+  if(R.s5[i]==null||R.s10[i]==null||R.comp[i]==null) return {forming:false};
+  const formingPct=(opts&&opts.formingPct!=null)?opts.formingPct:P.coilPct*((opts&&opts.formingMult)||2);
+  const minBars=(opts&&opts.minFormingBars!=null)?opts.minFormingBars:3;
+  const spreadPct=j=>(R.s5[j]==null||R.s10[j]==null||R.comp[j]==null)?null
+    :(Math.max(R.s5[j],R.s10[j],R.comp[j])-Math.min(R.s5[j],R.s10[j],R.comp[j]))/cl[j];
+  const sp=spreadPct(i);
+  const broke=cbDetectAt(R,cl,i,P).detected;   // already popped → it's a BREAKOUT, not FORMING
+  let trendOK=true;
+  if(P.trendFilter){ const j=i-P.trendLookback; trendOK=R.s50[i]!=null&&j>=0&&R.s50[j]!=null&&cl[i]>R.s50[i]&&(R.s50[i]-R.s50[j])/R.s50[j]>=P.trendMinSlope; }
+  if(sp==null||sp>formingPct||broke||!trendOK) return {forming:false, spreadPct:sp, broke, trendOK};
+  let start=i; while(start-1>=0){ const s=spreadPct(start-1); if(s!=null&&s<=formingPct) start--; else break; }
+  const barsForming=i-start+1;
+  if(barsForming<minBars) return {forming:false, barsForming, spreadPct:sp};
+  const tightness=Math.max(0,Math.min(1, 1-(sp-P.coilPct)/Math.max(1e-9,(formingPct-P.coilPct))));
+  return { forming:true, formingStartIdx:start, barsForming, spreadPct:parseFloat(sp.toFixed(5)),
+           tightness:parseFloat(tightness.toFixed(2)), nearPinch: sp<=P.coilPct*1.25 };
+}
+
 // ─── Shared signal logic: weighted votes + confluence + conflict penalty ─────
 export function computeSignal(ctx, extraVotes=[], opts={}) {
   const {R,M,s5,s10,s20,s50,trend,S,B,last,pats,div,volSig,ADX,OBV,VWAP} = ctx;
