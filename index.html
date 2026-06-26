@@ -1383,6 +1383,81 @@ async function polyFetchCandles(sym, resolution, key){
   }catch(_){}
   return {candles, quote};
 }
+// ── CONTENDER-MONITOR pure logic, MIRRORED byte-for-byte from scripts/contender-monitor.mjs ──
+// so the BROWSER on-demand scan (scanMonitor) produces the SAME leads board + honesty as the CI
+// sweep. Keep these byte-identical to the .mjs (only `export ` is dropped); they are pure.
+const PATTERN_EDGE_NOTE =
+  "Convergence (coil→pop) universe edge ≈ −0.71% over 20 bars — a geometry TRIGGER, not a proven signal. Treat leads as candidates for your own eyes, never as a buy.";
+// Classify one scanned record into a lead. A lead fires on ANY notable signal (extensible —
+// add future setups to the OR); "grounded" is the evidence-leaning case (vetted quality + a
+// live engine BUY). The convergence flag is labeled as geometry-only so it never reads as proof.
+function classifyLead(rec){
+  const buy  = !!(rec.engine && rec.engine.signal === "BUY");
+  const conv = !!(rec.conv && rec.conv.detected);
+  // FORMING is the EARLY stage — only while it has NOT yet broken out (once it pops it's a BREAKOUT).
+  const forming = !!(rec.forming && rec.forming.forming) && !conv;
+  const lead = buy || conv || forming;
+  const grounded = !!(rec.allBoxes && buy);
+  const stage = conv ? "BREAKOUT" : forming ? "FORMING" : null; // convergence lifecycle stage (null = pure engine read)
+  const reasons = [];
+  if(buy)  reasons.push("engine BUY (intraday — tactical, unproven)");
+  if(conv) reasons.push("coil→pop BREAKOUT (geometry only; pattern edge ≈ −0.71%)");
+  if(forming) reasons.push(`⏳ convergence FORMING — ribbon tightening ${(rec.forming && rec.forming.barsForming) || 0} bars (early-warning; ~1 bar to pop once it pinches)`);
+  if(rec.allBoxes) reasons.push("vetted all-boxes (A/B + momentum + filing)");
+  // NOTE: return `stage` (not a `forming` boolean) so the spread {...rec, ...classifyLead(rec)} never
+  // clobbers rec.forming — the OBJECT carrying barsForming/tightness/startDate the UI needs.
+  return { lead, grounded, stage, reasons };
+}
+// Rank leads: grounded first, then live BUYs, then BREAKOUT before FORMING, then by strength/tightness
+// — so the dead-pattern geometry can NEVER outrank a quality-grounded engine read, and a confirmed pop
+// outranks a still-forming squeeze.
+function rankLeads(records){
+  const stageRank = r => r.stage === "BREAKOUT" ? 2 : r.stage === "FORMING" ? 1 : 0;
+  return (records || []).filter(r => r.lead).sort((a, b) => {
+    if(a.grounded !== b.grounded) return a.grounded ? -1 : 1;
+    const ab = a.engine && a.engine.signal === "BUY" ? 1 : 0;
+    const bb = b.engine && b.engine.signal === "BUY" ? 1 : 0;
+    if(ab !== bb) return bb - ab;
+    if(stageRank(a) !== stageRank(b)) return stageRank(b) - stageRank(a); // BREAKOUT before FORMING
+    const as = a.stage === "FORMING" ? ((a.forming && a.forming.tightness) || 0) : ((a.conv && a.conv.strength) || 0);
+    const bs = b.stage === "FORMING" ? ((b.forming && b.forming.tightness) || 0) : ((b.conv && b.conv.strength) || 0);
+    return bs - as;
+  });
+}
+// Assemble the committed report. Pure → the honesty caveats + the pattern-edge note are
+// guaranteed present on every report (unit-tested), and the ranking is deterministic.
+function buildReport({ generatedAt, session, records = [], scanned = 0, withData = 0, dataFresh = false }){
+  const ranked   = rankLeads(records.map(r => ({ ...r, ...classifyLead(r) })));
+  const grounded = ranked.filter(l => l.grounded);
+  return {
+    generatedAt,
+    sessionET: session ? { weekday: session.weekday, etMin: session.etMin } : null,
+    marketOpen: !!(session && session.open),
+    delayedMin: 15,
+    dataFresh: !!dataFresh,
+    scanned, withData,
+    counts: {
+      leads: ranked.length,
+      grounded: grounded.length,
+      buys: records.filter(r => r.engine && r.engine.signal === "BUY").length,
+      convergence: records.filter(r => r.conv && r.conv.detected).length,
+      forming: records.filter(r => r.forming && r.forming.forming && !(r.conv && r.conv.detected)).length,
+    },
+    patternEdgeNote: PATTERN_EDGE_NOTE,
+    leads: ranked.slice(0, 120),
+    caveats: [
+      "Feed is 15-MINUTE DELAYED (Polygon Stocks Starter) — every read is ~15 min behind. Awareness, NOT real-time execution.",
+      "The convergence (coil→pop) pattern is a MEASURED LOSER universe-wide (edge ≈ −0.71%); shown as a geometry trigger only.",
+      "The intraday engine verdict is itself unproven (the tactical confluence is an in-sample loser, t ≈ −12.6); leads are candidates for the human, never proven signals.",
+      "Grounded = a vetted all-boxes (A/B + momentum + filing) name with a live engine BUY — the most evidence-leaning case, still not OOS-proven.",
+    ],
+  };
+}
+// ET weekday (0=Sun..6=Sat) for an instant — app-only helper (the CI uses etParts) so the browser
+// scan can stamp a real market-open session on its report (09:50–16:00 ET weekday window).
+const ET_WDF=new Intl.DateTimeFormat("en-US",{timeZone:"America/New_York",weekday:"short"});
+const ET_WDN={Sun:0,Mon:1,Tue:2,Wed:3,Thu:4,Fri:5,Sat:6};
+function etWeekdayMs(ms){ return ET_WDN[ET_WDF.format(new Date(ms))] ?? 0; }
 // One index's historical daily bars (for the directional backtest alignment).
 async function polyFetchIndexBars(sym, mult, span, key){
   const to=new Date(), from=new Date(to.getTime()-polyWindowMs(span)), fmt=d=>d.toISOString().slice(0,10);
@@ -2562,10 +2637,84 @@ function App() {
   // happening. Built by scripts/contender-monitor.mjs on a schedule; read-only, same-origin,
   // display-only. 15-MIN DELAYED feed; the pattern is a measured loser shown as a trigger only.
   const [monitor, setMonitor] = useState(null);
-  const [monitorAt, setMonitorAt] = useState(0);                 // wall-clock of the last successful fetch
+  const [monitorAt, setMonitorAt] = useState(0);                 // wall-clock of the last successful scan/fetch
+  const [scanState, setScanState] = useState({running:false,done:0,total:0,error:null}); // browser-scan progress
+  const scanRef = useRef(false);                                 // re-entry guard so a scan can't overlap itself
   const [contenderFocus, setContenderFocus] = useState(null);    // a sym to scroll-to + highlight on CONTENDERS (from a MONITOR lead)
   const loadMonitor = ()=> fetch("./contender-monitor.json?t="+Date.now()).then(r=>r.ok?r.json():null).then(j=>{ if(j&&Array.isArray(j.leads)){ setMonitor(j); setMonitorAt(Date.now()); } }).catch(()=>{});
-  useEffect(()=>{ let alive=true; const tick=()=>{ if(alive) loadMonitor(); }; tick(); const id=setInterval(tick,60000); return ()=>{ alive=false; clearInterval(id); }; },[]);
+  // BROWSER on-demand scan — reproduce the CI sweep client-side with the user's Polygon key, so the
+  // MONITOR is always fresh WHEN VIEWED (GitHub cron is best-effort and was firing off-hours/stale).
+  // Scans the VETTED shortlist (all-boxes first, then by grade) capped for mobile speed, through a
+  // small concurrency pool; builds CI-identical records → buildReport → caches to localStorage.
+  const SCAN_CAP = 150, SCAN_CONC = 6;
+  const scanMonitor = async ()=>{
+    const key=(polyKey||"").trim();
+    if(!key){ setScanState({running:false,done:0,total:0,error:"Enter your Polygon key in the LIVE tab first — the browser scan fetches live 15-min bars with your key."}); return; }
+    if(scanRef.current) return;
+    const all=(contenders&&Array.isArray(contenders.contenders)?contenders.contenders:[]).filter(c=>c&&c.sym);
+    if(!all.length){ setScanState({running:false,done:0,total:0,error:"Contenders list isn't loaded yet — open the CONTENDERS tab once (it publishes contenders.json), then scan."}); return; }
+    // Priority: vetted all-boxes first, then A→B→C…, capped — so grounded names are always covered,
+    // and the remaining budget adds breadth for coil→pop / forming leads. (CI scans the full set.)
+    const gradeRank=g=>g==="A"?0:g==="B"?1:g==="C"?2:g==="D"?3:4;
+    const queue=all.slice().sort((a,b)=>((b.allBoxes?1:0)-(a.allBoxes?1:0))||(gradeRank(a.grade)-gradeRank(b.grade))).slice(0,SCAN_CAP);
+    scanRef.current=true;
+    setScanState({running:true,done:0,total:queue.length,error:null});
+    const records=[]; let done=0, withData=0, qi=0;
+    const worker=async()=>{
+      while(qi<queue.length){
+        const c=queue[qi++], sym=c.sym;
+        try{
+          const r=await polyFetchCandles(sym, "15", key);
+          const candles=(r&&r.candles)||[];
+          if(candles.length>=80){
+            const a=analyze(candles, sym, "Stocks", "Trend Following", 1.5, 2.0);
+            withData++;
+            const last=candles[candles.length-1];
+            const cb=a.convBreakout||null;
+            const cf=convergenceForming(candles)||{forming:false};
+            let forming={forming:false};
+            if(cf.forming){ const sb=candles[cf.formingStartIdx]||null; forming={forming:true,barsForming:cf.barsForming,tightness:cf.tightness,nearPinch:!!cf.nearPinch,startMs:(sb&&sb.time)||null,startDate:(sb&&sb.date)||null}; }
+            records.push({
+              sym, entity:c.entity||null, grade:c.grade||null, allBoxes:!!c.allBoxes,
+              price:a.entry, lastBarMs:(last&&last.time)||null, fresh:true,
+              conv: cb ? {detected:!!cb.detected, strength:cb.strength!=null?+(+cb.strength).toFixed(3):null} : {detected:false,strength:null},
+              forming,
+              patternEdge: a.convBreakoutTest && Number.isFinite(a.convBreakoutTest.edge) ? +(a.convBreakoutTest.edge*100).toFixed(3) : null,
+              engine: {signal:a.signal, score:a.score, confidence:a.confidence, entry:a.entry, sl:a.sl, tp1:a.tp1, rr:a.rr},
+            });
+          }
+        }catch(_){ /* thin / no-data / fetch error — skip this name silently */ }
+        done++; setScanState(s=>({...s,done}));
+      }
+    };
+    try{
+      await Promise.all(Array.from({length:Math.min(SCAN_CONC,queue.length)},()=>worker()));
+      const nowMs=Date.now(), etMin=etMinutesMs(nowMs), wd=etWeekdayMs(nowMs);
+      const session={weekday:wd, etMin, open: wd>=1&&wd<=5 && etMin>=590 && etMin<=960};
+      const report=buildReport({ generatedAt:new Date(nowMs).toISOString(), session, records, scanned:queue.length, withData, dataFresh:true });
+      report.source="browser";   // distinguishes the in-browser scan from the committed CI scan in the UI
+      setMonitor(report); setMonitorAt(nowMs);
+      try{ localStorage.setItem("sf_monitor_scan", JSON.stringify({scannedAt:nowMs, report})); }catch(_){}
+      setScanState({running:false,done:queue.length,total:queue.length,error:null});
+    }catch(e){ setScanState({running:false,done,total:queue.length,error:(e&&e.message)||"Scan failed."}); }
+    finally{ scanRef.current=false; }
+  };
+  // Mount: prefer a cached browser scan (the fresh, on-demand source); else fall back to the
+  // committed CI scan (cold start / no key). No 60s committed poll — it looked frozen and would
+  // clobber a browser scan; SCAN NOW + auto-scan-on-open are the refresh path now.
+  useEffect(()=>{ let alive=true;
+    try{ const c=JSON.parse((typeof localStorage!=="undefined"&&localStorage.getItem("sf_monitor_scan"))||"null"); if(c&&c.report&&Array.isArray(c.report.leads)){ if(alive){ setMonitor(c.report); setMonitorAt(c.scannedAt||Date.now()); } return ()=>{alive=false;}; } }catch(_){}
+    if(alive) loadMonitor();
+    return ()=>{ alive=false; };
+  },[]);
+  // Auto-scan when you open MONITOR with a key set and the last browser scan is stale (>10 min) —
+  // so the board is current the moment you look, without a manual click.
+  useEffect(()=>{
+    if(tab!=="monitor") return;
+    if(!(polyKey||"").trim() || scanRef.current) return;
+    const fresh = monitor && monitor.source==="browser" && (Date.now()-monitorAt)<10*60000;
+    if(!fresh) scanMonitor();
+  },[tab]);
   // From a MONITOR lead, jump to that name's CONTENDERS card (baseline + react-to-track) and scroll it into view.
   useEffect(()=>{
     if(tab!=="contenders"||!contenderFocus) return;
@@ -3487,17 +3636,21 @@ function App() {
                 <span style={lbl}>📡 MONITOR — capture setups across the contenders while they're happening</span>
                 <span style={{display:"flex",gap:6,alignItems:"center"}}>
                   <span style={{fontSize:9,fontWeight:800,letterSpacing:1,color:"#ffb74d",border:"1px solid #ffb74d55",borderRadius:3,padding:"2px 6px"}}>⏱ 15-MIN DELAYED</span>
-                  <button title="Re-fetch the latest committed scan" style={{...pill(false),marginBottom:0,marginRight:0,whiteSpace:"nowrap",color:"#26c6da",borderColor:"#26c6da99"}} onClick={()=>loadMonitor()}>↻ REFRESH</button>
+                  <button title="Scan the contenders RIGHT NOW in your browser with your Polygon key (15-min bars, ~20–40s). Always fresh — no schedule, no token, nothing to set up." disabled={scanState.running} style={{...pill(false),marginBottom:0,marginRight:0,whiteSpace:"nowrap",color:scanState.running?DIM:"#00e676",borderColor:scanState.running?"#33445566":"#00e67699",opacity:scanState.running?0.7:1,cursor:scanState.running?"default":"pointer"}} onClick={()=>scanMonitor()}>{scanState.running?("⏳ SCANNING "+scanState.done+"/"+scanState.total+"…"):"⚡ SCAN NOW"}</button>
+                  <button title="Load the latest committed CI scan (best-effort background sweep on main)" style={{...pill(false),marginBottom:0,marginRight:0,whiteSpace:"nowrap",color:"#26c6da",borderColor:"#26c6da99"}} onClick={()=>loadMonitor()}>☁ CI SCAN</button>
                 </span>
               </div>
               {monitor?(
                 <div style={{fontSize:11,color:"#cfd8dc",lineHeight:1.6,marginTop:6}}>
+                  <span style={{fontSize:9,fontWeight:800,letterSpacing:1,color:monitor.source==="browser"?"#00e676":"#26c6da",border:"1px solid "+(monitor.source==="browser"?"#00e67655":"#26c6da55"),borderRadius:3,padding:"1px 5px",marginRight:6}}>{monitor.source==="browser"?"⚡ YOUR BROWSER":"☁ CI SCAN"}</span>
                   {monitor.marketOpen?"Market OPEN — ":"Market CLOSED — "}scan as of <b>{new Date(monitor.generatedAt).toLocaleString()}</b>{(()=>{const m=Math.max(0,Math.round((Date.now()-new Date(monitor.generatedAt).getTime())/60000));return <span style={{color:m>20?"#ffb74d":FADE}}> ({m}m old)</span>;})()}
-                  {" · "}<b style={{color:"#26c6da"}}>{(monitor.counts&&monitor.counts.leads)||0}</b> leads ({(monitor.counts&&monitor.counts.grounded)||0} grounded · {(monitor.counts&&monitor.counts.buys)||0} BUY · {(monitor.counts&&monitor.counts.convergence)||0} coil→pop{(monitor.counts&&monitor.counts.forming)?(" · "+monitor.counts.forming+" ⏳ forming"):""}) over {monitor.withData||0}/{monitor.scanned||0} names scanned.<span style={{color:FADE}}> · auto-refreshes every 60s.</span>
+                  {" · "}<b style={{color:"#26c6da"}}>{(monitor.counts&&monitor.counts.leads)||0}</b> leads ({(monitor.counts&&monitor.counts.grounded)||0} grounded · {(monitor.counts&&monitor.counts.buys)||0} BUY · {(monitor.counts&&monitor.counts.convergence)||0} coil→pop{(monitor.counts&&monitor.counts.forming)?(" · "+monitor.counts.forming+" ⏳ forming"):""}) over {monitor.withData||0}/{monitor.scanned||0} names scanned.<span style={{color:FADE}}> · {monitor.source==="browser"?"scanned live in your browser — ⚡ SCAN NOW to refresh.":"committed background scan — press ⚡ SCAN NOW for a live in-browser sweep."}</span>
                 </div>
               ):(
-                <div style={{fontSize:11,color:FADE,lineHeight:1.6,marginTop:6}}>No scan published yet. The monitor runs every ~15 min during market hours (09:50–16:00 ET) once <code>contender-monitor.yml</code> is on <code>main</code>, committing <code>contender-monitor.json</code> here.</div>
+                <div style={{fontSize:11,color:FADE,lineHeight:1.6,marginTop:6}}>{(polyKey||"").trim()?<>Press <b style={{color:"#00e676"}}>⚡ SCAN NOW</b> to sweep the contenders live in your browser (15-min bars, ~20–40s) — always fresh, no schedule needed.</>:<>Add your Polygon key in the <b>LIVE</b> tab, then press <b style={{color:"#00e676"}}>⚡ SCAN NOW</b> to sweep the contenders live in your browser.</>} The background CI scan (<code>contender-monitor.json</code>) is a best-effort fallback.</div>
               )}
+              {scanState.error&&<div style={{fontSize:11,color:"#ff8a80",lineHeight:1.5,marginTop:6}}>⚠ {scanState.error}</div>}
+              {scanState.running&&<div style={{fontSize:11,color:"#26c6da",lineHeight:1.5,marginTop:6}}>Scanning the vetted shortlist live (15-min bars) — {scanState.done}/{scanState.total} names…</div>}
             </div>
             {monitor&&(
               <div style={{...card,borderLeft:"3px solid #ffb74d",background:"rgba(255,183,77,0.05)"}}>
@@ -3530,7 +3683,7 @@ function App() {
                     );
                   })}
                 </div>
-                <div style={{fontSize:9,color:FADE,lineHeight:1.5,marginTop:8}}>Leads are candidates for YOUR eyes, not proven signals — the intraday engine read is unproven and the coil→pop pattern loses universe-wide. <b>★ BASELINE →</b> opens the name's CONTENDERS card for the grade + react-to-track (🌟/👍); analyze it from there before acting.<br/><b style={{color:"#ffd740"}}>⏳ FORMING measured</b> (in-sample geometry, not profitability): on 15-min ~<b>47%</b> of forming flags break out — averaging <b>+2.2%</b> from the flag to the pop (median +1.7%) — while the ~53% that fizzle run ~<b>−1.6%</b>; on daily ~34% break out (+3.1% avg). Both resolve fast (a fizzle clears as quickly as a breakout). It's an early-warning with a small run-up when it works, never a proven edge.</div>
+                <div style={{fontSize:9,color:FADE,lineHeight:1.5,marginTop:8}}>Leads are candidates for YOUR eyes, not proven signals — the intraday engine read is unproven and the coil→pop pattern loses universe-wide. <b>★ BASELINE →</b> opens the name's CONTENDERS card for the grade + react-to-track (🌟/👍); analyze it from there before acting.<br/><b style={{color:"#ffd740"}}>⏳ FORMING measured</b> (in-sample geometry, not profitability): on 15-min ~<b>47%</b> of forming flags break out — averaging <b>+2.2%</b> from the flag to the pop (median +1.7%) — while the ~53% that fizzle run ~<b>−1.6%</b>; on daily ~34% break out (+3.1% avg). Both resolve fast (a fizzle clears as quickly as a breakout). It's an early-warning with a small run-up when it works, never a proven edge.<br/><b style={{color:"#ffb74d"}}>Volume (RVOL) measured:</b> it does <b>NOT</b> separate winners from fizzles — both pop on ~equal relative volume (1.6× vs 1.7×), so don't pre-screen the ⏳ list by volume. It DOES mark the bigger moves: heavy-volume pops (≥1.2×) ran ~+3.4% vs ~+1.2% for light — but that's partly mechanical (a big move IS a high-volume bar). Read the chart's RVOL coloring as conviction/size, not as a success filter.</div>
               </div>
             ):monitor&&(
               <div style={{...card,textAlign:"center",color:FADE,fontSize:12,padding:"30px 20px"}}>
@@ -3541,7 +3694,8 @@ function App() {
               <div style={{...card,textAlign:"center",padding:"36px 20px"}}>
                 <div style={{fontSize:34,marginBottom:8}}>📡</div>
                 <div style={{fontSize:13,fontWeight:800,letterSpacing:1,marginBottom:6}}>MONITOR STANDING BY</div>
-                <div style={{fontSize:11,color:FADE,lineHeight:1.6,maxWidth:520,margin:"0 auto"}}>Once the scheduled scan runs on <code>main</code> during market hours, this board lists every contender whose engine read or coil→pop setup is firing right now — grounded leads first — so you catch them as they form (within ~15 min on the delayed feed).</div>
+                <div style={{fontSize:11,color:FADE,lineHeight:1.6,maxWidth:540,margin:"0 auto"}}>Press <b style={{color:"#00e676"}}>⚡ SCAN NOW</b> and the board sweeps your vetted contenders live in your browser — listing every name whose engine read or coil→pop setup is firing right now, grounded leads first — so you catch them as they form (within ~15 min on the delayed feed). It scans the vetted shortlist (all-boxes first, capped at {SCAN_CAP} for speed); the background CI scan covers the full set when it runs.</div>
+                <button disabled={scanState.running} style={{...runBtn,width:"auto",padding:"10px 30px",marginTop:16,opacity:scanState.running?0.7:1}} onClick={()=>scanMonitor()}>{scanState.running?("⏳ SCANNING "+scanState.done+"/"+scanState.total+"…"):"⚡ SCAN NOW"}</button>
               </div>
             )}
             {monChart&&(
