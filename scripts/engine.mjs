@@ -788,6 +788,45 @@ export function convergenceEvents(bars, opts){
   return ev;
 }
 
+// ─── Research-only: the FIZZLE RATE of the FORMING stage — does a tightening ribbon actually
+// break out, or loosen back up? The timing study only measured coils that DID pop; this measures
+// the base rate. Walks the series mirroring the live FORMING flag (ribbon in the corridor ≤
+// formingMult×coilPct, in an uptrend, run length ≥ minFormingBars, not yet broken out) and, from
+// the bar each flag fires, resolves the episode to:
+//   • 'breakout' — cbDetectAt fired (the pop) before it left the corridor → CONVERTED
+//   • 'fizzle'   — the ribbon left the corridor / lost the uptrend with NO breakout
+//   • 'censored' — still forming at the end of data
+// One episode per run (no double-count). maxTightness = how close to the pinch it got (1 = at the
+// pinch) so conversion can be split by tightness. Pure; reuses maRibbon + cbDetectAt; not gated.
+export function convergenceFizzle(bars, opts){
+  const P=cbOpts(opts);
+  const formingPct=(opts&&opts.formingPct!=null)?opts.formingPct:P.coilPct*((opts&&opts.formingMult)||2);
+  const minBars=(opts&&opts.minFormingBars!=null)?opts.minFormingBars:3;
+  const episodes=[];
+  const need=P.trendFilter?50+P.trendLookback:21+P.slopeLookback;
+  if(!bars||bars.length<need) return { episodes, flags:0, converted:0, fizzled:0, censored:0 };
+  const cl=bars.map(d=>d.close), R=maRibbon(cl);
+  const spreadPct=j=>(R.s5[j]==null||R.s10[j]==null||R.comp[j]==null)?null
+    :(Math.max(R.s5[j],R.s10[j],R.comp[j])-Math.min(R.s5[j],R.s10[j],R.comp[j]))/cl[j];
+  const trendOKAt=i=>{ if(!P.trendFilter) return true; const j=i-P.trendLookback; return R.s50[i]!=null&&j>=0&&R.s50[j]!=null&&cl[i]>R.s50[i]&&(R.s50[i]-R.s50[j])/R.s50[j]>=P.trendMinSlope; };
+  const startIdx=Math.max(20+P.slopeLookback, P.trendFilter?49+P.trendLookback:0);
+  let runLen=0, flagBar=-1, minSp=Infinity;
+  const tight=s=>parseFloat(Math.max(0,Math.min(1, 1-(s-P.coilPct)/Math.max(1e-9,formingPct-P.coilPct))).toFixed(2));
+  const close=(outcome,resBar)=>{ episodes.push({ flagIdx:flagBar, date:(bars[flagBar]&&bars[flagBar].date)||null,
+    outcome, resBars:resBar-flagBar, maxTightness:tight(minSp) }); runLen=0; flagBar=-1; minSp=Infinity; };
+  for(let i=startIdx;i<bars.length;i++){
+    if(cbDetectAt(R,cl,i,P).detected){ if(flagBar>=0) close("breakout",i); else { runLen=0; minSp=Infinity; } continue; }
+    const sp=spreadPct(i), ok=sp!=null&&sp<=formingPct&&trendOKAt(i);
+    if(ok){ runLen++; if(sp<minSp) minSp=sp; if(runLen===minBars) flagBar=i; }
+    else { if(flagBar>=0) close("fizzle",i); else { runLen=0; minSp=Infinity; } }
+  }
+  if(flagBar>=0) close("censored",bars.length-1);
+  return { episodes, flags:episodes.length,
+    converted:episodes.filter(e=>e.outcome==="breakout").length,
+    fizzled:episodes.filter(e=>e.outcome==="fizzle").length,
+    censored:episodes.filter(e=>e.outcome==="censored").length };
+}
+
 // ─── Shared signal logic: weighted votes + confluence + conflict penalty ─────
 export function computeSignal(ctx, extraVotes=[], opts={}) {
   const {R,M,s5,s10,s20,s50,trend,S,B,last,pats,div,volSig,ADX,OBV,VWAP} = ctx;

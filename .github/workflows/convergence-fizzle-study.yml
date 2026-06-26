@@ -1,0 +1,52 @@
+name: Convergence fizzle-rate study (research, on-demand)
+
+# The base rate the timing study couldn't measure: of every FORMING flag (the ⏳ early-warning the
+# monitor shows), what fraction actually BREAKS OUT vs FIZZLES (loosens back up, no pop)? = the
+# precision/noise of the ⏳ list, plus whether a tighter pinch raises the hit rate. Summary printed
+# to the run log + uploaded as an artifact. In-sample geometry only (pattern edge ≈ −0.71%, a
+# measured loser). Manual dispatch. Requires POLYGON_API_KEY.
+
+on:
+  workflow_dispatch:
+    inputs:
+      topN:
+        description: "Universe size (CF_TOP_N), dollar-volume ranked"
+        required: false
+        default: "120"
+      resolution:
+        description: "Bar resolution (CF_RESOLUTION): 15min, 30min, 1h, 1day"
+        required: false
+        default: "15min"
+      lookbackDays:
+        description: "History window in days (CF_LOOKBACK_DAYS)"
+        required: false
+        default: "60"
+
+permissions:
+  contents: read
+
+jobs:
+  study:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 20
+      - name: Run offline unit tests
+        run: node --test scripts/*.test.mjs
+      - name: Run convergence fizzle-rate study
+        env:
+          POLYGON_API_KEY: ${{ secrets.POLYGON_API_KEY }}
+          POLYGON_PACE_MS: "0"
+          CF_TOP_N: ${{ github.event.inputs.topN }}
+          CF_RESOLUTION: ${{ github.event.inputs.resolution }}
+          CF_LOOKBACK_DAYS: ${{ github.event.inputs.lookbackDays }}
+        run: node scripts/convergence-fizzle-study.mjs
+      - name: Upload convergence-fizzle-study.json
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: convergence-fizzle-study
+          path: convergence-fizzle-study.json
+          if-no-files-found: warn
