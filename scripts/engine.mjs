@@ -796,6 +796,23 @@ export function convergenceEvents(bars, opts){
 //   • 'breakout' — cbDetectAt fired (the pop) before it left the corridor → CONVERTED
 //   • 'fizzle'   — the ribbon left the corridor / lost the uptrend with NO breakout
 //   • 'censored' — still forming at the end of data
+// ─── Volume moving-average + RELATIVE volume ("the SFA12 for volume"). vma[i] = the n-bar mean
+// of volume; rvol[i] = volume[i] ÷ vma[i] = how heavy a bar traded vs its own normal (1 = average,
+// >1.5 = a conviction bar). RVOL is the decision-useful number — it reads the conviction behind a
+// move regardless of the symbol's absolute volume. Pure, O(N); used by the chart overlay + studies.
+export function relVolSeries(bars, period){
+  const n = (period && period > 0) ? period : 20;
+  const vma = [], rvol = []; let sum = 0;
+  for(let i=0;i<((bars&&bars.length)||0);i++){
+    const v = (bars[i] && +bars[i].volume) || 0;
+    sum += v; if(i>=n) sum -= (bars[i-n] && +bars[i-n].volume) || 0;
+    const m = i>=n-1 ? sum/n : null;
+    vma[i] = m;
+    rvol[i] = (m && m>0) ? +(v/m).toFixed(3) : null;
+  }
+  return { vma, rvol };
+}
+
 // One episode per run (no double-count). maxTightness = how close to the pinch it got (1 = at the
 // pinch) so conversion can be split by tightness. Pure; reuses maRibbon + cbDetectAt; not gated.
 export function convergenceFizzle(bars, opts){
@@ -805,7 +822,7 @@ export function convergenceFizzle(bars, opts){
   const episodes=[];
   const need=P.trendFilter?50+P.trendLookback:21+P.slopeLookback;
   if(!bars||bars.length<need) return { episodes, flags:0, converted:0, fizzled:0, censored:0 };
-  const cl=bars.map(d=>d.close), R=maRibbon(cl);
+  const cl=bars.map(d=>d.close), R=maRibbon(cl), RV=relVolSeries(bars,20).rvol;
   const spreadPct=j=>(R.s5[j]==null||R.s10[j]==null||R.comp[j]==null)?null
     :(Math.max(R.s5[j],R.s10[j],R.comp[j])-Math.min(R.s5[j],R.s10[j],R.comp[j]))/cl[j];
   const trendOKAt=i=>{ if(!P.trendFilter) return true; const j=i-P.trendLookback; return R.s50[i]!=null&&j>=0&&R.s50[j]!=null&&cl[i]>R.s50[i]&&(R.s50[i]-R.s50[j])/R.s50[j]>=P.trendMinSlope; };
@@ -813,7 +830,8 @@ export function convergenceFizzle(bars, opts){
   let runLen=0, flagBar=-1, minSp=Infinity;
   const tight=s=>parseFloat(Math.max(0,Math.min(1, 1-(s-P.coilPct)/Math.max(1e-9,formingPct-P.coilPct))).toFixed(2));
   const close=(outcome,resBar)=>{ episodes.push({ flagIdx:flagBar, date:(bars[flagBar]&&bars[flagBar].date)||null,
-    outcome, resBars:resBar-flagBar, maxTightness:tight(minSp) }); runLen=0; flagBar=-1; minSp=Infinity; };
+    outcome, resBars:resBar-flagBar, movePct:(flagBar>=0&&cl[flagBar])?parseFloat(((cl[resBar]-cl[flagBar])/cl[flagBar]).toFixed(5)):null,
+    rvol:(RV[resBar]!=null?RV[resBar]:null), rvolFlag:(RV[flagBar]!=null?RV[flagBar]:null), maxTightness:tight(minSp) }); runLen=0; flagBar=-1; minSp=Infinity; };
   for(let i=startIdx;i<bars.length;i++){
     if(cbDetectAt(R,cl,i,P).detected){ if(flagBar>=0) close("breakout",i); else { runLen=0; minSp=Infinity; } continue; }
     const sp=spreadPct(i), ok=sp!=null&&sp<=formingPct&&trendOKAt(i);

@@ -26,7 +26,9 @@ export function conversionRate(conv, fizz){
   return resolved ? +(conv / resolved).toFixed(4) : null;
 }
 const median = arr => { const v = (arr || []).filter(Number.isFinite).slice().sort((a, b) => a - b); return v.length ? quantile(v, 0.5) : null; };
+const mean = arr => { const v = (arr || []).filter(Number.isFinite); return v.length ? +(v.reduce((a, x) => a + x, 0) / v.length).toFixed(5) : null; };
 const pct = v => v != null ? (v * 100).toFixed(1) + "%" : "—";
+const spct = v => v != null ? ((v >= 0 ? "+" : "") + (v * 100).toFixed(2) + "%") : "—";
 
 async function main(){
   const key = process.env.POLYGON_API_KEY || process.env.POLYGON_KEY || "";
@@ -48,6 +50,9 @@ async function main(){
 
   let flags = 0, converted = 0, fizzled = 0, censored = 0, withData = 0, skipped = 0;
   const convRes = [], fizzRes = [];
+  const convMove = [], fizzMove = [];   // price move % from the FORMING flag to resolution
+  const convRvol = [], fizzRvol = [];   // RVOL at the resolution bar (the pop's volume conviction)
+  const heavyMove = [], lightMove = []; // breakout move split by RVOL@pop (heavy ≥1.2× vs light)
   // Split conversion by how tight the squeeze got — does demanding a tighter pinch raise the hit rate?
   const byTight = { tight: { conv: 0, fizz: 0 }, loose: { conv: 0, fizz: 0 } }; // tight = maxTightness ≥ 0.5
 
@@ -61,8 +66,10 @@ async function main(){
       const f = convergenceFizzle(used, { trendFilter: true });
       flags += f.flags; converted += f.converted; fizzled += f.fizzled; censored += f.censored;
       for(const e of f.episodes){
-        if(e.outcome === "breakout") convRes.push(e.resBars);
-        else if(e.outcome === "fizzle") fizzRes.push(e.resBars);
+        if(e.outcome === "breakout"){ convRes.push(e.resBars); if(Number.isFinite(e.movePct)) convMove.push(e.movePct);
+          if(Number.isFinite(e.rvol)){ convRvol.push(e.rvol); if(Number.isFinite(e.movePct)) (e.rvol >= 1.2 ? heavyMove : lightMove).push(e.movePct); } }
+        else if(e.outcome === "fizzle"){ fizzRes.push(e.resBars); if(Number.isFinite(e.movePct)) fizzMove.push(e.movePct);
+          if(Number.isFinite(e.rvol)) fizzRvol.push(e.rvol); }
         if(e.outcome !== "censored"){
           const b = e.maxTightness >= 0.5 ? byTight.tight : byTight.loose;
           if(e.outcome === "breakout") b.conv++; else b.fizz++;
@@ -83,6 +90,20 @@ async function main(){
     flags, converted, fizzled, censored,
     conversionRate: overall,                                   // breakouts ÷ (breakouts + fizzles)
     medianBarsToBreakout: median(convRes), medianBarsToFizzle: median(fizzRes),
+    // Price move % from the FORMING flag bar to the breakout (the run-up you'd ride by entering EARLY,
+    // at the forming flag, vs waiting for the pop). Fizzle move shown for contrast (what you avoid).
+    moveFormingToBreakoutPct: { mean: mean(convMove), median: median(convMove) },
+    // VOLUME co-filter (the hypothesis: a coil that pops on heavy volume is the real breakout).
+    // RVOL = relative volume at the resolution bar. If breakout RVOL >> fizzle RVOL, volume separates
+    // the winners; if heavy-RVOL pops also run further, RVOL is a usable filter for the ⏳ list.
+    volumeAtResolution: {
+      meanRvolBreakout: mean(convRvol), meanRvolFizzle: mean(fizzRvol),
+      breakoutMoveByRvol: {
+        heavy_ge_1_2: { n: heavyMove.length, meanMovePct: mean(heavyMove) },
+        light_lt_1_2: { n: lightMove.length, meanMovePct: mean(lightMove) },
+      },
+    },
+    moveFormingToFizzlePct:   { mean: mean(fizzMove), median: median(fizzMove) },
     conversionByTightness: {
       tight_ge_0_5: { conv: byTight.tight.conv, fizz: byTight.tight.fizz, rate: conversionRate(byTight.tight.conv, byTight.tight.fizz) },
       loose_lt_0_5: { conv: byTight.loose.conv, fizz: byTight.loose.fizz, rate: conversionRate(byTight.loose.conv, byTight.loose.fizz) },
@@ -98,6 +119,9 @@ async function main(){
 
   console.log(`\nFlags: ${flags} (${converted} breakout · ${fizzled} fizzle · ${censored} censored) over ${withData} names (${skipped} skipped).`);
   console.log(`CONVERSION RATE (breakout ÷ resolved): ${pct(overall)}  —  median ${median(convRes)} bars to breakout${clk(median(convRes))}, ${median(fizzRes)} bars to fizzle${clk(median(fizzRes))}`);
+  console.log(`MOVE forming→breakout: mean ${spct(mean(convMove))}, median ${spct(median(convMove))}  (vs forming→fizzle mean ${spct(mean(fizzMove))})`);
+  const xv = v => v != null ? v.toFixed(2) + "×" : "—";
+  console.log(`RVOL@pop — breakout ${xv(mean(convRvol))} vs fizzle ${xv(mean(fizzRvol))}  ·  breakout move heavy(≥1.2×) ${spct(mean(heavyMove))} (n=${heavyMove.length}) vs light ${spct(mean(lightMove))} (n=${lightMove.length})`);
   console.log(`By tightness — TIGHT(≥0.5): ${pct(out.conversionByTightness.tight_ge_0_5.rate)} (${byTight.tight.conv}/${byTight.tight.conv + byTight.tight.fizz})  ·  LOOSE(<0.5): ${pct(out.conversionByTightness.loose_lt_0_5.rate)} (${byTight.loose.conv}/${byTight.loose.conv + byTight.loose.fizz})`);
   console.log(`Wrote convergence-fizzle-study.json.`);
 }
