@@ -1,6 +1,6 @@
 {
   "version": 1,
-  "updatedAt": "2026-06-25T09:59:50.421Z",
+  "updatedAt": "2026-06-26T10:30:33.361Z",
   "policy": {
     "promote": {
       "minTrades": 10,
@@ -646,6 +646,30 @@
       "history": [
         {
           "at": "2026-06-24T10:28:28.791Z",
+          "from": null,
+          "to": "candidate",
+          "reason": "registered"
+        }
+      ]
+    },
+    "conv-grounded-on": {
+      "state": "candidate",
+      "since": "2026-06-26T10:30:33.361Z",
+      "history": [
+        {
+          "at": "2026-06-26T10:30:33.361Z",
+          "from": null,
+          "to": "candidate",
+          "reason": "registered"
+        }
+      ]
+    },
+    "conv-grounded-off": {
+      "state": "candidate",
+      "since": "2026-06-26T10:30:33.361Z",
+      "history": [
+        {
+          "at": "2026-06-26T10:30:33.361Z",
           "from": null,
           "to": "candidate",
           "reason": "registered"
