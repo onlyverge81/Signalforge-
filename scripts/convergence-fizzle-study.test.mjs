@@ -31,12 +31,16 @@ test("convergenceFizzle: a coil that pops is CONVERTED (breakout), never a fizzl
   const f = convergenceFizzle(genTrendCoilBreak(), { trendFilter: true });
   assert.ok(f.flags >= 1, "the tightening coil should raise a FORMING flag");
   assert.ok(f.converted >= 1, "and it should resolve as a breakout");
-  // every episode carries a valid outcome + a 0..1 maxTightness
+  // every episode carries a valid outcome, a 0..1 maxTightness, and a finite forming→resolution move
   for(const e of f.episodes){
     assert.ok(["breakout", "fizzle", "censored"].includes(e.outcome));
     assert.ok(e.maxTightness >= 0 && e.maxTightness <= 1);
     assert.ok(e.resBars >= 0);
+    assert.ok(Number.isFinite(e.movePct), "records the price move from the flag to resolution");
   }
+  // the coil rose from the flag into the breakout → a non-negative forming→breakout move
+  const bk = f.episodes.find(e => e.outcome === "breakout");
+  assert.ok(bk && bk.movePct >= 0, "forming→breakout move is the run-up captured by entering early");
 });
 
 test("convergenceFizzle: a coil that loosens/reverses with no pop is a FIZZLE", () => {

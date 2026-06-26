@@ -813,7 +813,7 @@ export function convergenceFizzle(bars, opts){
   let runLen=0, flagBar=-1, minSp=Infinity;
   const tight=s=>parseFloat(Math.max(0,Math.min(1, 1-(s-P.coilPct)/Math.max(1e-9,formingPct-P.coilPct))).toFixed(2));
   const close=(outcome,resBar)=>{ episodes.push({ flagIdx:flagBar, date:(bars[flagBar]&&bars[flagBar].date)||null,
-    outcome, resBars:resBar-flagBar, maxTightness:tight(minSp) }); runLen=0; flagBar=-1; minSp=Infinity; };
+    outcome, resBars:resBar-flagBar, movePct:(flagBar>=0&&cl[flagBar])?parseFloat(((cl[resBar]-cl[flagBar])/cl[flagBar]).toFixed(5)):null, maxTightness:tight(minSp) }); runLen=0; flagBar=-1; minSp=Infinity; };
   for(let i=startIdx;i<bars.length;i++){
     if(cbDetectAt(R,cl,i,P).detected){ if(flagBar>=0) close("breakout",i); else { runLen=0; minSp=Infinity; } continue; }
     const sp=spreadPct(i), ok=sp!=null&&sp<=formingPct&&trendOKAt(i);
