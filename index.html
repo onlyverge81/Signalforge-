@@ -3491,7 +3491,7 @@ function App() {
                         {l.grounded&&<span style={{fontSize:9,fontWeight:800,letterSpacing:1,color:"#00e676",border:"1px solid #00e67666",borderRadius:3,padding:"1px 5px"}}>⭐ GROUNDED</span>}
                         <span style={{fontSize:11,fontWeight:800,color:vc}}>{l.engine?l.engine.signal:"—"}</span>
                         {l.conv&&l.conv.detected&&<span style={{fontSize:10,fontWeight:800,color:"#26c6da",border:"1px solid #26c6da66",borderRadius:3,padding:"1px 5px"}}>coil→pop BREAKOUT{l.conv.strength!=null?(" "+Math.round(l.conv.strength*100)+"%"):""}</span>}
-                        {l.stage==="FORMING"&&l.forming&&<span title={"Ribbon tightening "+(l.forming.barsForming||0)+" bars; ~1 bar to pop once it pinches (15-min). Early-warning, not a buy."} style={{fontSize:10,fontWeight:800,color:"#ffd740",border:"1px solid #ffd74066",borderRadius:3,padding:"1px 5px"}}>⏳ FORMING{l.forming.tightness!=null?(" "+Math.round(l.forming.tightness*100)+"%"):""}</span>}
+                        {l.stage==="FORMING"&&l.forming&&<span title={"Ribbon tightening "+(l.forming.barsForming||0)+" bars. Measured (15-min, in-sample): ~47% of forming flags break out, averaging +2.2% from here to the pop; the ~53% that fizzle run ~−1.6%. Early-warning, not a buy."} style={{fontSize:10,fontWeight:800,color:"#ffd740",border:"1px solid #ffd74066",borderRadius:3,padding:"1px 5px"}}>⏳ FORMING{l.forming.tightness!=null?(" "+Math.round(l.forming.tightness*100)+"%"):""}</span>}
                         <span style={{flex:1,minWidth:120,fontSize:10,color:FADE,lineHeight:1.4}}>{(l.reasons||[]).join(" · ")}</span>
                         <span style={{fontSize:10,color:DIM}}>{l.price!=null?("$"+(+l.price).toFixed(2)):""}</span>
                         <div style={{display:"flex",flexDirection:"column",gap:4,alignItems:"stretch"}}>
@@ -3502,7 +3502,7 @@ function App() {
                     );
                   })}
                 </div>
-                <div style={{fontSize:9,color:FADE,lineHeight:1.5,marginTop:8}}>Leads are candidates for YOUR eyes, not proven signals — the intraday engine read is unproven and the coil→pop pattern loses universe-wide. <b>★ BASELINE →</b> opens the name's CONTENDERS card for the grade + react-to-track (🌟/👍); analyze it from there before acting.</div>
+                <div style={{fontSize:9,color:FADE,lineHeight:1.5,marginTop:8}}>Leads are candidates for YOUR eyes, not proven signals — the intraday engine read is unproven and the coil→pop pattern loses universe-wide. <b>★ BASELINE →</b> opens the name's CONTENDERS card for the grade + react-to-track (🌟/👍); analyze it from there before acting.<br/><b style={{color:"#ffd740"}}>⏳ FORMING measured</b> (in-sample geometry, not profitability): on 15-min ~<b>47%</b> of forming flags break out — averaging <b>+2.2%</b> from the flag to the pop (median +1.7%) — while the ~53% that fizzle run ~<b>−1.6%</b>; on daily ~34% break out (+3.1% avg). Both resolve fast (a fizzle clears as quickly as a breakout). It's an early-warning with a small run-up when it works, never a proven edge.</div>
               </div>
             ):monitor&&(
               <div style={{...card,textAlign:"center",color:FADE,fontSize:12,padding:"30px 20px"}}>
