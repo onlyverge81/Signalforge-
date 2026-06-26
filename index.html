@@ -3391,7 +3391,7 @@ function App() {
                         <span style={{fontSize:10,color:DIM}}>{l.price!=null?("$"+(+l.price).toFixed(2)):""}</span>
                         <div style={{display:"flex",flexDirection:"column",gap:4,alignItems:"stretch"}}>
                           <button title="Open this name's CONTENDERS baseline card — see the grade & react (🌟/👍) to start tracking it" style={{...pill(false),marginBottom:0,marginRight:0,whiteSpace:"nowrap",color:"#26c6da",borderColor:"#26c6da99"}} onClick={()=>{setContenderFocus(l.sym);setTab("contenders");}}>★ BASELINE →</button>
-                          {l.conv&&l.conv.detected&&<button title="Load this name's 15-min chart and mark where the convergence coil started" style={{...pill(false),marginBottom:0,marginRight:0,whiteSpace:"nowrap",color:"#ffd740",borderColor:"#ffd74099"}} onClick={()=>loadMonChart(l.sym)}>📈 SETUP CHART</button>}
+                          <button title="Load this name's 15-min chart (marks the convergence coil if one fired)" style={{...pill(false),marginBottom:0,marginRight:0,whiteSpace:"nowrap",color:"#ffd740",borderColor:"#ffd74099"}} onClick={()=>loadMonChart(l.sym)}>📈 SETUP CHART</button>
                         </div>
                       </div>
                     );
@@ -3414,7 +3414,7 @@ function App() {
             {monChart&&(
               <div style={{...card,borderLeft:"3px solid #ffd740"}}>
                 <div style={{display:"flex",justifyContent:"space-between",alignItems:"baseline",flexWrap:"wrap",gap:8}}>
-                  <span style={lbl}>📈 {monChart.sym} — SETUP CHART · 15-min · ⚡ convergence start marked</span>
+                  <span style={lbl}>📈 {monChart.sym} — SETUP CHART · 15-min{monChart.convStartIdx!=null?" · ⚡ convergence start marked":""}</span>
                   <span style={{display:"flex",gap:6,alignItems:"center"}}>
                     <span style={{fontSize:9,fontWeight:800,letterSpacing:1,color:"#ffb74d",border:"1px solid #ffb74d55",borderRadius:3,padding:"2px 6px"}}>⏱ 15-MIN DELAYED</span>
                     <button style={{...pill(false),marginBottom:0,marginRight:0,color:DIM}} onClick={()=>setMonChart(null)}>✕ CLOSE</button>
