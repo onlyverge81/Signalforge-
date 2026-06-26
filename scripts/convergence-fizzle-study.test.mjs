@@ -1,7 +1,18 @@
 import { test } from "node:test";
 import assert from "node:assert/strict";
-import { convergenceFizzle } from "./engine.mjs";
+import { convergenceFizzle, relVolSeries } from "./engine.mjs";
 import { conversionRate } from "./convergence-fizzle-study.mjs";
+
+test("relVolSeries: n-bar volume average + relative volume (vol ÷ avg)", () => {
+  const bars = Array.from({ length: 30 }, () => ({ date: "d", open: 1, high: 1, low: 1, close: 1, volume: 100 }));
+  bars[25].volume = 300;                                   // a conviction spike
+  const { vma, rvol } = relVolSeries(bars, 5);
+  assert.equal(vma[2], null);                              // warmup: i < n-1
+  assert.equal(vma[10], 100);                              // steady average
+  assert.equal(rvol[10], 1);                               // an average bar reads 1.0×
+  assert.ok(rvol[25] > 1.5, "the spike bar reads heavy relative volume");
+  assert.equal(relVolSeries([], 20).rvol.length, 0);       // empty-safe
+});
 
 function push(rows, c){ const close = +c.toFixed(4); rows.push({ date: "2025-01-01", open: close, high: close + 0.2, low: close - 0.2, close, volume: 1e6 }); }
 // Uptrend → long tight coil → UPWARD breakout (the coil CONVERTS).
@@ -37,6 +48,8 @@ test("convergenceFizzle: a coil that pops is CONVERTED (breakout), never a fizzl
     assert.ok(e.maxTightness >= 0 && e.maxTightness <= 1);
     assert.ok(e.resBars >= 0);
     assert.ok(Number.isFinite(e.movePct), "records the price move from the flag to resolution");
+    assert.ok(e.rvol === null || Number.isFinite(e.rvol), "records RVOL at the pop (volume conviction)");
+    assert.ok(e.rvolFlag === null || Number.isFinite(e.rvolFlag), "records RVOL at the flag");
   }
   // the coil rose from the flag into the breakout → a non-negative forming→breakout move
   const bk = f.episodes.find(e => e.outcome === "breakout");
