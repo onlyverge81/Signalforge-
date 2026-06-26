@@ -460,6 +460,34 @@ function backtestPattern(data, opts){
     edge:(sM!=null&&bM!=null)?sM-bM:null };
 }
 
+// ─── Research-only: enumerate every "Uptrend Convergence" breakout in a series, with TIMING.
+// For each detected breakout it records two gaps so the formation timeline can be MEASURED on
+// real history (not assumed): formingBars = how many consecutive bars the ribbon was already
+// tight (spread ≤ formingPct, the squeeze developing) up to the pinch; barsSinceCoil = the
+// pinch→breakout gap. Reuses the EXACT live detector (maRibbon + cbDetectAt) so the measured
+// timing matches what the monitor flags. Pure; not wired into any signal/gate.
+function convergenceEvents(bars, opts){
+  const P=cbOpts(opts);
+  const need=P.trendFilter?50+P.trendLookback:21+P.slopeLookback;
+  if(!bars||bars.length<need) return [];
+  const cl=bars.map(d=>d.close), R=maRibbon(cl);
+  const formingPct=(opts&&opts.formingPct!=null)?opts.formingPct:P.coilPct*2; // "forming corridor": ribbon already tight-ish
+  const spreadPct=j=>(R.s5[j]==null||R.s10[j]==null||R.comp[j]==null)?null
+    :(Math.max(R.s5[j],R.s10[j],R.comp[j])-Math.min(R.s5[j],R.s10[j],R.comp[j]))/cl[j];
+  const ev=[];
+  const start=Math.max(20+P.slopeLookback, P.trendFilter?49+P.trendLookback:0);
+  for(let i=start;i<bars.length;i++){
+    const d=cbDetectAt(R,cl,i,P);
+    if(!d.detected) continue;
+    const coilIdx=i-d.barsSinceCoil;
+    let formingBars=0;
+    for(let j=coilIdx;j>=0;j--){ const sp=spreadPct(j); if(sp!=null&&sp<=formingPct) formingBars++; else break; }
+    ev.push({ idx:i, date:(bars[i]&&bars[i].date)||null, barsSinceCoil:d.barsSinceCoil, formingBars,
+              coilSpreadPct:d.coilSpreadPct, breakoutGapPct:d.breakoutGapPct, strength:d.strength });
+  }
+  return ev;
+}
+
 // ─── Shared signal logic: weighted votes + confluence + conflict penalty ─────
 // Used by BOTH analyze() and scoreAt() so live signals and backtest stay identical.
 // Each indicator casts a directional vote (+1 bullish / -1 bearish / 0 neutral)

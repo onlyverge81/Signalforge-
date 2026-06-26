@@ -1,0 +1,57 @@
+name: Convergence timing study (research, on-demand)
+
+# Measure, on REAL Polygon history, how long the "Uptrend Convergence" setup takes through its
+# phases — FORMING → PINCH (how long the ribbon was already tight) and PINCH → BREAKOUT (the pop
+# gap, capped at coilLookback) — so the forming-stage detector can be calibrated to data. The
+# summary is printed to the run log and uploaded as an artifact. In-sample geometry timing only
+# (the pattern's edge is ≈ −0.71% — a measured loser). Manual dispatch. Requires POLYGON_API_KEY.
+
+on:
+  workflow_dispatch:
+    inputs:
+      topN:
+        description: "Universe size (CT_TOP_N), dollar-volume ranked"
+        required: false
+        default: "120"
+      resolution:
+        description: "Bar resolution (CT_RESOLUTION): 15min, 30min, 1h, 1day"
+        required: false
+        default: "15min"
+      lookbackDays:
+        description: "History window in days (CT_LOOKBACK_DAYS)"
+        required: false
+        default: "60"
+      coilLookback:
+        description: "Pinch→breakout cap in bars (CT_COIL_LOOKBACK)"
+        required: false
+        default: "8"
+
+permissions:
+  contents: read
+
+jobs:
+  study:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 20
+      - name: Run offline unit tests
+        run: node --test scripts/*.test.mjs
+      - name: Run convergence timing study
+        env:
+          POLYGON_API_KEY: ${{ secrets.POLYGON_API_KEY }}
+          POLYGON_PACE_MS: "0"
+          CT_TOP_N: ${{ github.event.inputs.topN }}
+          CT_RESOLUTION: ${{ github.event.inputs.resolution }}
+          CT_LOOKBACK_DAYS: ${{ github.event.inputs.lookbackDays }}
+          CT_COIL_LOOKBACK: ${{ github.event.inputs.coilLookback }}
+        run: node scripts/convergence-timing-study.mjs
+      - name: Upload convergence-timing-study.json
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: convergence-timing-study
+          path: convergence-timing-study.json
+          if-no-files-found: warn
