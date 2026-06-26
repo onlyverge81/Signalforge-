@@ -84,3 +84,34 @@ test("buildReport: empty scan still yields a valid, honest report (no throw)", (
   assert.equal(rep.marketOpen, false);
   assert.ok(rep.caveats.length >= 3);
 });
+
+// ── FORMING stage — the tightening squeeze caught BEFORE the breakout ────────
+test("classifyLead: a FORMING squeeze (no BUY, no breakout) is a lead, stage FORMING, not grounded", () => {
+  const r = classifyLead({ engine: { signal: "HOLD" }, allBoxes: false, conv: { detected: false }, forming: { forming: true, barsForming: 6, tightness: 0.7 } });
+  assert.equal(r.lead, true);
+  assert.equal(r.stage, "FORMING");
+  assert.equal(r.grounded, false);
+  assert.ok(r.reasons.some(x => /FORMING/.test(x)));
+});
+test("classifyLead: once it has BROKEN OUT, the stage is BREAKOUT (forming is suppressed)", () => {
+  const r = classifyLead({ engine: { signal: "HOLD" }, allBoxes: false, conv: { detected: true, strength: 0.5 }, forming: { forming: true, barsForming: 6 } });
+  assert.equal(r.stage, "BREAKOUT");
+});
+test("rankLeads: a confirmed BREAKOUT outranks a still-FORMING squeeze", () => {
+  const recs = [
+    { sym: "FRM", lead: true, grounded: false, engine: { signal: "HOLD" }, stage: "FORMING",  forming: { forming: true, tightness: 0.9 } },
+    { sym: "BRK", lead: true, grounded: false, engine: { signal: "HOLD" }, stage: "BREAKOUT", conv: { detected: true, strength: 0.4 } },
+  ];
+  assert.deepEqual(rankLeads(recs).map(r => r.sym), ["BRK", "FRM"]);
+});
+test("buildReport: counts forming-only names and surfaces them as ⏳ FORMING leads", () => {
+  const records = [
+    { sym: "A", allBoxes: true,  engine: { signal: "BUY"  }, conv: { detected: false } },                                    // grounded BUY
+    { sym: "F", allBoxes: false, engine: { signal: "HOLD" }, conv: { detected: false }, forming: { forming: true, barsForming: 5, tightness: 0.6 } }, // forming-only
+  ];
+  const rep = buildReport({ generatedAt: "t", session: { open: true, weekday: 3, etMin: 600 }, records, scanned: 2, withData: 2 });
+  assert.equal(rep.counts.forming, 1);
+  assert.equal(rep.counts.leads, 2);
+  const f = rep.leads.find(l => l.sym === "F");
+  assert.ok(f && f.stage === "FORMING");
+});
