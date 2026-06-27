@@ -467,6 +467,23 @@ test("buildEntry: the convergence (coil→pop) trigger tag is attached as a bool
   if (c) { assert.equal(typeof c.tags.convergence, "boolean"); assert.ok(["OPEN", "OBSERVATION"].includes(c.status)); }
 });
 
+test("buildEntry: breadth (show-of-hands) labels are attached and are label-only (never change the trade decision)", () => {
+  const settled = genUp(120);
+  const e = buildEntry({ sym: "TST", settled, fundaDB: null, loggedAt: "2026-06-11T22:00:00Z" });
+  assert.ok(e);
+  // breadthRatio is the bullish share of active votes (a number in [0,1] or null); breadthQuorum and
+  // breadthVolConfirmed are always booleans. All ride alongside the gate without affecting it.
+  assert.ok(e.tags.breadthRatio === null || (e.tags.breadthRatio >= 0 && e.tags.breadthRatio <= 1));
+  assert.equal(typeof e.tags.breadthQuorum, "boolean");
+  assert.equal(typeof e.tags.breadthVolConfirmed, "boolean");
+  // Structural invariants: vol-confirmed can only be true when the quorum holds.
+  if (e.tags.breadthVolConfirmed) assert.equal(e.tags.breadthQuorum, true);
+  // The labels must not change the decision — status is the gate's alone.
+  const gate = forwardGates({ signal: e.signal, entry: e.entry, tp1: e.tp1,
+    stats: null, suspect: false, costPerTrade: 0.1, longOnly: true });
+  assert.equal(e.status, gate.actionable ? "OPEN" : "OBSERVATION");
+});
+
 // ─── earnings-proximity overlay — propose-only LABEL from the SEC filing date ──
 test("earningsGate: true only when the last 10-Q/10-K was filed within recentDays before the bar", () => {
   const decision = "2026-06-11";

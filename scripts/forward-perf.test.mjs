@@ -10,7 +10,7 @@ import {
 import { markToMarket } from "./forward-log.mjs";
 
 // A minimal closed-trade row, mirroring the ledger schema.
-function closed({ id = "T", ticker = "X", signal = "BUY", entry = 100, exit, benchClose, benchDiv, grade = null, merits = false, momentum = false, reversal = false, lowVol = false, quality = false, newsPositive = false, newsQuiet = true, earningsRecent = false, contenderAllBoxes = false, contenderAB = false, convergence = false }) {
+function closed({ id = "T", ticker = "X", signal = "BUY", entry = 100, exit, benchClose, benchDiv, grade = null, merits = false, momentum = false, reversal = false, lowVol = false, quality = false, newsPositive = false, newsQuiet = true, earningsRecent = false, contenderAllBoxes = false, contenderAB = false, convergence = false, breadthQuorum = false, breadthVolConfirmed = false }) {
   const grossPct = (exit - entry) / entry * 100;
   return {
     id, ticker, signal, entry, exit,
@@ -18,7 +18,7 @@ function closed({ id = "T", ticker = "X", signal = "BUY", entry = 100, exit, ben
     pnlPct: parseFloat((grossPct - COST_PER_TRADE).toFixed(4)),
     status: grossPct >= 0 ? "WIN" : "LOSS",
     benchClose, benchDiv,
-    tags: { fundamentalGrade: grade, meritsActivated: merits, momentumActivated: momentum, reversalActivated: reversal, lowVolActivated: lowVol, qualityActivated: quality, newsPositive, newsQuiet, earningsRecent, contenderAllBoxes, contenderAB, convergence },
+    tags: { fundamentalGrade: grade, meritsActivated: merits, momentumActivated: momentum, reversalActivated: reversal, lowVolActivated: lowVol, qualityActivated: quality, newsPositive, newsQuiet, earningsRecent, contenderAllBoxes, contenderAB, convergence, breadthQuorum, breadthVolConfirmed },
   };
 }
 
@@ -180,6 +180,23 @@ test("scoreLedger: conv-grounded-on requires BOTH the coil→pop trigger AND a g
   assert.equal(perf.variants["conv-grounded-on"].n + perf.variants["conv-grounded-off"].n, perf.variants["all"].n, "on/off re-union to the tactical population");
   assert.equal(perf.variants["conv-grounded-on"].fdr, true, "the -on hypothesis is in the FDR family");
   assert.equal(perf.variants["conv-grounded-off"].fdr, false, "the -off complement is a control, excluded from the FDR denominator");
+});
+
+test("scoreLedger: breadth-quorum-on/off and breadth-vol-on/off partition the tactical population; -on legs are FDR hypotheses", () => {
+  const ledger = [
+    closed({ id: "A", entry: 100, exit: 108, benchClose: 102, breadthQuorum: true,  breadthVolConfirmed: true  }), // quorum + volume
+    closed({ id: "B", entry: 100, exit: 107, benchClose: 103, breadthQuorum: true,  breadthVolConfirmed: false }), // quorum, no volume
+    closed({ id: "C", entry: 100, exit: 101, benchClose: 110, breadthQuorum: false, breadthVolConfirmed: false }), // no quorum
+  ];
+  const perf = scoreLedger(ledger);
+  assert.equal(perf.variants["breadth-quorum-on"].n + perf.variants["breadth-quorum-off"].n, perf.variants["all"].n, "quorum on/off re-union to the tactical population");
+  assert.equal(perf.variants["breadth-quorum-on"].n, 2, "two rows clear the supermajority");
+  assert.equal(perf.variants["breadth-vol-on"].n, 1, "only the volume-confirmed quorum row is vol-ON");
+  assert.equal(perf.variants["breadth-vol-on"].n + perf.variants["breadth-vol-off"].n, perf.variants["all"].n, "vol on/off re-union to the tactical population");
+  assert.equal(perf.variants["breadth-quorum-on"].fdr, true, "the quorum -on hypothesis is in the FDR family");
+  assert.equal(perf.variants["breadth-vol-on"].fdr, true, "the vol -on hypothesis is in the FDR family");
+  assert.equal(perf.variants["breadth-quorum-off"].fdr, false, "the -off complement is a control, excluded from the FDR denominator");
+  assert.equal(perf.variants["breadth-vol-off"].fdr, false, "the -off complement is a control, excluded from the FDR denominator");
 });
 
 test("scoreLedger: reversal-on / reversal-off partition the SAME population by the reversalActivated tag", () => {
