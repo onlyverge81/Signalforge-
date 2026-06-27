@@ -22,7 +22,7 @@
 import fs from "node:fs";
 import path from "node:path";
 import { fileURLToPath } from "node:url";
-import { analyze, runBacktest, scoreAt, scorePosition, auditData, checkBarExit, tradeNet, valueScore, edgeStatus } from "./engine.mjs";
+import { analyze, runBacktest, scoreAt, scorePosition, auditData, checkBarExit, tradeNet, valueScore, edgeStatus, relVolSeries } from "./engine.mjs";
 import { readTickers } from "./build-fundamentals.mjs";
 import { fetchPolygonDaily, fetchPolygonDividends, dividendsInWindow, fetchPolygonNews, newsWindow } from "./pattern-study.mjs";
 
@@ -338,6 +338,19 @@ export function buildEntry({ sym, settled, fundaDB, contendersDB = null, news = 
   const eventsAtSignal = newsWindow(news, decision.date + "T23:59:59Z", 3);
 
   const isObs = !gate.actionable;
+  // ─── Breadth "show of hands" inputs (propose-only labels — the SHOW-OF-HANDS reframe) ───
+  // The engine's confluence already exposes the bullish/bearish vote COUNTS at the decision bar. The
+  // reframe (per the breadth study): a naive headcount can be one correlated camp shouting, so the
+  // STRUCTURAL test is a supermajority — ≥3 bullish votes AND ≥⅔ of the active votes bullish. ⅔ is
+  // a-priori structural, NOT tuned to in-sample expectancy (tuning it would be the re-wire R6 forbids).
+  // breadthVolConfirmed adds an RVOL≥1.5 conviction filter (the volume rule-in/out A/B leg). All read
+  // existing analyze output / the settled bars (no engine change); never enter the gate. Point-in-time.
+  const bBull = (a.confluence && a.confluence.bull) || 0;
+  const bBear = (a.confluence && a.confluence.bear) || 0;
+  const bActive = bBull + bBear;
+  const bRatio = bActive ? bBull / bActive : null;
+  const bQuorum = bBull >= 3 && bRatio != null && bRatio >= 2 / 3;
+  const bRvol = (() => { const s = relVolSeries(settled, 20).rvol; return s.length ? s[s.length - 1] : null; })();
   const id = `${sym}-${CFG.interval}-${decision.date}-${a.signal}`;
   return {
     id,
@@ -388,6 +401,10 @@ export function buildEntry({ sym, settled, fundaDB, contendersDB = null, news = 
       // paired with contenderAllBoxes it forms the propose-only conv-grounded hypothesis (does a GROUNDED
       // coil→pop beat buy-&-hold OOS?). Read off analyze (engine parity, no engine change); never a gate.
       convergence: !!(a.convBreakout && a.convBreakout.detected),
+      // Breadth "show of hands" labels (propose-only; never enter the gate) — see the inputs above.
+      breadthRatio: bRatio == null ? null : parseFloat(bRatio.toFixed(4)),
+      breadthQuorum: bQuorum,
+      breadthVolConfirmed: !!(bQuorum && bRvol != null && bRvol >= 1.5),
       // Contenders shortlist membership (propose-only label; never enters the gate).
       ...contenderTag(contendersDB, sym) },
     status: isObs ? "OBSERVATION" : "OPEN",

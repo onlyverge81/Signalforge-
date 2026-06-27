@@ -228,6 +228,19 @@ export function defaultVariants() {
     //   to flip/drop the MACD vote (never in-sample). Rows with no MACD (null) fall in neither.
     { label: "macd-fade-on", where: t => tac(t) && t.tags && t.tags.macdBull === false },
     { label: "macd-fade-off", where: t => tac(t) && t.tags && t.tags.macdBull === true },
+    //   breadth (SHOW OF HANDS) — the user's "13 of 23 green → buy" hypothesis made DECIDABLE, with the
+    //   reframe the breadth study tests: a naive headcount can be ONE CORRELATED CAMP SHOUTING (the
+    //   votes collapse to ~3 economic axes), so the STRUCTURAL test is a SUPERMAJORITY — ≥3 bullish votes
+    //   AND ≥⅔ of the active votes bullish. ⅔ is a-priori structural, NEVER tuned to in-sample expectancy
+    //   (that would be the re-wire R6 forbids). The A/B: do tactical BUYs taken under a breadth QUORUM beat
+    //   BUYs without one? breadth-vol adds the RVOL≥1.5 conviction filter — the "rule volume in or out"
+    //   leg: if breadth-vol-on beats breadth-quorum-on under FDR, volume confirmation adds value (ruled
+    //   IN); if not, consensus carries it (ruled OUT). Reads existing tags (no forward-log decision change);
+    //   never touches gate.actionable; judged under the same BH/BY FDR family.
+    { label: "breadth-quorum-on", where: t => tac(t) && !!(t.tags && t.tags.breadthQuorum) },
+    { label: "breadth-quorum-off", where: t => tac(t) && !(t.tags && t.tags.breadthQuorum) },
+    { label: "breadth-vol-on", where: t => tac(t) && !!(t.tags && t.tags.breadthVolConfirmed) },
+    { label: "breadth-vol-off", where: t => tac(t) && !(t.tags && t.tags.breadthVolConfirmed) },
     //   contenders — the daily A/B research shortlist (build-contenders.mjs) judged OOS. allBoxes =
     //   grade A/B AND positive 12-1 momentum AND the SEC↔Polygon filing cross-check passes; contenderAB =
     //   the broader A/B grade tier. The A/B: do the tactical BUYs the engine took on shortlisted names beat

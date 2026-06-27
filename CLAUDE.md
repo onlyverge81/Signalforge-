@@ -871,6 +871,36 @@ OOS hypothesis. All display/ledger-only — no engine/gate/verdict change.
   is a clean future refinement. Tests +2 (forward-log: the `convergence` tag is always boolean & label-only; forward-perf:
   conv-grounded partitions by convergence×allBoxes with correct `fdr` flags). The variant matures via the nightly pipeline.
 
+**"Show of Hands" breadth-consensus study + propose-only OOS quorum label + the volume rule-in/out (DONE) —
+branch `claude/signalforge-breadth-consensus` (stacked on `volume-rvol` for `relVolSeries`):** the user's hypothesis —
+at a bar, count how many instruments point the same way; does a SUM of agreeing instruments over a duration ("13 of the
+last 23 were green") separate clear expectancy from noise, and is there a tradeable QUORUM? THE REFRAME (confirmed with
+the user): the ~13 votes are NOT 13 independent witnesses — the factor-interaction PCA proved they collapse to ~5.3
+effective bets / ~3 economic axes (MA/MAlong/Trend move as one; RSI/Stoch/BB move as one and OPPOSE the trend camp in
+chop — `famConflict`), so a naive "13 green" can be ONE CAMP SHOUTING IN UNISON — the very mechanism behind the engine's
+measured t ≈ −12.6. The real signal is not HOW MANY hands agree but WHETHER INSTRUMENTS THAT NORMALLY DISAGREE SUDDENLY
+AGREE. Shipped (R6 ritual — in-sample POINTER + propose-only OOS label, never an in-sample re-wire, never touches
+`gate.actionable`):
+- **`scripts/breadth-study.mjs` + `.yml`** (workflow_dispatch, artifact + opt-in commit; never gated). On-demand harness
+  over the survivorship-free roster (LIQUID default via `clearsLiquidityBar`; `BREADTH_UNIVERSE=full` cross-check). Pure
+  unit-tested helpers: `tally` (bull/bear/active/net/ratio over a key set); `patternHands` (each candle pattern its OWN
+  hand — the literal "23 instruments"); a ladder of four instrument SETS — **raw-13** (`voteVector`), **expanded-~23**,
+  **proven-subset** (Trend/Vol/BB + momentum, the pie's rescued survivors), **cross-camp** (the two NORMALLY-OPPOSED
+  families agreeing — |net|=2 is the rare cross-axis quorum the thesis predicts is informative); `windowedConsensus`
+  (the no-lookahead "13 of the last D green" count, tail-identical proof); `bucketByCount`/`bucketByBins`/`quorumFrom`
+  (forward-return curves bucketed by agreement count/ratio/window-fraction → the lowest significant positive bucket =
+  the quorum); `volumeTest` (within high-consensus rows, split RVOL≥1.5 vs <1.5 → **VOLUME RULED IN/OUT** — the user's
+  "rule it in or out"). Reuses `study-lib`/`voteVector`/`relVolSeries` verbatim; Polygon bars only.
+- **Propose-only OOS labels** (`forward-log.mjs` buildEntry, reads `analyze().confluence` bull/bear counts — no engine
+  change): `breadthRatio` = bullish share of active votes; `breadthQuorum` = an a-priori STRUCTURAL supermajority
+  (≥3 bullish AND ratio ≥ ⅔ — ⅔ is structural, NEVER tuned to in-sample expectancy); `breadthVolConfirmed` =
+  `breadthQuorum && RVOL≥1.5`. `forward-perf.mjs` adds **`breadth-quorum-on/off`** + **`breadth-vol-on/off`** under the
+  existing BH/BY FDR family (the `-on` legs auto-included, `-off` controls excluded per R2). EVIDENCE scoreboard rows
+  added (hidden until data lands). Tests +21 (19 study + forward-log label-only + forward-perf partition; **388 green**);
+  app mounts clean (driver, zero JS errors). In-sample is NEVER the verdict — only the OOS `breadth-quorum-on` /
+  `breadth-vol-on` ledger cleared through FDR counts; the study's curve/quorum/volume verdict lands when the workflow is
+  dispatched in CI (sandbox is egress-blocked + keyless).
+
 **Next — Track B:**
 - Mature the `momentum-on` / `merits-on` / `news-*` / `earnings-recent-on` OOS ledgers to n≥10; human-ratify
   only if they clear FDR. PASSIVE — the nightly `forward-log → forward-perf → promote` already partitions every
