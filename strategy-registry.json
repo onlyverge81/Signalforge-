@@ -1,6 +1,6 @@
 {
   "version": 1,
-  "updatedAt": "2026-06-26T10:30:33.361Z",
+  "updatedAt": "2026-06-27T08:12:05.601Z",
   "policy": {
     "promote": {
       "minTrades": 10,
@@ -670,6 +670,54 @@
       "history": [
         {
           "at": "2026-06-26T10:30:33.361Z",
+          "from": null,
+          "to": "candidate",
+          "reason": "registered"
+        }
+      ]
+    },
+    "breadth-quorum-on": {
+      "state": "candidate",
+      "since": "2026-06-27T08:12:05.601Z",
+      "history": [
+        {
+          "at": "2026-06-27T08:12:05.601Z",
+          "from": null,
+          "to": "candidate",
+          "reason": "registered"
+        }
+      ]
+    },
+    "breadth-quorum-off": {
+      "state": "candidate",
+      "since": "2026-06-27T08:12:05.601Z",
+      "history": [
+        {
+          "at": "2026-06-27T08:12:05.601Z",
+          "from": null,
+          "to": "candidate",
+          "reason": "registered"
+        }
+      ]
+    },
+    "breadth-vol-on": {
+      "state": "candidate",
+      "since": "2026-06-27T08:12:05.601Z",
+      "history": [
+        {
+          "at": "2026-06-27T08:12:05.601Z",
+          "from": null,
+          "to": "candidate",
+          "reason": "registered"
+        }
+      ]
+    },
+    "breadth-vol-off": {
+      "state": "candidate",
+      "since": "2026-06-27T08:12:05.601Z",
+      "history": [
+        {
+          "at": "2026-06-27T08:12:05.601Z",
           "from": null,
           "to": "candidate",
           "reason": "registered"
