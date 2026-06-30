@@ -1,7 +1,7 @@
 {
- "generatedAt": "2026-06-29T19:26:29.581Z",
+ "generatedAt": "2026-06-30T19:26:28.794Z",
  "sessionET": {
-  "weekday": 1,
+  "weekday": 2,
   "etMin": 925
  },
  "marketOpen": true,
@@ -10,37 +10,37 @@
  "scanned": 178,
  "withData": 178,
  "counts": {
-  "leads": 58,
-  "grounded": 34,
-  "buys": 42,
-  "convergence": 2,
-  "forming": 38
+  "leads": 64,
+  "grounded": 41,
+  "buys": 53,
+  "convergence": 3,
+  "forming": 36
  },
  "patternEdgeNote": "Convergence (coil→pop) universe edge ≈ −0.71% over 20 bars — a geometry TRIGGER, not a proven signal. Treat leads as candidates for your own eyes, never as a buy.",
  "leads": [
   {
-   "sym": "TROW",
-   "entity": "PRICE T ROWE GROUP INC",
+   "sym": "FN",
+   "entity": "FABRINET",
    "grade": "B",
    "allBoxes": true,
-   "price": 113.545,
-   "lastBarMs": 1782759600000,
+   "price": 567.325,
+   "lastBarMs": 1782846000000,
    "fresh": true,
    "conv": {
     "detected": true,
-    "strength": 0.78
+    "strength": 0.86
    },
    "forming": {
     "forming": false
    },
-   "patternEdge": -0.007,
+   "patternEdge": 2.243,
    "engine": {
     "signal": "BUY",
-    "score": 8.1,
-    "confidence": 75,
-    "entry": 113.545,
-    "sl": 112.7808,
-    "tp1": 114.564,
+    "score": 8.4,
+    "confidence": 77,
+    "entry": 567.325,
+    "sl": 561.1365,
+    "tp1": 575.5763,
     "rr": 1.3
    },
    "lead": true,
@@ -53,12 +53,80 @@
    ]
   },
   {
-   "sym": "BIIB",
-   "entity": "BIOGEN INC.",
+   "sym": "APH",
+   "entity": "AMPHENOL CORP /DE/",
    "grade": "B",
    "allBoxes": true,
-   "price": 215.76,
-   "lastBarMs": 1782759600000,
+   "price": 177.925,
+   "lastBarMs": 1782846000000,
+   "fresh": true,
+   "conv": {
+    "detected": true,
+    "strength": 0.67
+   },
+   "forming": {
+    "forming": false
+   },
+   "patternEdge": -0.64,
+   "engine": {
+    "signal": "BUY",
+    "score": 11.9,
+    "confidence": 88,
+    "entry": 177.925,
+    "sl": 176.9975,
+    "tp1": 179.1617,
+    "rr": 1.3
+   },
+   "lead": true,
+   "grounded": true,
+   "stage": "BREAKOUT",
+   "reasons": [
+    "engine BUY (intraday — tactical, unproven)",
+    "coil→pop BREAKOUT (geometry only; pattern edge ≈ −0.71%)",
+    "vetted all-boxes (A/B + momentum + filing)"
+   ]
+  },
+  {
+   "sym": "TWLO",
+   "entity": "TWILIO INC.",
+   "grade": "B",
+   "allBoxes": true,
+   "price": 205.31,
+   "lastBarMs": 1782846000000,
+   "fresh": true,
+   "conv": {
+    "detected": true,
+    "strength": 0.63
+   },
+   "forming": {
+    "forming": false
+   },
+   "patternEdge": 0.575,
+   "engine": {
+    "signal": "BUY",
+    "score": 7.4,
+    "confidence": 74,
+    "entry": 205.31,
+    "sl": 203.8484,
+    "tp1": 207.2588,
+    "rr": 1.3
+   },
+   "lead": true,
+   "grounded": true,
+   "stage": "BREAKOUT",
+   "reasons": [
+    "engine BUY (intraday — tactical, unproven)",
+    "coil→pop BREAKOUT (geometry only; pattern edge ≈ −0.71%)",
+    "vetted all-boxes (A/B + momentum + filing)"
+   ]
+  },
+  {
+   "sym": "ANET",
+   "entity": "Arista Networks, Inc.",
+   "grade": "B",
+   "allBoxes": true,
+   "price": 172.09,
+   "lastBarMs": 1782846000000,
    "fresh": true,
    "conv": {
     "detected": false,
@@ -66,20 +134,20 @@
    },
    "forming": {
     "forming": true,
-    "barsForming": 41,
+    "barsForming": 17,
     "tightness": 1,
     "nearPinch": true,
-    "startMs": 1782487800000,
-    "startDate": "2026-06-26"
+    "startMs": 1782831600000,
+    "startDate": "2026-06-30"
    },
-   "patternEdge": -0.66,
+   "patternEdge": -0.639,
    "engine": {
     "signal": "BUY",
-    "score": 6.9,
-    "confidence": 72,
-    "entry": 215.76,
-    "sl": 214.7325,
-    "tp1": 217.13,
+    "score": 11.9,
+    "confidence": 88,
+    "entry": 172.09,
+    "sl": 171.0456,
+    "tp1": 173.4825,
     "rr": 1.3
    },
    "lead": true,
@@ -87,7 +155,7 @@
    "stage": "FORMING",
    "reasons": [
     "engine BUY (intraday — tactical, unproven)",
-    "⏳ convergence FORMING — ribbon tightening 41 bars (early-warning; ~1 bar to pop once it pinches)",
+    "⏳ convergence FORMING — ribbon tightening 17 bars (early-warning; ~1 bar to pop once it pinches)",
     "vetted all-boxes (A/B + momentum + filing)"
    ]
   },
@@ -96,8 +164,8 @@
    "entity": "LAM RESEARCH CORPORATION",
    "grade": "B",
    "allBoxes": true,
-   "price": 410.385,
-   "lastBarMs": 1782759600000,
+   "price": 434.8,
+   "lastBarMs": 1782846000000,
    "fresh": true,
    "conv": {
     "detected": false,
@@ -105,20 +173,20 @@
    },
    "forming": {
     "forming": true,
-    "barsForming": 8,
+    "barsForming": 15,
     "tightness": 1,
     "nearPinch": true,
-    "startMs": 1782753300000,
-    "startDate": "2026-06-29"
+    "startMs": 1782833400000,
+    "startDate": "2026-06-30"
    },
-   "patternEdge": 2.734,
+   "patternEdge": 2.252,
    "engine": {
     "signal": "BUY",
-    "score": 17,
-    "confidence": 95,
-    "entry": 410.385,
-    "sl": 406.1846,
-    "tp1": 415.9856,
+    "score": 9.4,
+    "confidence": 80,
+    "entry": 434.8,
+    "sl": 430.9963,
+    "tp1": 439.8717,
     "rr": 1.3
    },
    "lead": true,
@@ -126,7 +194,46 @@
    "stage": "FORMING",
    "reasons": [
     "engine BUY (intraday — tactical, unproven)",
-    "⏳ convergence FORMING — ribbon tightening 8 bars (early-warning; ~1 bar to pop once it pinches)",
+    "⏳ convergence FORMING — ribbon tightening 15 bars (early-warning; ~1 bar to pop once it pinches)",
+    "vetted all-boxes (A/B + momentum + filing)"
+   ]
+  },
+  {
+   "sym": "TER",
+   "entity": "TERADYNE, INC.",
+   "grade": "B",
+   "allBoxes": true,
+   "price": 481.5399,
+   "lastBarMs": 1782846000000,
+   "fresh": true,
+   "conv": {
+    "detected": false,
+    "strength": 0
+   },
+   "forming": {
+    "forming": true,
+    "barsForming": 15,
+    "tightness": 1,
+    "nearPinch": true,
+    "startMs": 1782833400000,
+    "startDate": "2026-06-30"
+   },
+   "patternEdge": -2.707,
+   "engine": {
+    "signal": "BUY",
+    "score": 8.4,
+    "confidence": 77,
+    "entry": 481.5399,
+    "sl": 476.8803,
+    "tp1": 487.7527,
+    "rr": 1.3
+   },
+   "lead": true,
+   "grounded": true,
+   "stage": "FORMING",
+   "reasons": [
+    "engine BUY (intraday — tactical, unproven)",
+    "⏳ convergence FORMING — ribbon tightening 15 bars (early-warning; ~1 bar to pop once it pinches)",
     "vetted all-boxes (A/B + momentum + filing)"
    ]
   },
@@ -135,8 +242,8 @@
    "entity": "APPLIED MATERIALS INC /DE",
    "grade": "B",
    "allBoxes": true,
-   "price": 698,
-   "lastBarMs": 1782759600000,
+   "price": 737.575,
+   "lastBarMs": 1782846000000,
    "fresh": true,
    "conv": {
     "detected": false,
@@ -144,20 +251,59 @@
    },
    "forming": {
     "forming": true,
+    "barsForming": 14,
+    "tightness": 1,
+    "nearPinch": true,
+    "startMs": 1782834300000,
+    "startDate": "2026-06-30"
+   },
+   "patternEdge": -0.444,
+   "engine": {
+    "signal": "BUY",
+    "score": 13.7,
+    "confidence": 94,
+    "entry": 737.575,
+    "sl": 731.7877,
+    "tp1": 745.2914,
+    "rr": 1.3
+   },
+   "lead": true,
+   "grounded": true,
+   "stage": "FORMING",
+   "reasons": [
+    "engine BUY (intraday — tactical, unproven)",
+    "⏳ convergence FORMING — ribbon tightening 14 bars (early-warning; ~1 bar to pop once it pinches)",
+    "vetted all-boxes (A/B + momentum + filing)"
+   ]
+  },
+  {
+   "sym": "GLW",
+   "entity": "CORNING INC /NY",
+   "grade": "B",
+   "allBoxes": true,
+   "price": 252.865,
+   "lastBarMs": 1782846000000,
+   "fresh": true,
+   "conv": {
+    "detected": false,
+    "strength": null
+   },
+   "forming": {
+    "forming": true,
     "barsForming": 8,
     "tightness": 1,
     "nearPinch": true,
-    "startMs": 1782753300000,
-    "startDate": "2026-06-29"
+    "startMs": 1782839700000,
+    "startDate": "2026-06-30"
    },
-   "patternEdge": 0.271,
+   "patternEdge": -1.449,
    "engine": {
     "signal": "BUY",
-    "score": 14.5,
-    "confidence": 95,
-    "entry": 698,
-    "sl": 689.4646,
-    "tp1": 709.3806,
+    "score": 5.1,
+    "confidence": 65,
+    "entry": 252.865,
+    "sl": 248.7019,
+    "tp1": 258.4157,
     "rr": 1.3
    },
    "lead": true,
@@ -174,8 +320,8 @@
    "entity": "ALPHABET INC.",
    "grade": "B",
    "allBoxes": true,
-   "price": 350.81,
-   "lastBarMs": 1782759600000,
+   "price": 353.665,
+   "lastBarMs": 1782846000000,
    "fresh": true,
    "conv": {
     "detected": false,
@@ -183,98 +329,20 @@
    },
    "forming": {
     "forming": true,
-    "barsForming": 142,
+    "barsForming": 168,
     "tightness": 1,
     "nearPinch": true,
     "startMs": 1782144900000,
     "startDate": "2026-06-22"
    },
-   "patternEdge": -1.045,
-   "engine": {
-    "signal": "BUY",
-    "score": 7.2,
-    "confidence": 74,
-    "entry": 350.81,
-    "sl": 349.1975,
-    "tp1": 352.9599,
-    "rr": 1.3
-   },
-   "lead": true,
-   "grounded": true,
-   "stage": "FORMING",
-   "reasons": [
-    "engine BUY (intraday — tactical, unproven)",
-    "⏳ convergence FORMING — ribbon tightening 142 bars (early-warning; ~1 bar to pop once it pinches)",
-    "vetted all-boxes (A/B + momentum + filing)"
-   ]
-  },
-  {
-   "sym": "ABNB",
-   "entity": "Airbnb, Inc.",
-   "grade": "B",
-   "allBoxes": true,
-   "price": 147.98,
-   "lastBarMs": 1782759600000,
-   "fresh": true,
-   "conv": {
-    "detected": false,
-    "strength": 0
-   },
-   "forming": {
-    "forming": true,
-    "barsForming": 92,
-    "tightness": 1,
-    "nearPinch": true,
-    "startMs": 1782315900000,
-    "startDate": "2026-06-24"
-   },
-   "patternEdge": -0.934,
-   "engine": {
-    "signal": "BUY",
-    "score": 7.1,
-    "confidence": 71,
-    "entry": 147.98,
-    "sl": 147.393,
-    "tp1": 148.7627,
-    "rr": 1.3
-   },
-   "lead": true,
-   "grounded": true,
-   "stage": "FORMING",
-   "reasons": [
-    "engine BUY (intraday — tactical, unproven)",
-    "⏳ convergence FORMING — ribbon tightening 92 bars (early-warning; ~1 bar to pop once it pinches)",
-    "vetted all-boxes (A/B + momentum + filing)"
-   ]
-  },
-  {
-   "sym": "APP",
-   "entity": "AppLovin Corp",
-   "grade": "B",
-   "allBoxes": true,
-   "price": 495.9628,
-   "lastBarMs": 1782759600000,
-   "fresh": true,
-   "conv": {
-    "detected": false,
-    "strength": 0
-   },
-   "forming": {
-    "forming": true,
-    "barsForming": 17,
-    "tightness": 1,
-    "nearPinch": true,
-    "startMs": 1782745200000,
-    "startDate": "2026-06-29"
-   },
-   "patternEdge": -0.829,
+   "patternEdge": -0.956,
    "engine": {
     "signal": "BUY",
     "score": 5.9,
-    "confidence": 68,
-    "entry": 495.9628,
-    "sl": 491.0316,
-    "tp1": 502.5378,
+    "confidence": 69,
+    "entry": 353.665,
+    "sl": 352.0898,
+    "tp1": 355.7653,
     "rr": 1.3
    },
    "lead": true,
@@ -282,17 +350,56 @@
    "stage": "FORMING",
    "reasons": [
     "engine BUY (intraday — tactical, unproven)",
-    "⏳ convergence FORMING — ribbon tightening 17 bars (early-warning; ~1 bar to pop once it pinches)",
+    "⏳ convergence FORMING — ribbon tightening 168 bars (early-warning; ~1 bar to pop once it pinches)",
     "vetted all-boxes (A/B + momentum + filing)"
    ]
   },
   {
-   "sym": "FFIV",
-   "entity": "F5, INC.",
+   "sym": "GOOGL",
+   "entity": "ALPHABET INC.",
    "grade": "B",
    "allBoxes": true,
-   "price": 412.795,
-   "lastBarMs": 1782759600000,
+   "price": 356.84,
+   "lastBarMs": 1782846000000,
+   "fresh": true,
+   "conv": {
+    "detected": false,
+    "strength": 0
+   },
+   "forming": {
+    "forming": true,
+    "barsForming": 168,
+    "tightness": 1,
+    "nearPinch": true,
+    "startMs": 1782144900000,
+    "startDate": "2026-06-22"
+   },
+   "patternEdge": -1.344,
+   "engine": {
+    "signal": "BUY",
+    "score": 5.9,
+    "confidence": 69,
+    "entry": 356.84,
+    "sl": 355.2665,
+    "tp1": 358.938,
+    "rr": 1.3
+   },
+   "lead": true,
+   "grounded": true,
+   "stage": "FORMING",
+   "reasons": [
+    "engine BUY (intraday — tactical, unproven)",
+    "⏳ convergence FORMING — ribbon tightening 168 bars (early-warning; ~1 bar to pop once it pinches)",
+    "vetted all-boxes (A/B + momentum + filing)"
+   ]
+  },
+  {
+   "sym": "KEYS",
+   "entity": "KEYSIGHT TECHNOLOGIES, INC.",
+   "grade": "B",
+   "allBoxes": true,
+   "price": 349.995,
+   "lastBarMs": 1782846000000,
    "fresh": true,
    "conv": {
     "detected": false,
@@ -303,17 +410,17 @@
     "barsForming": 16,
     "tightness": 1,
     "nearPinch": true,
-    "startMs": 1782746100000,
-    "startDate": "2026-06-29"
+    "startMs": 1782832500000,
+    "startDate": "2026-06-30"
    },
-   "patternEdge": 0.144,
+   "patternEdge": -0.004,
    "engine": {
     "signal": "BUY",
-    "score": 15.5,
-    "confidence": 95,
-    "entry": 412.795,
-    "sl": 410.2352,
-    "tp1": 416.2081,
+    "score": 5.6,
+    "confidence": 67,
+    "entry": 349.995,
+    "sl": 348.2997,
+    "tp1": 352.2554,
     "rr": 1.3
    },
    "lead": true,
@@ -326,12 +433,12 @@
    ]
   },
   {
-   "sym": "FTNT",
-   "entity": "FORTINET, INC.",
+   "sym": "KLAC",
+   "entity": "KLA CORPORATION",
    "grade": "B",
    "allBoxes": true,
-   "price": 156.73,
-   "lastBarMs": 1782759600000,
+   "price": 304.9,
+   "lastBarMs": 1782846000000,
    "fresh": true,
    "conv": {
     "detected": false,
@@ -339,20 +446,20 @@
    },
    "forming": {
     "forming": true,
-    "barsForming": 17,
+    "barsForming": 14,
     "tightness": 1,
     "nearPinch": true,
-    "startMs": 1782745200000,
-    "startDate": "2026-06-29"
+    "startMs": 1782834300000,
+    "startDate": "2026-06-30"
    },
-   "patternEdge": -0.606,
+   "patternEdge": 2.117,
    "engine": {
     "signal": "BUY",
-    "score": 11.7,
-    "confidence": 88,
-    "entry": 156.73,
-    "sl": 155.6871,
-    "tp1": 158.1205,
+    "score": 10.9,
+    "confidence": 85,
+    "entry": 304.9,
+    "sl": 301.864,
+    "tp1": 308.9479,
     "rr": 1.3
    },
    "lead": true,
@@ -360,17 +467,17 @@
    "stage": "FORMING",
    "reasons": [
     "engine BUY (intraday — tactical, unproven)",
-    "⏳ convergence FORMING — ribbon tightening 17 bars (early-warning; ~1 bar to pop once it pinches)",
+    "⏳ convergence FORMING — ribbon tightening 14 bars (early-warning; ~1 bar to pop once it pinches)",
     "vetted all-boxes (A/B + momentum + filing)"
    ]
   },
   {
-   "sym": "NCLH",
-   "entity": "NORWEGIAN CRUISE LINE HOLDINGS LTD.",
+   "sym": "CRDO",
+   "entity": "CREDO TECHNOLOGY GROUP HOLDING LTD",
    "grade": "B",
    "allBoxes": true,
-   "price": 21.795,
-   "lastBarMs": 1782759600000,
+   "price": 273.38,
+   "lastBarMs": 1782846000000,
    "fresh": true,
    "conv": {
     "detected": false,
@@ -378,20 +485,20 @@
    },
    "forming": {
     "forming": true,
-    "barsForming": 93,
+    "barsForming": 9,
     "tightness": 1,
     "nearPinch": true,
-    "startMs": 1782315000000,
-    "startDate": "2026-06-24"
+    "startMs": 1782838800000,
+    "startDate": "2026-06-30"
    },
-   "patternEdge": -1.027,
+   "patternEdge": 0.131,
    "engine": {
     "signal": "BUY",
-    "score": 8.6,
-    "confidence": 77,
-    "entry": 21.795,
-    "sl": 21.6663,
-    "tp1": 21.9667,
+    "score": 9.7,
+    "confidence": 82,
+    "entry": 273.38,
+    "sl": 269.3983,
+    "tp1": 278.6889,
     "rr": 1.3
    },
    "lead": true,
@@ -399,7 +506,163 @@
    "stage": "FORMING",
    "reasons": [
     "engine BUY (intraday — tactical, unproven)",
-    "⏳ convergence FORMING — ribbon tightening 93 bars (early-warning; ~1 bar to pop once it pinches)",
+    "⏳ convergence FORMING — ribbon tightening 9 bars (early-warning; ~1 bar to pop once it pinches)",
+    "vetted all-boxes (A/B + momentum + filing)"
+   ]
+  },
+  {
+   "sym": "CRS",
+   "entity": "CARPENTER TECHNOLOGY CORPORATION",
+   "grade": "B",
+   "allBoxes": true,
+   "price": 614.62,
+   "lastBarMs": 1782846000000,
+   "fresh": true,
+   "conv": {
+    "detected": false,
+    "strength": 0
+   },
+   "forming": {
+    "forming": true,
+    "barsForming": 94,
+    "tightness": 1,
+    "nearPinch": true,
+    "startMs": 1782400500000,
+    "startDate": "2026-06-25"
+   },
+   "patternEdge": -0.571,
+   "engine": {
+    "signal": "BUY",
+    "score": 9.7,
+    "confidence": 82,
+    "entry": 614.62,
+    "sl": 609.2408,
+    "tp1": 621.7923,
+    "rr": 1.3
+   },
+   "lead": true,
+   "grounded": true,
+   "stage": "FORMING",
+   "reasons": [
+    "engine BUY (intraday — tactical, unproven)",
+    "⏳ convergence FORMING — ribbon tightening 94 bars (early-warning; ~1 bar to pop once it pinches)",
+    "vetted all-boxes (A/B + momentum + filing)"
+   ]
+  },
+  {
+   "sym": "FFIV",
+   "entity": "F5, INC.",
+   "grade": "B",
+   "allBoxes": true,
+   "price": 418.5,
+   "lastBarMs": 1782846000000,
+   "fresh": true,
+   "conv": {
+    "detected": false,
+    "strength": 0
+   },
+   "forming": {
+    "forming": true,
+    "barsForming": 42,
+    "tightness": 1,
+    "nearPinch": true,
+    "startMs": 1782746100000,
+    "startDate": "2026-06-29"
+   },
+   "patternEdge": 0.3,
+   "engine": {
+    "signal": "BUY",
+    "score": 8.1,
+    "confidence": 75,
+    "entry": 418.5,
+    "sl": 415.3784,
+    "tp1": 422.6621,
+    "rr": 1.3
+   },
+   "lead": true,
+   "grounded": true,
+   "stage": "FORMING",
+   "reasons": [
+    "engine BUY (intraday — tactical, unproven)",
+    "⏳ convergence FORMING — ribbon tightening 42 bars (early-warning; ~1 bar to pop once it pinches)",
+    "vetted all-boxes (A/B + momentum + filing)"
+   ]
+  },
+  {
+   "sym": "NXT",
+   "entity": "Nextpower Inc.",
+   "grade": "B",
+   "allBoxes": true,
+   "price": 119.6,
+   "lastBarMs": 1782846000000,
+   "fresh": true,
+   "conv": {
+    "detected": false,
+    "strength": 0
+   },
+   "forming": {
+    "forming": true,
+    "barsForming": 5,
+    "tightness": 1,
+    "nearPinch": true,
+    "startMs": 1782842400000,
+    "startDate": "2026-06-30"
+   },
+   "patternEdge": 0.459,
+   "engine": {
+    "signal": "BUY",
+    "score": 7.4,
+    "confidence": 73,
+    "entry": 119.6,
+    "sl": 117.745,
+    "tp1": 122.0733,
+    "rr": 1.3
+   },
+   "lead": true,
+   "grounded": true,
+   "stage": "FORMING",
+   "reasons": [
+    "engine BUY (intraday — tactical, unproven)",
+    "⏳ convergence FORMING — ribbon tightening 5 bars (early-warning; ~1 bar to pop once it pinches)",
+    "vetted all-boxes (A/B + momentum + filing)"
+   ]
+  },
+  {
+   "sym": "TROW",
+   "entity": "PRICE T ROWE GROUP INC",
+   "grade": "B",
+   "allBoxes": true,
+   "price": 113.7217,
+   "lastBarMs": 1782846000000,
+   "fresh": true,
+   "conv": {
+    "detected": false,
+    "strength": 0
+   },
+   "forming": {
+    "forming": true,
+    "barsForming": 70,
+    "tightness": 1,
+    "nearPinch": true,
+    "startMs": 1782485100000,
+    "startDate": "2026-06-26"
+   },
+   "patternEdge": -0.525,
+   "engine": {
+    "signal": "BUY",
+    "score": 10.4,
+    "confidence": 83,
+    "entry": 113.7217,
+    "sl": 113.1257,
+    "tp1": 114.5164,
+    "rr": 1.3
+   },
+   "lead": true,
+   "grounded": true,
+   "stage": "FORMING",
+   "reasons": [
+    "engine BUY (intraday — tactical, unproven)",
+    "⏳ convergence FORMING — ribbon tightening 70 bars (early-warning; ~1 bar to pop once it pinches)",
     "vetted all-boxes (A/B + momentum + filing)"
    ]
   },
@@ -408,8 +671,8 @@
    "entity": "Affirm Holdings, Inc.",
    "grade": "B",
    "allBoxes": true,
-   "price": 81.595,
-   "lastBarMs": 1782759600000,
+   "price": 81.62,
+   "lastBarMs": 1782846000000,
    "fresh": true,
    "conv": {
     "detected": false,
@@ -417,20 +680,20 @@
    },
    "forming": {
     "forming": true,
-    "barsForming": 37,
+    "barsForming": 63,
     "tightness": 1,
     "nearPinch": true,
     "startMs": 1782491400000,
     "startDate": "2026-06-26"
    },
-   "patternEdge": -0.565,
+   "patternEdge": -0.204,
    "engine": {
     "signal": "BUY",
-    "score": 10.9,
-    "confidence": 85,
-    "entry": 81.595,
-    "sl": 80.9867,
-    "tp1": 82.4061,
+    "score": 5.9,
+    "confidence": 69,
+    "entry": 81.62,
+    "sl": 80.9718,
+    "tp1": 82.4843,
     "rr": 1.3
    },
    "lead": true,
@@ -438,17 +701,17 @@
    "stage": "FORMING",
    "reasons": [
     "engine BUY (intraday — tactical, unproven)",
-    "⏳ convergence FORMING — ribbon tightening 37 bars (early-warning; ~1 bar to pop once it pinches)",
+    "⏳ convergence FORMING — ribbon tightening 63 bars (early-warning; ~1 bar to pop once it pinches)",
     "vetted all-boxes (A/B + momentum + filing)"
    ]
   },
   {
-   "sym": "LLY",
-   "entity": "ELI LILLY & Co",
+   "sym": "AMD",
+   "entity": "ADVANCED MICRO DEVICES INC",
    "grade": "B",
    "allBoxes": true,
-   "price": 1226.4,
-   "lastBarMs": 1782759600000,
+   "price": 583.695,
+   "lastBarMs": 1782846000000,
    "fresh": true,
    "conv": {
     "detected": false,
@@ -456,20 +719,20 @@
    },
    "forming": {
     "forming": true,
-    "barsForming": 40,
+    "barsForming": 7,
     "tightness": 1,
     "nearPinch": true,
-    "startMs": 1782488700000,
-    "startDate": "2026-06-26"
+    "startMs": 1782840600000,
+    "startDate": "2026-06-30"
    },
-   "patternEdge": 0.692,
+   "patternEdge": 0.191,
    "engine": {
     "signal": "BUY",
-    "score": 11.7,
-    "confidence": 88,
-    "entry": 1226.4,
-    "sl": 1218.102,
-    "tp1": 1237.4639,
+    "score": 10.9,
+    "confidence": 85,
+    "entry": 583.695,
+    "sl": 577.9234,
+    "tp1": 591.3905,
     "rr": 1.3
    },
    "lead": true,
@@ -477,17 +740,56 @@
    "stage": "FORMING",
    "reasons": [
     "engine BUY (intraday — tactical, unproven)",
-    "⏳ convergence FORMING — ribbon tightening 40 bars (early-warning; ~1 bar to pop once it pinches)",
+    "⏳ convergence FORMING — ribbon tightening 7 bars (early-warning; ~1 bar to pop once it pinches)",
     "vetted all-boxes (A/B + momentum + filing)"
    ]
   },
   {
-   "sym": "PBF",
-   "entity": "PBF ENERGY INC.",
+   "sym": "BB",
+   "entity": "BlackBerry Limited",
    "grade": "B",
    "allBoxes": true,
-   "price": 47.23,
-   "lastBarMs": 1782759600000,
+   "price": 12.665,
+   "lastBarMs": 1782846000000,
+   "fresh": true,
+   "conv": {
+    "detected": false,
+    "strength": 0
+   },
+   "forming": {
+    "forming": true,
+    "barsForming": 29,
+    "tightness": 1,
+    "nearPinch": true,
+    "startMs": 1782757800000,
+    "startDate": "2026-06-29"
+   },
+   "patternEdge": 0.847,
+   "engine": {
+    "signal": "BUY",
+    "score": 5.6,
+    "confidence": 67,
+    "entry": 12.665,
+    "sl": 12.4766,
+    "tp1": 12.9163,
+    "rr": 1.3
+   },
+   "lead": true,
+   "grounded": true,
+   "stage": "FORMING",
+   "reasons": [
+    "engine BUY (intraday — tactical, unproven)",
+    "⏳ convergence FORMING — ribbon tightening 29 bars (early-warning; ~1 bar to pop once it pinches)",
+    "vetted all-boxes (A/B + momentum + filing)"
+   ]
+  },
+  {
+   "sym": "VRT",
+   "entity": "Vertiv Holdings Co",
+   "grade": "B",
+   "allBoxes": true,
+   "price": 333.43,
+   "lastBarMs": 1782846000000,
    "fresh": true,
    "conv": {
     "detected": false,
@@ -498,17 +800,17 @@
     "barsForming": 11,
     "tightness": 1,
     "nearPinch": true,
-    "startMs": 1782750600000,
-    "startDate": "2026-06-29"
+    "startMs": 1782837000000,
+    "startDate": "2026-06-30"
    },
-   "patternEdge": 1.261,
+   "patternEdge": 0.239,
    "engine": {
     "signal": "BUY",
-    "score": 8.1,
-    "confidence": 75,
-    "entry": 47.23,
-    "sl": 46.7745,
-    "tp1": 47.8373,
+    "score": 8.6,
+    "confidence": 77,
+    "entry": 333.43,
+    "sl": 330.6604,
+    "tp1": 337.1228,
     "rr": 1.3
    },
    "lead": true,
@@ -521,111 +823,33 @@
    ]
   },
   {
-   "sym": "AGX",
-   "entity": "ARGAN INC",
+   "sym": "AMKR",
+   "entity": "AMKOR TECHNOLOGY, INC.",
    "grade": "B",
    "allBoxes": true,
-   "price": 792.035,
-   "lastBarMs": 1782759600000,
+   "price": 86.73,
+   "lastBarMs": 1782846000000,
    "fresh": true,
    "conv": {
     "detected": false,
-    "strength": null
+    "strength": 0
    },
    "forming": {
     "forming": true,
-    "barsForming": 67,
-    "tightness": 0.95,
+    "barsForming": 16,
+    "tightness": 0.9,
     "nearPinch": true,
-    "startMs": 1782401400000,
-    "startDate": "2026-06-25"
+    "startMs": 1782832500000,
+    "startDate": "2026-06-30"
    },
-   "patternEdge": -1.312,
-   "engine": {
-    "signal": "BUY",
-    "score": 8.4,
-    "confidence": 77,
-    "entry": 792.035,
-    "sl": 782.5721,
-    "tp1": 804.6522,
-    "rr": 1.3
-   },
-   "lead": true,
-   "grounded": true,
-   "stage": "FORMING",
-   "reasons": [
-    "engine BUY (intraday — tactical, unproven)",
-    "⏳ convergence FORMING — ribbon tightening 67 bars (early-warning; ~1 bar to pop once it pinches)",
-    "vetted all-boxes (A/B + momentum + filing)"
-   ]
-  },
-  {
-   "sym": "KLAC",
-   "entity": "KLA CORPORATION",
-   "grade": "B",
-   "allBoxes": true,
-   "price": 278.32,
-   "lastBarMs": 1782759600000,
-   "fresh": true,
-   "conv": {
-    "detected": false,
-    "strength": null
-   },
-   "forming": {
-    "forming": true,
-    "barsForming": 4,
-    "tightness": 0.67,
-    "nearPinch": false,
-    "startMs": 1782756900000,
-    "startDate": "2026-06-29"
-   },
-   "patternEdge": 1.979,
-   "engine": {
-    "signal": "BUY",
-    "score": 10.9,
-    "confidence": 85,
-    "entry": 278.32,
-    "sl": 275.7962,
-    "tp1": 281.685,
-    "rr": 1.3
-   },
-   "lead": true,
-   "grounded": true,
-   "stage": "FORMING",
-   "reasons": [
-    "engine BUY (intraday — tactical, unproven)",
-    "⏳ convergence FORMING — ribbon tightening 4 bars (early-warning; ~1 bar to pop once it pinches)",
-    "vetted all-boxes (A/B + momentum + filing)"
-   ]
-  },
-  {
-   "sym": "DAVE",
-   "entity": "Dave Inc./DE",
-   "grade": "A",
-   "allBoxes": true,
-   "price": 368.29,
-   "lastBarMs": 1782759600000,
-   "fresh": true,
-   "conv": {
-    "detected": false,
-    "strength": null
-   },
-   "forming": {
-    "forming": true,
-    "barsForming": 15,
-    "tightness": 0.62,
-    "nearPinch": false,
-    "startMs": 1782747000000,
-    "startDate": "2026-06-29"
-   },
-   "patternEdge": -3.683,
+   "patternEdge": 0.195,
    "engine": {
     "signal": "BUY",
     "score": 9.4,
     "confidence": 80,
-    "entry": 368.29,
-    "sl": 363.7914,
-    "tp1": 374.2881,
+    "entry": 86.73,
+    "sl": 85.8204,
+    "tp1": 87.9429,
     "rr": 1.3
    },
    "lead": true,
@@ -633,17 +857,17 @@
    "stage": "FORMING",
    "reasons": [
     "engine BUY (intraday — tactical, unproven)",
-    "⏳ convergence FORMING — ribbon tightening 15 bars (early-warning; ~1 bar to pop once it pinches)",
+    "⏳ convergence FORMING — ribbon tightening 16 bars (early-warning; ~1 bar to pop once it pinches)",
     "vetted all-boxes (A/B + momentum + filing)"
    ]
   },
   {
-   "sym": "GLW",
-   "entity": "CORNING INC /NY",
+   "sym": "SNDK",
+   "entity": "Sandisk Corporation",
    "grade": "B",
    "allBoxes": true,
-   "price": 253.455,
-   "lastBarMs": 1782759600000,
+   "price": 2245.815,
+   "lastBarMs": 1782846000000,
    "fresh": true,
    "conv": {
     "detected": false,
@@ -651,20 +875,20 @@
    },
    "forming": {
     "forming": true,
-    "barsForming": 3,
-    "tightness": 0.27,
+    "barsForming": 11,
+    "tightness": 0.44,
     "nearPinch": false,
-    "startMs": 1782757800000,
-    "startDate": "2026-06-29"
+    "startMs": 1782837000000,
+    "startDate": "2026-06-30"
    },
-   "patternEdge": -1.697,
+   "patternEdge": -0.742,
    "engine": {
     "signal": "BUY",
-    "score": 9.4,
-    "confidence": 80,
-    "entry": 253.455,
-    "sl": 248.3845,
-    "tp1": 260.2156,
+    "score": 11.7,
+    "confidence": 88,
+    "entry": 2245.815,
+    "sl": 2214.9135,
+    "tp1": 2287.0169,
     "rr": 1.3
    },
    "lead": true,
@@ -672,56 +896,50 @@
    "stage": "FORMING",
    "reasons": [
     "engine BUY (intraday — tactical, unproven)",
-    "⏳ convergence FORMING — ribbon tightening 3 bars (early-warning; ~1 bar to pop once it pinches)",
+    "⏳ convergence FORMING — ribbon tightening 11 bars (early-warning; ~1 bar to pop once it pinches)",
     "vetted all-boxes (A/B + momentum + filing)"
    ]
   },
   {
-   "sym": "BB",
-   "entity": "BlackBerry Limited",
-   "grade": "B",
-   "allBoxes": true,
-   "price": 12.505,
-   "lastBarMs": 1782759600000,
-   "fresh": true,
-   "conv": {
-    "detected": false,
-    "strength": null
-   },
-   "forming": {
-    "forming": true,
-    "barsForming": 3,
-    "tightness": 0.11,
-    "nearPinch": false,
-    "startMs": 1782757800000,
-    "startDate": "2026-06-29"
-   },
-   "patternEdge": -0.152,
-   "engine": {
-    "signal": "BUY",
-    "score": 8.6,
-    "confidence": 77,
-    "entry": 12.505,
-    "sl": 12.2925,
-    "tp1": 12.7883,
-    "rr": 1.3
-   },
-   "lead": true,
-   "grounded": true,
-   "stage": "FORMING",
-   "reasons": [
-    "engine BUY (intraday — tactical, unproven)",
-    "⏳ convergence FORMING — ribbon tightening 3 bars (early-warning; ~1 bar to pop once it pinches)",
-    "vetted all-boxes (A/B + momentum + filing)"
-   ]
-  },
-  {
-   "sym": "BAC",
-   "entity": "BofA Finance LLC",
+   "sym": "CDE",
+   "entity": "COEUR MINING, INC.",
    "grade": "A",
    "allBoxes": true,
-   "price": 58.065,
-   "lastBarMs": 1782759600000,
+   "price": 16.345,
+   "lastBarMs": 1782846000000,
+   "fresh": true,
+   "conv": {
+    "detected": false,
+    "strength": 0
+   },
+   "forming": {
+    "forming": false
+   },
+   "patternEdge": -2.235,
+   "engine": {
+    "signal": "BUY",
+    "score": 11.5,
+    "confidence": 90,
+    "entry": 16.345,
+    "sl": 16.216,
+    "tp1": 16.517,
+    "rr": 1.3
+   },
+   "lead": true,
+   "grounded": true,
+   "stage": null,
+   "reasons": [
+    "engine BUY (intraday — tactical, unproven)",
+    "vetted all-boxes (A/B + momentum + filing)"
+   ]
+  },
+  {
+   "sym": "FIVE",
+   "entity": "Five Below, Inc.",
+   "grade": "A",
+   "allBoxes": true,
+   "price": 179.47,
+   "lastBarMs": 1782846000000,
    "fresh": true,
    "conv": {
     "detected": false,
@@ -733,11 +951,110 @@
    "patternEdge": null,
    "engine": {
     "signal": "BUY",
-    "score": 7.6,
-    "confidence": 74,
-    "entry": 58.065,
-    "sl": 57.9131,
-    "tp1": 58.2676,
+    "score": 9.7,
+    "confidence": 82,
+    "entry": 179.47,
+    "sl": 178.345,
+    "tp1": 180.97,
+    "rr": 1.3
+   },
+   "lead": true,
+   "grounded": true,
+   "stage": null,
+   "reasons": [
+    "engine BUY (intraday — tactical, unproven)",
+    "vetted all-boxes (A/B + momentum + filing)"
+   ]
+  },
+  {
+   "sym": "TEL",
+   "entity": "TE CONNECTIVITY PLC",
+   "grade": "A",
+   "allBoxes": true,
+   "price": 202.07,
+   "lastBarMs": 1782846000000,
+   "fresh": true,
+   "conv": {
+    "detected": false,
+    "strength": 0
+   },
+   "forming": {
+    "forming": false
+   },
+   "patternEdge": 0.637,
+   "engine": {
+    "signal": "BUY",
+    "score": 6.4,
+    "confidence": 71,
+    "entry": 202.07,
+    "sl": 200.9641,
+    "tp1": 203.5445,
+    "rr": 1.3
+   },
+   "lead": true,
+   "grounded": true,
+   "stage": null,
+   "reasons": [
+    "engine BUY (intraday — tactical, unproven)",
+    "vetted all-boxes (A/B + momentum + filing)"
+   ]
+  },
+  {
+   "sym": "BIIB",
+   "entity": "BIOGEN INC.",
+   "grade": "B",
+   "allBoxes": true,
+   "price": 217.35,
+   "lastBarMs": 1782846000000,
+   "fresh": true,
+   "conv": {
+    "detected": false,
+    "strength": 0
+   },
+   "forming": {
+    "forming": false
+   },
+   "patternEdge": -0.798,
+   "engine": {
+    "signal": "BUY",
+    "score": 6.4,
+    "confidence": 71,
+    "entry": 217.35,
+    "sl": 216.2725,
+    "tp1": 218.7867,
+    "rr": 1.3
+   },
+   "lead": true,
+   "grounded": true,
+   "stage": null,
+   "reasons": [
+    "engine BUY (intraday — tactical, unproven)",
+    "vetted all-boxes (A/B + momentum + filing)"
+   ]
+  },
+  {
+   "sym": "MU",
+   "entity": "Micron Technology, Inc.",
+   "grade": "B",
+   "allBoxes": true,
+   "price": 1165,
+   "lastBarMs": 1782846000000,
+   "fresh": true,
+   "conv": {
+    "detected": false,
+    "strength": 0
+   },
+   "forming": {
+    "forming": false
+   },
+   "patternEdge": -1.073,
+   "engine": {
+    "signal": "BUY",
+    "score": 10.9,
+    "confidence": 85,
+    "entry": 1165,
+    "sl": 1152.3935,
+    "tp1": 1181.8087,
     "rr": 1.3
    },
    "lead": true,
@@ -753,8 +1070,8 @@
    "entity": "Regions Financial Corporation",
    "grade": "B",
    "allBoxes": true,
-   "price": 30.23,
-   "lastBarMs": 1782759600000,
+   "price": 30.31,
+   "lastBarMs": 1782846000000,
    "fresh": true,
    "conv": {
     "detected": false,
@@ -763,14 +1080,14 @@
    "forming": {
     "forming": false
    },
-   "patternEdge": -0.762,
+   "patternEdge": -0.757,
    "engine": {
     "signal": "BUY",
-    "score": 8.2,
-    "confidence": 77,
-    "entry": 30.23,
-    "sl": 30.1125,
-    "tp1": 30.3867,
+    "score": 6.6,
+    "confidence": 70,
+    "entry": 30.31,
+    "sl": 30.2049,
+    "tp1": 30.4501,
     "rr": 1.3
    },
    "lead": true,
@@ -782,45 +1099,12 @@
    ]
   },
   {
-   "sym": "TER",
-   "entity": "TERADYNE, INC.",
+   "sym": "SNX",
+   "entity": "TD SYNNEX CORP",
    "grade": "B",
    "allBoxes": true,
-   "price": 464.3497,
-   "lastBarMs": 1782759600000,
-   "fresh": true,
-   "conv": {
-    "detected": false,
-    "strength": null
-   },
-   "forming": {
-    "forming": false
-   },
-   "patternEdge": -1.714,
-   "engine": {
-    "signal": "BUY",
-    "score": 14.5,
-    "confidence": 95,
-    "entry": 464.3497,
-    "sl": 458.2988,
-    "tp1": 472.4175,
-    "rr": 1.3
-   },
-   "lead": true,
-   "grounded": true,
-   "stage": null,
-   "reasons": [
-    "engine BUY (intraday — tactical, unproven)",
-    "vetted all-boxes (A/B + momentum + filing)"
-   ]
-  },
-  {
-   "sym": "USB",
-   "entity": "US BANCORP \\DE\\",
-   "grade": "B",
-   "allBoxes": true,
-   "price": 61.355,
-   "lastBarMs": 1782759600000,
+   "price": 268.275,
+   "lastBarMs": 1782846000000,
    "fresh": true,
    "conv": {
     "detected": false,
@@ -829,245 +1113,14 @@
    "forming": {
     "forming": false
    },
-   "patternEdge": -1.675,
+   "patternEdge": -2.271,
    "engine": {
     "signal": "BUY",
-    "score": 8.2,
-    "confidence": 77,
-    "entry": 61.355,
-    "sl": 61.1538,
-    "tp1": 61.6232,
-    "rr": 1.3
-   },
-   "lead": true,
-   "grounded": true,
-   "stage": null,
-   "reasons": [
-    "engine BUY (intraday — tactical, unproven)",
-    "vetted all-boxes (A/B + momentum + filing)"
-   ]
-  },
-  {
-   "sym": "APH",
-   "entity": "AMPHENOL CORP /DE/",
-   "grade": "B",
-   "allBoxes": true,
-   "price": 166.11,
-   "lastBarMs": 1782759600000,
-   "fresh": true,
-   "conv": {
-    "detected": false,
-    "strength": 0
-   },
-   "forming": {
-    "forming": false
-   },
-   "patternEdge": -0.326,
-   "engine": {
-    "signal": "BUY",
-    "score": 9.2,
-    "confidence": 81,
-    "entry": 166.11,
-    "sl": 164.914,
-    "tp1": 167.7047,
-    "rr": 1.3
-   },
-   "lead": true,
-   "grounded": true,
-   "stage": null,
-   "reasons": [
-    "engine BUY (intraday — tactical, unproven)",
-    "vetted all-boxes (A/B + momentum + filing)"
-   ]
-  },
-  {
-   "sym": "HWM",
-   "entity": "HOWMET AEROSPACE INC.",
-   "grade": "B",
-   "allBoxes": true,
-   "price": 268.93,
-   "lastBarMs": 1782759600000,
-   "fresh": true,
-   "conv": {
-    "detected": false,
-    "strength": 0
-   },
-   "forming": {
-    "forming": false
-   },
-   "patternEdge": -0.304,
-   "engine": {
-    "signal": "BUY",
-    "score": 9.4,
-    "confidence": 80,
-    "entry": 268.93,
-    "sl": 267.1747,
-    "tp1": 271.2704,
-    "rr": 1.3
-   },
-   "lead": true,
-   "grounded": true,
-   "stage": null,
-   "reasons": [
-    "engine BUY (intraday — tactical, unproven)",
-    "vetted all-boxes (A/B + momentum + filing)"
-   ]
-  },
-  {
-   "sym": "WDC",
-   "entity": "WESTERN DIGITAL CORPORATION",
-   "grade": "B",
-   "allBoxes": true,
-   "price": 648.385,
-   "lastBarMs": 1782759600000,
-   "fresh": true,
-   "conv": {
-    "detected": false,
-    "strength": null
-   },
-   "forming": {
-    "forming": false
-   },
-   "patternEdge": -3.252,
-   "engine": {
-    "signal": "BUY",
-    "score": 9.4,
-    "confidence": 80,
-    "entry": 648.385,
-    "sl": 639.0885,
-    "tp1": 660.7803,
-    "rr": 1.3
-   },
-   "lead": true,
-   "grounded": true,
-   "stage": null,
-   "reasons": [
-    "engine BUY (intraday — tactical, unproven)",
-    "vetted all-boxes (A/B + momentum + filing)"
-   ]
-  },
-  {
-   "sym": "ALAB",
-   "entity": "Astera Labs, Inc.",
-   "grade": "B",
-   "allBoxes": true,
-   "price": 446,
-   "lastBarMs": 1782759600000,
-   "fresh": true,
-   "conv": {
-    "detected": false,
-    "strength": null
-   },
-   "forming": {
-    "forming": false
-   },
-   "patternEdge": 0.1,
-   "engine": {
-    "signal": "BUY",
-    "score": 8.1,
-    "confidence": 75,
-    "entry": 446,
-    "sl": 438.489,
-    "tp1": 456.0147,
-    "rr": 1.3
-   },
-   "lead": true,
-   "grounded": true,
-   "stage": null,
-   "reasons": [
-    "engine BUY (intraday — tactical, unproven)",
-    "vetted all-boxes (A/B + momentum + filing)"
-   ]
-  },
-  {
-   "sym": "AMKR",
-   "entity": "AMKOR TECHNOLOGY, INC.",
-   "grade": "B",
-   "allBoxes": true,
-   "price": 81.35,
-   "lastBarMs": 1782759600000,
-   "fresh": true,
-   "conv": {
-    "detected": false,
-    "strength": 0
-   },
-   "forming": {
-    "forming": false
-   },
-   "patternEdge": -0.042,
-   "engine": {
-    "signal": "BUY",
-    "score": 12.2,
-    "confidence": 90,
-    "entry": 81.35,
-    "sl": 80.4293,
-    "tp1": 82.5776,
-    "rr": 1.3
-   },
-   "lead": true,
-   "grounded": true,
-   "stage": null,
-   "reasons": [
-    "engine BUY (intraday — tactical, unproven)",
-    "vetted all-boxes (A/B + momentum + filing)"
-   ]
-  },
-  {
-   "sym": "C",
-   "entity": "Citigroup Inc",
-   "grade": "B",
-   "allBoxes": true,
-   "price": 143.37,
-   "lastBarMs": 1782759600000,
-   "fresh": true,
-   "conv": {
-    "detected": false,
-    "strength": 0
-   },
-   "forming": {
-    "forming": false
-   },
-   "patternEdge": -0.709,
-   "engine": {
-    "signal": "BUY",
-    "score": 7.4,
-    "confidence": 73,
-    "entry": 143.37,
-    "sl": 142.92,
-    "tp1": 143.97,
-    "rr": 1.3
-   },
-   "lead": true,
-   "grounded": true,
-   "stage": null,
-   "reasons": [
-    "engine BUY (intraday — tactical, unproven)",
-    "vetted all-boxes (A/B + momentum + filing)"
-   ]
-  },
-  {
-   "sym": "CRS",
-   "entity": "CARPENTER TECHNOLOGY CORPORATION",
-   "grade": "B",
-   "allBoxes": true,
-   "price": 601.08,
-   "lastBarMs": 1782759600000,
-   "fresh": true,
-   "conv": {
-    "detected": false,
-    "strength": 0
-   },
-   "forming": {
-    "forming": false
-   },
-   "patternEdge": -0.177,
-   "engine": {
-    "signal": "BUY",
-    "score": 6.4,
+    "score": 6.2,
     "confidence": 71,
-    "entry": 601.08,
-    "sl": 597.574,
-    "tp1": 605.7547,
+    "entry": 268.275,
+    "sl": 266.6638,
+    "tp1": 270.4233,
     "rr": 1.3
    },
    "lead": true,
@@ -1079,12 +1132,12 @@
    ]
   },
   {
-   "sym": "TFC",
-   "entity": "TRUIST FINANCIAL CORP",
+   "sym": "TXN",
+   "entity": "TEXAS INSTRUMENTS INCORPORATED",
    "grade": "B",
    "allBoxes": true,
-   "price": 50.495,
-   "lastBarMs": 1782759600000,
+   "price": 299.36,
+   "lastBarMs": 1782846000000,
    "fresh": true,
    "conv": {
     "detected": false,
@@ -1093,14 +1146,14 @@
    "forming": {
     "forming": false
    },
-   "patternEdge": -0.306,
+   "patternEdge": -0.585,
    "engine": {
     "signal": "BUY",
-    "score": 7.7,
-    "confidence": 76,
-    "entry": 50.495,
-    "sl": 50.3455,
-    "tp1": 50.6943,
+    "score": 8.6,
+    "confidence": 77,
+    "entry": 299.36,
+    "sl": 297.725,
+    "tp1": 301.54,
     "rr": 1.3
    },
    "lead": true,
@@ -1112,78 +1165,12 @@
    ]
   },
   {
-   "sym": "VICR",
-   "entity": "VICOR CORPORATION",
+   "sym": "GD",
+   "entity": "GENERAL DYNAMICS CORPORATION",
    "grade": "B",
    "allBoxes": true,
-   "price": 368.035,
-   "lastBarMs": 1782759600000,
-   "fresh": true,
-   "conv": {
-    "detected": false,
-    "strength": null
-   },
-   "forming": {
-    "forming": false
-   },
-   "patternEdge": -1.03,
-   "engine": {
-    "signal": "BUY",
-    "score": 9.4,
-    "confidence": 80,
-    "entry": 368.035,
-    "sl": 362.1137,
-    "tp1": 375.93,
-    "rr": 1.3
-   },
-   "lead": true,
-   "grounded": true,
-   "stage": null,
-   "reasons": [
-    "engine BUY (intraday — tactical, unproven)",
-    "vetted all-boxes (A/B + momentum + filing)"
-   ]
-  },
-  {
-   "sym": "AMD",
-   "entity": "ADVANCED MICRO DEVICES INC",
-   "grade": "B",
-   "allBoxes": true,
-   "price": 536.2951,
-   "lastBarMs": 1782759600000,
-   "fresh": true,
-   "conv": {
-    "detected": false,
-    "strength": null
-   },
-   "forming": {
-    "forming": false
-   },
-   "patternEdge": 0.857,
-   "engine": {
-    "signal": "BUY",
-    "score": 11.7,
-    "confidence": 88,
-    "entry": 536.2951,
-    "sl": 529.8753,
-    "tp1": 544.8548,
-    "rr": 1.3
-   },
-   "lead": true,
-   "grounded": true,
-   "stage": null,
-   "reasons": [
-    "engine BUY (intraday — tactical, unproven)",
-    "vetted all-boxes (A/B + momentum + filing)"
-   ]
-  },
-  {
-   "sym": "FITB",
-   "entity": "Fifth Third Bancorp",
-   "grade": "B",
-   "allBoxes": true,
-   "price": 56.605,
-   "lastBarMs": 1782759600000,
+   "price": 354.09,
+   "lastBarMs": 1782846000000,
    "fresh": true,
    "conv": {
     "detected": false,
@@ -1191,279 +1178,320 @@
    },
    "forming": {
     "forming": false
-   },
-   "patternEdge": -0.378,
-   "engine": {
-    "signal": "BUY",
-    "score": 12,
-    "confidence": 91,
-    "entry": 56.605,
-    "sl": 56.409,
-    "tp1": 56.8663,
-    "rr": 1.3
-   },
-   "lead": true,
-   "grounded": true,
-   "stage": null,
-   "reasons": [
-    "engine BUY (intraday — tactical, unproven)",
-    "vetted all-boxes (A/B + momentum + filing)"
-   ]
-  },
-  {
-   "sym": "VRT",
-   "entity": "Vertiv Holdings Co",
-   "grade": "B",
-   "allBoxes": true,
-   "price": 304.88,
-   "lastBarMs": 1782759600000,
-   "fresh": true,
-   "conv": {
-    "detected": false,
-    "strength": 0
-   },
-   "forming": {
-    "forming": false
-   },
-   "patternEdge": 0.468,
-   "engine": {
-    "signal": "BUY",
-    "score": 5.9,
-    "confidence": 68,
-    "entry": 304.88,
-    "sl": 302.2802,
-    "tp1": 308.3464,
-    "rr": 1.3
-   },
-   "lead": true,
-   "grounded": true,
-   "stage": null,
-   "reasons": [
-    "engine BUY (intraday — tactical, unproven)",
-    "vetted all-boxes (A/B + momentum + filing)"
-   ]
-  },
-  {
-   "sym": "FRSH",
-   "entity": "Freshworks Inc.",
-   "grade": "B",
-   "allBoxes": false,
-   "price": 10.215,
-   "lastBarMs": 1782759600000,
-   "fresh": true,
-   "conv": {
-    "detected": true,
-    "strength": 0.79
-   },
-   "forming": {
-    "forming": false
-   },
-   "patternEdge": -0.793,
-   "engine": {
-    "signal": "BUY",
-    "score": 9.6,
-    "confidence": 80,
-    "entry": 10.215,
-    "sl": 10.1243,
-    "tp1": 10.3359,
-    "rr": 1.3
-   },
-   "lead": true,
-   "grounded": false,
-   "stage": "BREAKOUT",
-   "reasons": [
-    "engine BUY (intraday — tactical, unproven)",
-    "coil→pop BREAKOUT (geometry only; pattern edge ≈ −0.71%)"
-   ]
-  },
-  {
-   "sym": "META",
-   "entity": "Meta Platforms, Inc.",
-   "grade": "A",
-   "allBoxes": false,
-   "price": 565.63,
-   "lastBarMs": 1782759600000,
-   "fresh": true,
-   "conv": {
-    "detected": false,
-    "strength": 0
-   },
-   "forming": {
-    "forming": true,
-    "barsForming": 17,
-    "tightness": 1,
-    "nearPinch": true,
-    "startMs": 1782745200000,
-    "startDate": "2026-06-29"
    },
    "patternEdge": null,
    "engine": {
     "signal": "BUY",
-    "score": 9.7,
-    "confidence": 82,
-    "entry": 565.63,
-    "sl": 563.3039,
-    "tp1": 568.7315,
+    "score": 10.9,
+    "confidence": 85,
+    "entry": 354.09,
+    "sl": 353.0416,
+    "tp1": 355.4878,
     "rr": 1.3
    },
    "lead": true,
-   "grounded": false,
-   "stage": "FORMING",
+   "grounded": true,
+   "stage": null,
    "reasons": [
     "engine BUY (intraday — tactical, unproven)",
-    "⏳ convergence FORMING — ribbon tightening 17 bars (early-warning; ~1 bar to pop once it pinches)"
+    "vetted all-boxes (A/B + momentum + filing)"
    ]
   },
   {
-   "sym": "PATH",
-   "entity": "UiPath, Inc.",
+   "sym": "MTSI",
+   "entity": "MACOM Technology Solutions Holdings, Inc.",
    "grade": "B",
-   "allBoxes": false,
-   "price": 10.8186,
-   "lastBarMs": 1782759600000,
+   "allBoxes": true,
+   "price": 385.84,
+   "lastBarMs": 1782846000000,
    "fresh": true,
    "conv": {
     "detected": false,
     "strength": 0
    },
    "forming": {
-    "forming": true,
-    "barsForming": 17,
-    "tightness": 1,
-    "nearPinch": true,
-    "startMs": 1782745200000,
-    "startDate": "2026-06-29"
+    "forming": false
+   },
+   "patternEdge": -0.529,
+   "engine": {
+    "signal": "BUY",
+    "score": 7.1,
+    "confidence": 72,
+    "entry": 385.84,
+    "sl": 381.2186,
+    "tp1": 392.0019,
+    "rr": 1.3
+   },
+   "lead": true,
+   "grounded": true,
+   "stage": null,
+   "reasons": [
+    "engine BUY (intraday — tactical, unproven)",
+    "vetted all-boxes (A/B + momentum + filing)"
+   ]
+  },
+  {
+   "sym": "STRL",
+   "entity": "Sterling Infrastructure, Inc.",
+   "grade": "B",
+   "allBoxes": true,
+   "price": 840.18,
+   "lastBarMs": 1782846000000,
+   "fresh": true,
+   "conv": {
+    "detected": false,
+    "strength": 0
+   },
+   "forming": {
+    "forming": false
+   },
+   "patternEdge": 0.284,
+   "engine": {
+    "signal": "BUY",
+    "score": 7.7,
+    "confidence": 76,
+    "entry": 840.18,
+    "sl": 831.7764,
+    "tp1": 851.3848,
+    "rr": 1.3
+   },
+   "lead": true,
+   "grounded": true,
+   "stage": null,
+   "reasons": [
+    "engine BUY (intraday — tactical, unproven)",
+    "vetted all-boxes (A/B + momentum + filing)"
+   ]
+  },
+  {
+   "sym": "TT",
+   "entity": "TRANE TECHNOLOGIES PLC",
+   "grade": "B",
+   "allBoxes": true,
+   "price": 490.51,
+   "lastBarMs": 1782846000000,
+   "fresh": true,
+   "conv": {
+    "detected": false,
+    "strength": 0
+   },
+   "forming": {
+    "forming": false
+   },
+   "patternEdge": -1.784,
+   "engine": {
+    "signal": "BUY",
+    "score": 8.1,
+    "confidence": 75,
+    "entry": 490.51,
+    "sl": 488.7955,
+    "tp1": 492.796,
+    "rr": 1.3
+   },
+   "lead": true,
+   "grounded": true,
+   "stage": null,
+   "reasons": [
+    "engine BUY (intraday — tactical, unproven)",
+    "vetted all-boxes (A/B + momentum + filing)"
+   ]
+  },
+  {
+   "sym": "UAL",
+   "entity": "United Airlines Holdings, Inc.",
+   "grade": "B",
+   "allBoxes": true,
+   "price": 137.6575,
+   "lastBarMs": 1782846000000,
+   "fresh": true,
+   "conv": {
+    "detected": false,
+    "strength": 0
+   },
+   "forming": {
+    "forming": false
+   },
+   "patternEdge": -1.728,
+   "engine": {
+    "signal": "BUY",
+    "score": 9.4,
+    "confidence": 80,
+    "entry": 137.6575,
+    "sl": 136.7738,
+    "tp1": 138.8358,
+    "rr": 1.3
+   },
+   "lead": true,
+   "grounded": true,
+   "stage": null,
+   "reasons": [
+    "engine BUY (intraday — tactical, unproven)",
+    "vetted all-boxes (A/B + momentum + filing)"
+   ]
+  },
+  {
+   "sym": "BNY",
+   "entity": "THE BANK OF NEW YORK MELLON CORPORATION",
+   "grade": "B",
+   "allBoxes": true,
+   "price": 145.34,
+   "lastBarMs": 1782846000000,
+   "fresh": true,
+   "conv": {
+    "detected": false,
+    "strength": 0
+   },
+   "forming": {
+    "forming": false
+   },
+   "patternEdge": null,
+   "engine": {
+    "signal": "BUY",
+    "score": 12.5,
+    "confidence": 93,
+    "entry": 145.34,
+    "sl": 144.8258,
+    "tp1": 146.0255,
+    "rr": 1.3
+   },
+   "lead": true,
+   "grounded": true,
+   "stage": null,
+   "reasons": [
+    "engine BUY (intraday — tactical, unproven)",
+    "vetted all-boxes (A/B + momentum + filing)"
+   ]
+  },
+  {
+   "sym": "CIEN",
+   "entity": "Ciena Corp",
+   "grade": "B",
+   "allBoxes": true,
+   "price": 488.45,
+   "lastBarMs": 1782846000000,
+   "fresh": true,
+   "conv": {
+    "detected": false,
+    "strength": 0
+   },
+   "forming": {
+    "forming": false
+   },
+   "patternEdge": -2.787,
+   "engine": {
+    "signal": "BUY",
+    "score": 8.4,
+    "confidence": 77,
+    "entry": 488.45,
+    "sl": 483.7337,
+    "tp1": 494.7383,
+    "rr": 1.3
+   },
+   "lead": true,
+   "grounded": true,
+   "stage": null,
+   "reasons": [
+    "engine BUY (intraday — tactical, unproven)",
+    "vetted all-boxes (A/B + momentum + filing)"
+   ]
+  },
+  {
+   "sym": "LHX",
+   "entity": "L3HARRIS TECHNOLOGIES, INC.",
+   "grade": "B",
+   "allBoxes": true,
+   "price": 289.68,
+   "lastBarMs": 1782846000000,
+   "fresh": true,
+   "conv": {
+    "detected": false,
+    "strength": 0
+   },
+   "forming": {
+    "forming": false
+   },
+   "patternEdge": -5.343,
+   "engine": {
+    "signal": "BUY",
+    "score": 7.9,
+    "confidence": 75,
+    "entry": 289.68,
+    "sl": 288.8047,
+    "tp1": 290.847,
+    "rr": 1.3
+   },
+   "lead": true,
+   "grounded": true,
+   "stage": null,
+   "reasons": [
+    "engine BUY (intraday — tactical, unproven)",
+    "vetted all-boxes (A/B + momentum + filing)"
+   ]
+  },
+  {
+   "sym": "NEE",
+   "entity": "NEXTERA ENERGY, INC.",
+   "grade": "B",
+   "allBoxes": true,
+   "price": 88.375,
+   "lastBarMs": 1782846000000,
+   "fresh": true,
+   "conv": {
+    "detected": false,
+    "strength": 0
+   },
+   "forming": {
+    "forming": false
    },
    "patternEdge": null,
    "engine": {
     "signal": "BUY",
     "score": 6.9,
     "confidence": 72,
-    "entry": 10.8186,
-    "sl": 10.7174,
-    "tp1": 10.9536,
+    "entry": 88.375,
+    "sl": 88.0266,
+    "tp1": 88.8395,
     "rr": 1.3
    },
    "lead": true,
-   "grounded": false,
-   "stage": "FORMING",
+   "grounded": true,
+   "stage": null,
    "reasons": [
     "engine BUY (intraday — tactical, unproven)",
-    "⏳ convergence FORMING — ribbon tightening 17 bars (early-warning; ~1 bar to pop once it pinches)"
+    "vetted all-boxes (A/B + momentum + filing)"
    ]
   },
   {
-   "sym": "CMCSA",
-   "entity": "Comcast Corporation",
+   "sym": "ROST",
+   "entity": "Ross Stores, Inc.",
    "grade": "B",
-   "allBoxes": false,
-   "price": 24.505,
-   "lastBarMs": 1782759600000,
+   "allBoxes": true,
+   "price": 211.47,
+   "lastBarMs": 1782846000000,
    "fresh": true,
    "conv": {
     "detected": false,
     "strength": 0
    },
    "forming": {
-    "forming": true,
-    "barsForming": 12,
-    "tightness": 1,
-    "nearPinch": true,
-    "startMs": 1782749700000,
-    "startDate": "2026-06-29"
+    "forming": false
    },
-   "patternEdge": -3.148,
+   "patternEdge": null,
    "engine": {
     "signal": "BUY",
-    "score": 7.1,
-    "confidence": 72,
-    "entry": 24.505,
-    "sl": 24.234,
-    "tp1": 24.8663,
+    "score": 8.2,
+    "confidence": 77,
+    "entry": 211.47,
+    "sl": 210.7656,
+    "tp1": 212.4092,
     "rr": 1.3
    },
    "lead": true,
-   "grounded": false,
-   "stage": "FORMING",
+   "grounded": true,
+   "stage": null,
    "reasons": [
     "engine BUY (intraday — tactical, unproven)",
-    "⏳ convergence FORMING — ribbon tightening 12 bars (early-warning; ~1 bar to pop once it pinches)"
-   ]
-  },
-  {
-   "sym": "TOST",
-   "entity": "Toast, Inc.",
-   "grade": "B",
-   "allBoxes": false,
-   "price": 28.065,
-   "lastBarMs": 1782759600000,
-   "fresh": true,
-   "conv": {
-    "detected": false,
-    "strength": 0
-   },
-   "forming": {
-    "forming": true,
-    "barsForming": 15,
-    "tightness": 1,
-    "nearPinch": true,
-    "startMs": 1782747000000,
-    "startDate": "2026-06-29"
-   },
-   "patternEdge": -1.016,
-   "engine": {
-    "signal": "BUY",
-    "score": 12.2,
-    "confidence": 90,
-    "entry": 28.065,
-    "sl": 27.8695,
-    "tp1": 28.3257,
-    "rr": 1.3
-   },
-   "lead": true,
-   "grounded": false,
-   "stage": "FORMING",
-   "reasons": [
-    "engine BUY (intraday — tactical, unproven)",
-    "⏳ convergence FORMING — ribbon tightening 15 bars (early-warning; ~1 bar to pop once it pinches)"
-   ]
-  },
-  {
-   "sym": "VEEV",
-   "entity": "Veeva Systems Inc.",
-   "grade": "B",
-   "allBoxes": false,
-   "price": 174.31,
-   "lastBarMs": 1782759600000,
-   "fresh": true,
-   "conv": {
-    "detected": false,
-    "strength": 0
-   },
-   "forming": {
-    "forming": true,
-    "barsForming": 16,
-    "tightness": 1,
-    "nearPinch": true,
-    "startMs": 1782746100000,
-    "startDate": "2026-06-29"
-   },
-   "patternEdge": -1.086,
-   "engine": {
-    "signal": "BUY",
-    "score": 7.4,
-    "confidence": 73,
-    "entry": 174.31,
-    "sl": 173.2838,
-    "tp1": 175.6783,
-    "rr": 1.3
-   },
-   "lead": true,
-   "grounded": false,
-   "stage": "FORMING",
-   "reasons": [
-    "engine BUY (intraday — tactical, unproven)",
-    "⏳ convergence FORMING — ribbon tightening 16 bars (early-warning; ~1 bar to pop once it pinches)"
+    "vetted all-boxes (A/B + momentum + filing)"
    ]
   },
   {
@@ -1471,8 +1499,230 @@
    "entity": "SCHWAB CHARLES CORP",
    "grade": "A",
    "allBoxes": false,
-   "price": 90.49,
-   "lastBarMs": 1782759600000,
+   "price": 91.99,
+   "lastBarMs": 1782846000000,
+   "fresh": true,
+   "conv": {
+    "detected": false,
+    "strength": 0
+   },
+   "forming": {
+    "forming": true,
+    "barsForming": 17,
+    "tightness": 1,
+    "nearPinch": true,
+    "startMs": 1782831600000,
+    "startDate": "2026-06-30"
+   },
+   "patternEdge": null,
+   "engine": {
+    "signal": "BUY",
+    "score": 5.6,
+    "confidence": 67,
+    "entry": 91.99,
+    "sl": 91.6989,
+    "tp1": 92.3781,
+    "rr": 1.3
+   },
+   "lead": true,
+   "grounded": false,
+   "stage": "FORMING",
+   "reasons": [
+    "engine BUY (intraday — tactical, unproven)",
+    "⏳ convergence FORMING — ribbon tightening 17 bars (early-warning; ~1 bar to pop once it pinches)"
+   ]
+  },
+  {
+   "sym": "EXE",
+   "entity": "EXPAND ENERGY CORPORATION",
+   "grade": "A",
+   "allBoxes": false,
+   "price": 91.945,
+   "lastBarMs": 1782846000000,
+   "fresh": true,
+   "conv": {
+    "detected": false,
+    "strength": 0
+   },
+   "forming": {
+    "forming": true,
+    "barsForming": 11,
+    "tightness": 1,
+    "nearPinch": true,
+    "startMs": 1782837000000,
+    "startDate": "2026-06-30"
+   },
+   "patternEdge": null,
+   "engine": {
+    "signal": "BUY",
+    "score": 10.9,
+    "confidence": 85,
+    "entry": 91.945,
+    "sl": 91.2129,
+    "tp1": 92.9212,
+    "rr": 1.3
+   },
+   "lead": true,
+   "grounded": false,
+   "stage": "FORMING",
+   "reasons": [
+    "engine BUY (intraday — tactical, unproven)",
+    "⏳ convergence FORMING — ribbon tightening 11 bars (early-warning; ~1 bar to pop once it pinches)"
+   ]
+  },
+  {
+   "sym": "APD",
+   "entity": "AIR PRODUCTS AND CHEMICALS, INC.",
+   "grade": "B",
+   "allBoxes": false,
+   "price": 294.47,
+   "lastBarMs": 1782846000000,
+   "fresh": true,
+   "conv": {
+    "detected": false,
+    "strength": 0
+   },
+   "forming": {
+    "forming": true,
+    "barsForming": 11,
+    "tightness": 1,
+    "nearPinch": true,
+    "startMs": 1782837000000,
+    "startDate": "2026-06-30"
+   },
+   "patternEdge": null,
+   "engine": {
+    "signal": "BUY",
+    "score": 10.4,
+    "confidence": 83,
+    "entry": 294.47,
+    "sl": 292.3397,
+    "tp1": 297.3104,
+    "rr": 1.3
+   },
+   "lead": true,
+   "grounded": false,
+   "stage": "FORMING",
+   "reasons": [
+    "engine BUY (intraday — tactical, unproven)",
+    "⏳ convergence FORMING — ribbon tightening 11 bars (early-warning; ~1 bar to pop once it pinches)"
+   ]
+  },
+  {
+   "sym": "LPLA",
+   "entity": "LPL Financial Holdings Inc.",
+   "grade": "B",
+   "allBoxes": false,
+   "price": 281.2725,
+   "lastBarMs": 1782846000000,
+   "fresh": true,
+   "conv": {
+    "detected": false,
+    "strength": 0
+   },
+   "forming": {
+    "forming": true,
+    "barsForming": 17,
+    "tightness": 1,
+    "nearPinch": true,
+    "startMs": 1782831600000,
+    "startDate": "2026-06-30"
+   },
+   "patternEdge": 0.156,
+   "engine": {
+    "signal": "BUY",
+    "score": 6.4,
+    "confidence": 70,
+    "entry": 281.2725,
+    "sl": 279.674,
+    "tp1": 283.4038,
+    "rr": 1.3
+   },
+   "lead": true,
+   "grounded": false,
+   "stage": "FORMING",
+   "reasons": [
+    "engine BUY (intraday — tactical, unproven)",
+    "⏳ convergence FORMING — ribbon tightening 17 bars (early-warning; ~1 bar to pop once it pinches)"
+   ]
+  },
+  {
+   "sym": "VEEV",
+   "entity": "Veeva Systems Inc.",
+   "grade": "B",
+   "allBoxes": false,
+   "price": 176.77,
+   "lastBarMs": 1782846000000,
+   "fresh": true,
+   "conv": {
+    "detected": false,
+    "strength": 0
+   },
+   "forming": {
+    "forming": true,
+    "barsForming": 42,
+    "tightness": 1,
+    "nearPinch": true,
+    "startMs": 1782746100000,
+    "startDate": "2026-06-29"
+   },
+   "patternEdge": -1.256,
+   "engine": {
+    "signal": "BUY",
+    "score": 12.2,
+    "confidence": 90,
+    "entry": 176.77,
+    "sl": 175.338,
+    "tp1": 178.6793,
+    "rr": 1.3
+   },
+   "lead": true,
+   "grounded": false,
+   "stage": "FORMING",
+   "reasons": [
+    "engine BUY (intraday — tactical, unproven)",
+    "⏳ convergence FORMING — ribbon tightening 42 bars (early-warning; ~1 bar to pop once it pinches)"
+   ]
+  },
+  {
+   "sym": "AMP",
+   "entity": "AMERIPRISE FINANCIAL INC",
+   "grade": "A",
+   "allBoxes": false,
+   "price": 457.64,
+   "lastBarMs": 1782846000000,
+   "fresh": true,
+   "conv": {
+    "detected": false,
+    "strength": 0
+   },
+   "forming": {
+    "forming": false
+   },
+   "patternEdge": 0.295,
+   "engine": {
+    "signal": "BUY",
+    "score": 6.4,
+    "confidence": 71,
+    "entry": 457.64,
+    "sl": 455.9796,
+    "tp1": 459.8538,
+    "rr": 1.3
+   },
+   "lead": true,
+   "grounded": false,
+   "stage": null,
+   "reasons": [
+    "engine BUY (intraday — tactical, unproven)"
+   ]
+  },
+  {
+   "sym": "ROP",
+   "entity": "ROPER TECHNOLOGIES INC",
+   "grade": "B",
+   "allBoxes": false,
+   "price": 338.94,
+   "lastBarMs": 1782846000000,
    "fresh": true,
    "conv": {
     "detected": false,
@@ -1484,11 +1734,11 @@
    "patternEdge": null,
    "engine": {
     "signal": "BUY",
-    "score": 8.1,
-    "confidence": 75,
-    "entry": 90.49,
-    "sl": 90.12,
-    "tp1": 90.9833,
+    "score": 7.4,
+    "confidence": 73,
+    "entry": 338.94,
+    "sl": 337.6098,
+    "tp1": 340.7137,
     "rr": 1.3
    },
    "lead": true,
@@ -1503,8 +1753,8 @@
    "entity": "ARTHUR J. GALLAGHER & CO.",
    "grade": "B",
    "allBoxes": false,
-   "price": 225.4,
-   "lastBarMs": 1782759600000,
+   "price": 229.265,
+   "lastBarMs": 1782846000000,
    "fresh": true,
    "conv": {
     "detected": false,
@@ -1516,11 +1766,11 @@
    "patternEdge": null,
    "engine": {
     "signal": "BUY",
-    "score": 7.9,
-    "confidence": 76,
-    "entry": 225.4,
-    "sl": 224.23,
-    "tp1": 226.9601,
+    "score": 10.9,
+    "confidence": 85,
+    "entry": 229.265,
+    "sl": 228.3216,
+    "tp1": 230.5229,
     "rr": 1.3
    },
    "lead": true,
@@ -1531,79 +1781,131 @@
    ]
   },
   {
-   "sym": "CB",
-   "entity": "Chubb Limited",
-   "grade": "A",
-   "allBoxes": true,
-   "price": 342.115,
-   "lastBarMs": 1782759600000,
+   "sym": "ALNY",
+   "entity": "ALNYLAM PHARMACEUTICALS, INC.",
+   "grade": "B",
+   "allBoxes": false,
+   "price": 296.45,
+   "lastBarMs": 1782846000000,
    "fresh": true,
    "conv": {
     "detected": false,
     "strength": 0
    },
    "forming": {
-    "forming": true,
-    "barsForming": 278,
-    "tightness": 1,
-    "nearPinch": true,
-    "startMs": 1781275500000,
-    "startDate": "2026-06-12"
+    "forming": false
    },
-   "patternEdge": null,
+   "patternEdge": 0.864,
    "engine": {
-    "signal": "HOLD",
-    "score": -1,
-    "confidence": 51,
-    "entry": 342.115,
-    "sl": 343.2035,
-    "tp1": 340.6637,
+    "signal": "BUY",
+    "score": 6.6,
+    "confidence": 70,
+    "entry": 296.45,
+    "sl": 294.882,
+    "tp1": 298.5407,
     "rr": 1.3
    },
    "lead": true,
    "grounded": false,
-   "stage": "FORMING",
+   "stage": null,
    "reasons": [
-    "⏳ convergence FORMING — ribbon tightening 278 bars (early-warning; ~1 bar to pop once it pinches)",
-    "vetted all-boxes (A/B + momentum + filing)"
+    "engine BUY (intraday — tactical, unproven)"
    ]
   },
   {
-   "sym": "ZM",
-   "entity": "Zoom Communications, Inc.",
-   "grade": "A",
-   "allBoxes": true,
-   "price": 86.12,
-   "lastBarMs": 1782759600000,
+   "sym": "EQT",
+   "entity": "EQT Corporation",
+   "grade": "B",
+   "allBoxes": false,
+   "price": 53.529,
+   "lastBarMs": 1782846000000,
    "fresh": true,
    "conv": {
     "detected": false,
     "strength": 0
    },
    "forming": {
-    "forming": true,
-    "barsForming": 43,
-    "tightness": 1,
-    "nearPinch": true,
-    "startMs": 1782486000000,
-    "startDate": "2026-06-26"
+    "forming": false
    },
    "patternEdge": null,
    "engine": {
-    "signal": "HOLD",
-    "score": -0.2,
-    "confidence": 50,
-    "entry": 86.12,
-    "sl": 86.6867,
-    "tp1": 85.3644,
+    "signal": "BUY",
+    "score": 8.7,
+    "confidence": 79,
+    "entry": 53.529,
+    "sl": 53.2685,
+    "tp1": 53.8763,
     "rr": 1.3
    },
    "lead": true,
    "grounded": false,
-   "stage": "FORMING",
+   "stage": null,
    "reasons": [
-    "⏳ convergence FORMING — ribbon tightening 43 bars (early-warning; ~1 bar to pop once it pinches)",
-    "vetted all-boxes (A/B + momentum + filing)"
+    "engine BUY (intraday — tactical, unproven)"
+   ]
+  },
+  {
+   "sym": "KVUE",
+   "entity": "Kenvue Inc.",
+   "grade": "B",
+   "allBoxes": false,
+   "price": 19.1,
+   "lastBarMs": 1782846000000,
+   "fresh": true,
+   "conv": {
+    "detected": false,
+    "strength": 0
+   },
+   "forming": {
+    "forming": false
+   },
+   "patternEdge": -0.253,
+   "engine": {
+    "signal": "BUY",
+    "score": 6.9,
+    "confidence": 72,
+    "entry": 19.1,
+    "sl": 19.036,
+    "tp1": 19.1854,
+    "rr": 1.3
+   },
+   "lead": true,
+   "grounded": false,
+   "stage": null,
+   "reasons": [
+    "engine BUY (intraday — tactical, unproven)"
+   ]
+  },
+  {
+   "sym": "V",
+   "entity": "VISA INC.",
+   "grade": "B",
+   "allBoxes": false,
+   "price": 344.06,
+   "lastBarMs": 1782846000000,
+   "fresh": true,
+   "conv": {
+    "detected": false,
+    "strength": 0
+   },
+   "forming": {
+    "forming": false
+   },
+   "patternEdge": -1.591,
+   "engine": {
+    "signal": "BUY",
+    "score": 8.4,
+    "confidence": 77,
+    "entry": 344.06,
+    "sl": 342.9806,
+    "tp1": 345.4992,
+    "rr": 1.3
+   },
+   "lead": true,
+   "grounded": false,
+   "stage": null,
+   "reasons": [
+    "engine BUY (intraday — tactical, unproven)"
    ]
   },
   {
@@ -1611,160 +1913,8 @@
    "entity": "Palantir Technologies Inc.",
    "grade": "B",
    "allBoxes": true,
-   "price": 116.27,
-   "lastBarMs": 1782759600000,
-   "fresh": true,
-   "conv": {
-    "detected": false,
-    "strength": 0
-   },
-   "forming": {
-    "forming": true,
-    "barsForming": 17,
-    "tightness": 1,
-    "nearPinch": true,
-    "startMs": 1782745200000,
-    "startDate": "2026-06-29"
-   },
-   "patternEdge": null,
-   "engine": {
-    "signal": "HOLD",
-    "score": 1.1,
-    "confidence": 53,
-    "entry": 116.27,
-    "sl": 117.17,
-    "tp1": 115.07,
-    "rr": 1.3
-   },
-   "lead": true,
-   "grounded": false,
-   "stage": "FORMING",
-   "reasons": [
-    "⏳ convergence FORMING — ribbon tightening 17 bars (early-warning; ~1 bar to pop once it pinches)",
-    "vetted all-boxes (A/B + momentum + filing)"
-   ]
-  },
-  {
-   "sym": "VLO",
-   "entity": "VALERO ENERGY CORP/TX",
-   "grade": "B",
-   "allBoxes": true,
-   "price": 268.98,
-   "lastBarMs": 1782759600000,
-   "fresh": true,
-   "conv": {
-    "detected": false,
-    "strength": 0
-   },
-   "forming": {
-    "forming": true,
-    "barsForming": 17,
-    "tightness": 1,
-    "nearPinch": true,
-    "startMs": 1782745200000,
-    "startDate": "2026-06-29"
-   },
-   "patternEdge": 0.196,
-   "engine": {
-    "signal": "HOLD",
-    "score": 2.3,
-    "confidence": 55,
-    "entry": 268.98,
-    "sl": 270.5304,
-    "tp1": 266.9128,
-    "rr": 1.3
-   },
-   "lead": true,
-   "grounded": false,
-   "stage": "FORMING",
-   "reasons": [
-    "⏳ convergence FORMING — ribbon tightening 17 bars (early-warning; ~1 bar to pop once it pinches)",
-    "vetted all-boxes (A/B + momentum + filing)"
-   ]
-  },
-  {
-   "sym": "GOOGL",
-   "entity": "ALPHABET INC.",
-   "grade": "B",
-   "allBoxes": true,
-   "price": 352.96,
-   "lastBarMs": 1782759600000,
-   "fresh": true,
-   "conv": {
-    "detected": false,
-    "strength": 0
-   },
-   "forming": {
-    "forming": true,
-    "barsForming": 142,
-    "tightness": 1,
-    "nearPinch": true,
-    "startMs": 1782144900000,
-    "startDate": "2026-06-22"
-   },
-   "patternEdge": -1.409,
-   "engine": {
-    "signal": "HOLD",
-    "score": 4.9,
-    "confidence": 66,
-    "entry": 352.96,
-    "sl": 354.5685,
-    "tp1": 350.8153,
-    "rr": 1.3
-   },
-   "lead": true,
-   "grounded": false,
-   "stage": "FORMING",
-   "reasons": [
-    "⏳ convergence FORMING — ribbon tightening 142 bars (early-warning; ~1 bar to pop once it pinches)",
-    "vetted all-boxes (A/B + momentum + filing)"
-   ]
-  },
-  {
-   "sym": "MPC",
-   "entity": "MARATHON PETROLEUM CORPORATION",
-   "grade": "B",
-   "allBoxes": true,
-   "price": 262.2975,
-   "lastBarMs": 1782759600000,
-   "fresh": true,
-   "conv": {
-    "detected": false,
-    "strength": 0
-   },
-   "forming": {
-    "forming": true,
-    "barsForming": 17,
-    "tightness": 1,
-    "nearPinch": true,
-    "startMs": 1782745200000,
-    "startDate": "2026-06-29"
-   },
-   "patternEdge": -0.623,
-   "engine": {
-    "signal": "HOLD",
-    "score": 3.8,
-    "confidence": 60,
-    "entry": 262.2975,
-    "sl": 263.5395,
-    "tp1": 260.6415,
-    "rr": 1.3
-   },
-   "lead": true,
-   "grounded": false,
-   "stage": "FORMING",
-   "reasons": [
-    "⏳ convergence FORMING — ribbon tightening 17 bars (early-warning; ~1 bar to pop once it pinches)",
-    "vetted all-boxes (A/B + momentum + filing)"
-   ]
-  },
-  {
-   "sym": "NBIX",
-   "entity": "NEUROCRINE BIOSCIENCES, INC.",
-   "grade": "B",
-   "allBoxes": true,
-   "price": 169.24,
-   "lastBarMs": 1782759600000,
+   "price": 116.92,
+   "lastBarMs": 1782846000000,
    "fresh": true,
    "conv": {
     "detected": false,
@@ -1775,17 +1925,17 @@
     "barsForming": 43,
     "tightness": 1,
     "nearPinch": true,
-    "startMs": 1782486000000,
-    "startDate": "2026-06-26"
+    "startMs": 1782745200000,
+    "startDate": "2026-06-29"
    },
-   "patternEdge": -0.698,
+   "patternEdge": 0.695,
    "engine": {
     "signal": "HOLD",
-    "score": 3.4,
-    "confidence": 61,
-    "entry": 169.24,
-    "sl": 170.0906,
-    "tp1": 168.1059,
+    "score": 2.7,
+    "confidence": 57,
+    "entry": 116.92,
+    "sl": 117.6966,
+    "tp1": 115.8845,
     "rr": 1.3
    },
    "lead": true,
@@ -1801,8 +1951,8 @@
    "entity": "Ondas Inc.",
    "grade": "B",
    "allBoxes": true,
-   "price": 7.985,
-   "lastBarMs": 1782759600000,
+   "price": 8.235,
+   "lastBarMs": 1782846000000,
    "fresh": true,
    "conv": {
     "detected": false,
@@ -1810,27 +1960,27 @@
    },
    "forming": {
     "forming": true,
-    "barsForming": 69,
+    "barsForming": 11,
     "tightness": 1,
     "nearPinch": true,
-    "startMs": 1782399600000,
-    "startDate": "2026-06-25"
+    "startMs": 1782837000000,
+    "startDate": "2026-06-30"
    },
-   "patternEdge": null,
+   "patternEdge": -1.111,
    "engine": {
     "signal": "HOLD",
-    "score": 1.8,
-    "confidence": 54,
-    "entry": 7.985,
-    "sl": 8.0978,
-    "tp1": 7.8346,
+    "score": 0.8,
+    "confidence": 51,
+    "entry": 8.235,
+    "sl": 8.365,
+    "tp1": 8.0617,
     "rr": 1.3
    },
    "lead": true,
    "grounded": false,
    "stage": "FORMING",
    "reasons": [
-    "⏳ convergence FORMING — ribbon tightening 69 bars (early-warning; ~1 bar to pop once it pinches)",
+    "⏳ convergence FORMING — ribbon tightening 11 bars (early-warning; ~1 bar to pop once it pinches)",
     "vetted all-boxes (A/B + momentum + filing)"
    ]
   },
@@ -1839,8 +1989,8 @@
    "entity": "Reddit, Inc.",
    "grade": "B",
    "allBoxes": true,
-   "price": 173.92,
-   "lastBarMs": 1782759600000,
+   "price": 173,
+   "lastBarMs": 1782846000000,
    "fresh": true,
    "conv": {
     "detected": false,
@@ -1848,37 +1998,37 @@
    },
    "forming": {
     "forming": true,
-    "barsForming": 13,
+    "barsForming": 39,
     "tightness": 1,
     "nearPinch": true,
     "startMs": 1782748800000,
     "startDate": "2026-06-29"
    },
-   "patternEdge": -3.094,
+   "patternEdge": -1.678,
    "engine": {
     "signal": "HOLD",
-    "score": 2.6,
+    "score": 3,
     "confidence": 57,
-    "entry": 173.92,
-    "sl": 175.652,
-    "tp1": 171.6107,
+    "entry": 173,
+    "sl": 174.2275,
+    "tp1": 171.3634,
     "rr": 1.3
    },
    "lead": true,
    "grounded": false,
    "stage": "FORMING",
    "reasons": [
-    "⏳ convergence FORMING — ribbon tightening 13 bars (early-warning; ~1 bar to pop once it pinches)",
+    "⏳ convergence FORMING — ribbon tightening 39 bars (early-warning; ~1 bar to pop once it pinches)",
     "vetted all-boxes (A/B + momentum + filing)"
    ]
   },
   {
-   "sym": "AMZN",
-   "entity": "AMAZON COM INC",
+   "sym": "AAPL",
+   "entity": "Apple Inc.",
    "grade": "B",
    "allBoxes": true,
-   "price": 241.67,
-   "lastBarMs": 1782759600000,
+   "price": 287.555,
+   "lastBarMs": 1782846000000,
    "fresh": true,
    "conv": {
     "detected": false,
@@ -1886,37 +2036,37 @@
    },
    "forming": {
     "forming": true,
-    "barsForming": 14,
+    "barsForming": 92,
     "tightness": 1,
     "nearPinch": true,
-    "startMs": 1782747900000,
-    "startDate": "2026-06-29"
+    "startMs": 1782402300000,
+    "startDate": "2026-06-25"
    },
    "patternEdge": null,
    "engine": {
     "signal": "HOLD",
-    "score": 0.3,
-    "confidence": 48,
-    "entry": 241.67,
-    "sl": 244.1502,
-    "tp1": 238.363,
+    "score": 4.1,
+    "confidence": 62,
+    "entry": 287.555,
+    "sl": 288.7862,
+    "tp1": 285.9134,
     "rr": 1.3
    },
    "lead": true,
    "grounded": false,
    "stage": "FORMING",
    "reasons": [
-    "⏳ convergence FORMING — ribbon tightening 14 bars (early-warning; ~1 bar to pop once it pinches)",
+    "⏳ convergence FORMING — ribbon tightening 92 bars (early-warning; ~1 bar to pop once it pinches)",
     "vetted all-boxes (A/B + momentum + filing)"
    ]
   },
   {
-   "sym": "KO",
-   "entity": "COCA COLA CO",
+   "sym": "ALAB",
+   "entity": "Astera Labs, Inc.",
    "grade": "B",
    "allBoxes": true,
-   "price": 82.535,
-   "lastBarMs": 1782759600000,
+   "price": 489.08,
+   "lastBarMs": 1782846000000,
    "fresh": true,
    "conv": {
     "detected": false,
@@ -1924,37 +2074,37 @@
    },
    "forming": {
     "forming": true,
-    "barsForming": 330,
+    "barsForming": 10,
     "tightness": 1,
     "nearPinch": true,
-    "startMs": 1781102700000,
-    "startDate": "2026-06-10"
+    "startMs": 1782837900000,
+    "startDate": "2026-06-30"
    },
-   "patternEdge": null,
+   "patternEdge": -5.18,
    "engine": {
     "signal": "HOLD",
     "score": 2.1,
-    "confidence": 56,
-    "entry": 82.535,
-    "sl": 82.7705,
-    "tp1": 82.221,
+    "confidence": 55,
+    "entry": 489.08,
+    "sl": 495.7529,
+    "tp1": 480.1828,
     "rr": 1.3
    },
    "lead": true,
    "grounded": false,
    "stage": "FORMING",
    "reasons": [
-    "⏳ convergence FORMING — ribbon tightening 330 bars (early-warning; ~1 bar to pop once it pinches)",
+    "⏳ convergence FORMING — ribbon tightening 10 bars (early-warning; ~1 bar to pop once it pinches)",
     "vetted all-boxes (A/B + momentum + filing)"
    ]
   },
   {
-   "sym": "TWLO",
-   "entity": "TWILIO INC.",
+   "sym": "APP",
+   "entity": "AppLovin Corp",
    "grade": "B",
    "allBoxes": true,
-   "price": 200.79,
-   "lastBarMs": 1782759600000,
+   "price": 516.73,
+   "lastBarMs": 1782846000000,
    "fresh": true,
    "conv": {
     "detected": false,
@@ -1962,37 +2112,37 @@
    },
    "forming": {
     "forming": true,
-    "barsForming": 17,
+    "barsForming": 43,
     "tightness": 1,
     "nearPinch": true,
     "startMs": 1782745200000,
     "startDate": "2026-06-29"
    },
-   "patternEdge": null,
+   "patternEdge": -0.808,
    "engine": {
     "signal": "HOLD",
-    "score": -0.2,
-    "confidence": 49,
-    "entry": 200.79,
-    "sl": 202.771,
-    "tp1": 198.1487,
+    "score": 1.1,
+    "confidence": 52,
+    "entry": 516.73,
+    "sl": 522.5709,
+    "tp1": 508.9421,
     "rr": 1.3
    },
    "lead": true,
    "grounded": false,
    "stage": "FORMING",
    "reasons": [
-    "⏳ convergence FORMING — ribbon tightening 17 bars (early-warning; ~1 bar to pop once it pinches)",
+    "⏳ convergence FORMING — ribbon tightening 43 bars (early-warning; ~1 bar to pop once it pinches)",
     "vetted all-boxes (A/B + momentum + filing)"
    ]
   },
   {
-   "sym": "ALL",
-   "entity": "ALLSTATE CORP",
-   "grade": "A",
-   "allBoxes": false,
-   "price": 240.83,
-   "lastBarMs": 1782759600000,
+   "sym": "VICR",
+   "entity": "VICOR CORPORATION",
+   "grade": "B",
+   "allBoxes": true,
+   "price": 380.11,
+   "lastBarMs": 1782846000000,
    "fresh": true,
    "conv": {
     "detected": false,
@@ -2000,36 +2150,75 @@
    },
    "forming": {
     "forming": true,
-    "barsForming": 342,
+    "barsForming": 27,
     "tightness": 1,
     "nearPinch": true,
-    "startMs": 1781028900000,
-    "startDate": "2026-06-09"
+    "startMs": 1782759600000,
+    "startDate": "2026-06-29"
    },
-   "patternEdge": -0.672,
+   "patternEdge": -1.949,
    "engine": {
     "signal": "HOLD",
-    "score": 1.3,
+    "score": 4.1,
+    "confidence": 63,
+    "entry": 380.11,
+    "sl": 384.3781,
+    "tp1": 374.4191,
+    "rr": 1.3
+   },
+   "lead": true,
+   "grounded": false,
+   "stage": "FORMING",
+   "reasons": [
+    "⏳ convergence FORMING — ribbon tightening 27 bars (early-warning; ~1 bar to pop once it pinches)",
+    "vetted all-boxes (A/B + momentum + filing)"
+   ]
+  },
+  {
+   "sym": "AGX",
+   "entity": "ARGAN INC",
+   "grade": "B",
+   "allBoxes": true,
+   "price": 788.59,
+   "lastBarMs": 1782846000000,
+   "fresh": true,
+   "conv": {
+    "detected": false,
+    "strength": 0
+   },
+   "forming": {
+    "forming": true,
+    "barsForming": 93,
+    "tightness": 1,
+    "nearPinch": true,
+    "startMs": 1782401400000,
+    "startDate": "2026-06-25"
+   },
+   "patternEdge": -1.894,
+   "engine": {
+    "signal": "HOLD",
+    "score": 1.5,
     "confidence": 53,
-    "entry": 240.83,
-    "sl": 241.516,
-    "tp1": 239.9154,
+    "entry": 788.59,
+    "sl": 795.1184,
+    "tp1": 779.8855,
     "rr": 1.3
    },
    "lead": true,
    "grounded": false,
    "stage": "FORMING",
    "reasons": [
-    "⏳ convergence FORMING — ribbon tightening 342 bars (early-warning; ~1 bar to pop once it pinches)"
+    "⏳ convergence FORMING — ribbon tightening 93 bars (early-warning; ~1 bar to pop once it pinches)",
+    "vetted all-boxes (A/B + momentum + filing)"
    ]
   },
   {
-   "sym": "PYPL",
-   "entity": "PayPal Holdings, Inc.",
+   "sym": "FRSH",
+   "entity": "Freshworks Inc.",
    "grade": "B",
    "allBoxes": false,
-   "price": 44.43,
-   "lastBarMs": 1782759600000,
+   "price": 10.195,
+   "lastBarMs": 1782846000000,
    "fresh": true,
    "conv": {
     "detected": false,
@@ -2037,36 +2226,36 @@
    },
    "forming": {
     "forming": true,
-    "barsForming": 251,
+    "barsForming": 43,
     "tightness": 1,
     "nearPinch": true,
-    "startMs": 1781535600000,
-    "startDate": "2026-06-15"
+    "startMs": 1782745200000,
+    "startDate": "2026-06-29"
    },
-   "patternEdge": -1.832,
+   "patternEdge": -0.589,
    "engine": {
     "signal": "HOLD",
-    "score": 2.1,
-    "confidence": 56,
-    "entry": 44.43,
-    "sl": 44.609,
-    "tp1": 44.1913,
+    "score": 3.6,
+    "confidence": 61,
+    "entry": 10.195,
+    "sl": 10.2652,
+    "tp1": 10.1015,
     "rr": 1.3
    },
    "lead": true,
    "grounded": false,
    "stage": "FORMING",
    "reasons": [
-    "⏳ convergence FORMING — ribbon tightening 251 bars (early-warning; ~1 bar to pop once it pinches)"
+    "⏳ convergence FORMING — ribbon tightening 43 bars (early-warning; ~1 bar to pop once it pinches)"
    ]
   },
   {
-   "sym": "ADBE",
-   "entity": "ADOBE INC.",
+   "sym": "PATH",
+   "entity": "UiPath, Inc.",
    "grade": "B",
    "allBoxes": false,
-   "price": 206.49,
-   "lastBarMs": 1782759600000,
+   "price": 10.815,
+   "lastBarMs": 1782846000000,
    "fresh": true,
    "conv": {
     "detected": false,
@@ -2074,7 +2263,7 @@
    },
    "forming": {
     "forming": true,
-    "barsForming": 17,
+    "barsForming": 43,
     "tightness": 1,
     "nearPinch": true,
     "startMs": 1782745200000,
@@ -2083,27 +2272,27 @@
    "patternEdge": null,
    "engine": {
     "signal": "HOLD",
-    "score": 2.6,
-    "confidence": 57,
-    "entry": 206.49,
-    "sl": 207.624,
-    "tp1": 204.978,
+    "score": -1.7,
+    "confidence": 54,
+    "entry": 10.815,
+    "sl": 10.909,
+    "tp1": 10.6896,
     "rr": 1.3
    },
    "lead": true,
    "grounded": false,
    "stage": "FORMING",
    "reasons": [
-    "⏳ convergence FORMING — ribbon tightening 17 bars (early-warning; ~1 bar to pop once it pinches)"
+    "⏳ convergence FORMING — ribbon tightening 43 bars (early-warning; ~1 bar to pop once it pinches)"
    ]
   },
   {
-   "sym": "FDS",
-   "entity": "FACTSET RESEARCH SYSTEMS INC.",
+   "sym": "TOST",
+   "entity": "Toast, Inc.",
    "grade": "B",
    "allBoxes": false,
-   "price": 231.3,
-   "lastBarMs": 1782759600000,
+   "price": 27.985,
+   "lastBarMs": 1782846000000,
    "fresh": true,
    "conv": {
     "detected": false,
@@ -2111,27 +2300,27 @@
    },
    "forming": {
     "forming": true,
-    "barsForming": 35,
+    "barsForming": 41,
     "tightness": 1,
     "nearPinch": true,
-    "startMs": 1782493200000,
-    "startDate": "2026-06-26"
+    "startMs": 1782747000000,
+    "startDate": "2026-06-29"
    },
-   "patternEdge": null,
+   "patternEdge": -0.976,
    "engine": {
     "signal": "HOLD",
-    "score": 1.8,
-    "confidence": 54,
-    "entry": 231.3,
-    "sl": 233.3024,
-    "tp1": 228.6301,
+    "score": 4.1,
+    "confidence": 62,
+    "entry": 27.985,
+    "sl": 28.1665,
+    "tp1": 27.743,
     "rr": 1.3
    },
    "lead": true,
    "grounded": false,
    "stage": "FORMING",
    "reasons": [
-    "⏳ convergence FORMING — ribbon tightening 35 bars (early-warning; ~1 bar to pop once it pinches)"
+    "⏳ convergence FORMING — ribbon tightening 41 bars (early-warning; ~1 bar to pop once it pinches)"
    ]
   }
  ],
