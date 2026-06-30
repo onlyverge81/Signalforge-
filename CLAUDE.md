@@ -929,6 +929,25 @@ OOS ledger; the straight-line MA ray overshoots by construction. **Next incremen
 3×/day ESD sweep reusing the `scanMonitor` pool (10:10/12:40/3:40 ET); wire the capture study's recommended resolution as
 the tab default after the CI dispatch.
 
+**📡 ESD SWEEP — scheduled per-contender heading sweep (DONE, branch `claude/signalforge-esd-sweep`):** the user asked to
+run the ESD across all contenders on a schedule using the Starter key (15-min delayed): first scan ~9:55am ET, then every
+30 min. Shipped mirroring the CONTENDER MONITOR exactly — `scripts/esd-sweep.mjs` reuses `withinSession`/`etParts` from
+`contender-monitor.mjs` (openMin 595 = 9:55 ET), reads `contenders.json`, and per name runs `analyze()` (for the levels)
++ `esdProject` + `headingEvent` → pure `classifyEsdLead` (lead = SMA20 separated AND the ray reaches a level; grounded =
+all-boxes) / `rankEsdLeads` (grounded first, then steeper |angle|, then sooner ETA) / `buildReport` (always carries the
+projection/overshoot + 15-min-delayed caveats) → `esd-sweep.json`. `ESD_RESOLUTION` env, **default `1hour`** (the SMA20 on
+1-hour ≈ a ~3-day swing heading whose forming bar refreshes each 30-min scan; Daily barely moves between scans, 15-min is
+too twitchy). `.github/workflows/esd-sweep.yml` (cron `"25,55 13-21 * * 1-5"` = 9:55 + every 30 min across EDT/EST; script's
+ET gate trims to 9:55–16:00; runs unit tests, commits with 3-retry push, concurrency). The 🚀 ESD tab gained a **📡 ESD
+SWEEP** board (same-origin `esd-sweep.json`, grounded ⭐ first, each row sym·grade·↗/↘ angle°·→ target $price (ETA)·ANALYZE→
+loads the name into the simulator), 15-MIN-DELAYED badge + the projection caveat, market-open/closed + "no JSON yet" states.
+**HONEST:** GitHub cron is BEST-EFFORT (it misfired for the MONITOR → the browser-scan pivot), so the schedule is approximate;
+the on-demand ⚡ SWEEP-NOW browser path is the offered reliable complement (not yet built). STRICTLY display/awareness —
+the ESD is a projection that overshoots, the heading + engine read are unproven, leads are candidates for the eye, never
+proven buys; touches no gate/verdict. Tests +4 (401 green); driver-verified the sweep board renders (empty + populated)
+with zero JS errors. Activates after merge (cron runs only from main); dispatch `esd-sweep.yml` once in market hours to
+populate.
+
 **Next — Track B:**
 - Mature the `momentum-on` / `merits-on` / `news-*` / `earnings-recent-on` OOS ledgers to n≥10; human-ratify
   only if they clear FDR. PASSIVE — the nightly `forward-log → forward-perf → promote` already partitions every

@@ -1,0 +1,61 @@
+name: ESD sweep
+
+# Sweeps ALL contenders for the SMA20 "nautical heading" (the ESD launch) and commits esd-sweep.json,
+# which the app's 🚀 ESD tab renders. The feed is 15-MINUTE DELAYED, so this is awareness within ~15 min,
+# never real-time; the ESD is a straight-line projection that OVERSHOOTS by construction — a heading lead
+# is a candidate for the human's eyes, never a proven target.
+#
+# Cadence: minutes :25 and :55 = "9:55 ET then every 30 min" across the UTC window covering US market
+# hours in both EDT and EST; the script's ET gate trims to 09:55–16:00 ET on weekdays and exits early
+# (no commit) off-window. GitHub cron is BEST-EFFORT (it can lag a few minutes / rarely skip under load)
+# and runs only from the default branch — so the schedule is approximate, not exact. The reliable
+# complement is the on-demand SWEEP in the app. Requires the repo secret POLYGON_API_KEY.
+
+on:
+  schedule:
+    - cron: "25,55 13-21 * * 1-5"   # :25/:55 = 9:55 + every 30 min, 13:25–21:55 UTC, Mon–Fri (script gates to 09:55–16:00 ET)
+  workflow_dispatch: {}             # manual run any time (also gated to market hours by the script)
+
+permissions:
+  contents: write   # to commit esd-sweep.json
+
+concurrency:
+  group: esd-sweep
+  cancel-in-progress: false   # let an in-flight sweep finish; skip overlapping ticks
+
+jobs:
+  sweep:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Set up Node
+        uses: actions/setup-node@v4
+        with:
+          node-version: 20
+
+      - name: Run offline unit tests
+        run: node --test scripts/*.test.mjs
+
+      - name: Sweep contenders for the SMA20 heading (Polygon)
+        env:
+          POLYGON_API_KEY: ${{ secrets.POLYGON_API_KEY }}
+          ESD_RESOLUTION: ${{ vars.ESD_RESOLUTION || '1hour' }}
+          POLYGON_PACE_MS: "0"
+        run: node scripts/esd-sweep.mjs || echo "esd-sweep skipped (no key, or market closed — nothing to commit)"
+
+      - name: Commit esd-sweep.json if it changed
+        run: |
+          git config user.name "github-actions[bot]"
+          git config user.email "github-actions[bot]@users.noreply.github.com"
+          git add esd-sweep.json
+          if git diff --cached --quiet; then
+            echo "esd-sweep.json unchanged — nothing to commit."
+          else
+            git commit -m "chore: ESD sweep scan"
+            for i in 1 2 3; do
+              git pull --rebase origin "${GITHUB_REF_NAME}" && git push && break
+              echo "push race (attempt $i) — retrying"; sleep 3
+            done
+          fi
