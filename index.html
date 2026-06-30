@@ -1954,6 +1954,151 @@ function backtestCorrection(stockData, gainByDate, opts={}){
   };
 }
 
+// ─── ESD: Estimated Stock Destination (SMA20 "nautical heading" projection) ───
+// DISPLAY/RESEARCH ONLY — never touches the verdict or any gate. Treats the SMA20 (purple) line as a
+// navigational heading: measure its kinematics, and when it SEPARATES from the faster-line pack and leans,
+// project a straight ray at its slope to the nearest direction-appropriate price level → the destination.
+// HONEST: an MA's slope is a LAGGING echo that decelerates as price mean-reverts, so a straight ray
+// OVERSHOOTS (beta-by-construction) — the ESD is a labeled PROJECTION, and esdAccuracyBacktest is the only
+// thing that can ever call it "proven" (n≥20 + significant + meanAlpha>0). Mirrored byte-for-byte into index.html.
+
+// Kinematics of ANY line series (SMA20, SMA5, SFA12, BB-mid, VMA…): velocity, ATR-normalized angle, lift,
+// curvature (acceleration / change-of-direction), trajectory cleanliness. angleDeg is normalized by ATR so
+// the degree means the same on every stock/timeframe/zoom (a raw on-screen degree is scale-dependent).
+function lineKinematics(series, W=20, atrVal=0){
+  const s=(series||[]).filter(v=>typeof v==="number"&&isFinite(v));
+  if(s.length<W+1) return null;
+  const last=s[s.length-1], prev=s[s.length-1-W];
+  const lift=last-prev;                                   // signed net change over the window
+  const slopePerBar=lift/W;                               // signed velocity (price/bar)
+  const speed=Math.abs(slopePerBar);
+  const norm=atrVal>0?slopePerBar/atrVal:(last>0?slopePerBar/last*100:slopePerBar);
+  const angleDeg=(atrVal>0||last>0)?+(Math.atan(norm)*180/Math.PI).toFixed(2):null;
+  const h=Math.max(1,Math.floor(W/2));
+  let curvature=null;                                     // 2nd difference: recent slope − prior slope
+  if(s.length>=2*h+1){
+    const a=s[s.length-1], b=s[s.length-1-h], c=s[s.length-1-2*h];
+    curvature=+(((a-b)/h)-((b-c)/h)).toFixed(6);
+  }
+  const er=efficiencyRatio(s,Math.min(W,s.length-1));
+  const eps=atrVal>0?atrVal*0.05:Math.abs(last)*0.0005;
+  const dir=lift>eps?"up":lift<-eps?"down":"flat";
+  return { slopePerBar:+slopePerBar.toFixed(6), angleDeg, lift:+lift.toFixed(4), speed:+speed.toFixed(6),
+    curvature, efficiencyRatio:er==null?null:+er.toFixed(3), dir };
+}
+
+// The "event": does the SMA20 SEPARATE from the fast-MA pack (SMA5/SMA10 mean) AND establish a slope, at bar i?
+// Point-in-time (reads only bars[0..i]); gap measured in ATRs so it is comparable across names. `side` = where
+// SMA20 sits vs the pack (above/below), `leaning` = its slope direction → the two cases the user described.
+function headingEvent(bars, i, opts={}){
+  const sepATR=opts.sep!=null?opts.sep:0.25, slopeWin=opts.slopeWin!=null?opts.slopeWin:10;
+  const end=(i==null?(bars?bars.length:0):i+1);
+  const data=(bars||[]).slice(0,end);
+  if(data.length<20+slopeWin+1) return null;
+  const cl=data.map(b=>b&&b.close);
+  const s20=sma(cl,20), s5=sma(cl,5), s10=sma(cl,10);
+  if(s20==null||s5==null||s10==null) return null;
+  const pack=(s5+s10)/2;                                  // the fast-MA cluster the SMA20 separates from
+  const a=atr(data,14)||0;
+  const gapATR=a>0?(s20-pack)/a:0;
+  const side=s20>pack?"above":s20<pack?"below":"level";
+  const s20prev=sma(cl.slice(0,cl.length-slopeWin),20);
+  const slope=(s20!=null&&s20prev!=null)?(s20-s20prev):0;
+  const leaning=slope>0?"up":slope<0?"down":"flat";
+  const separated=Math.abs(gapATR)>=sepATR&&leaning!=="flat";
+  return { separated, side, leaning, gapATR:+gapATR.toFixed(3),
+    slopePerBar:+(slope/slopeWin).toFixed(6), s20:+s20.toFixed(4), pack:+pack.toFixed(4), atr:+a.toFixed(4) };
+}
+
+// Project the SMA20 ray forward to the nearest DIRECTION-AWARE level → the Estimated Stock Destination.
+// Up-lean → a level ABOVE the line (TP1, else resistance); down-lean → a level BELOW (SL, else support) —
+// a rising ray can't reach a stop sitting below price, so "always SL" is geometrically wrong. Returns the
+// ray anchored to BAR-INDEX (so data gaps don't distort the ETA) + the ATR-normalized angle. valid:false
+// when the ray diverges from every level (no honest destination).
+function esdProject(bars, levels, opts={}){
+  const slopeWin=opts.slopeWin!=null?opts.slopeWin:10;
+  const data=bars||[];
+  const cl=data.map(b=>b&&b.close);
+  if(cl.length<20+slopeWin+1) return null;
+  const s20=sma(cl,20), s20prev=sma(cl.slice(0,cl.length-slopeWin),20);
+  if(s20==null||s20prev==null) return null;
+  const m=(s20-s20prev)/slopeWin;                          // SMA20 slope (price/bar)
+  const a=atr(data,14)||0;
+  const leaning=m>0?"up":m<0?"down":"flat";
+  const lv=levels||{};
+  let targetName=null, targetPrice=null;
+  if(leaning==="up"){                                       // rising → nearest level ABOVE the line
+    const c=[["tp1",lv.tp1],["resistance",lv.resistance]].filter(([,v])=>v!=null&&v>s20).sort((x,y)=>x[1]-y[1]);
+    if(c.length){ targetName=c[0][0]; targetPrice=c[0][1]; }
+  } else if(leaning==="down"){                              // falling → nearest level BELOW the line
+    const c=[["sl",lv.sl],["support",lv.support]].filter(([,v])=>v!=null&&v<s20).sort((x,y)=>y[1]-x[1]);
+    if(c.length){ targetName=c[0][0]; targetPrice=c[0][1]; }
+  }
+  const etaBars=(targetPrice!=null&&m!==0)?(targetPrice-s20)/m:null;
+  const ok=targetPrice!=null&&etaBars!=null&&etaBars>0&&isFinite(etaBars);
+  const angleDeg=a>0?+(Math.atan(m/a)*180/Math.PI).toFixed(2):null;
+  return {
+    valid:!!ok, leaning, slopePerBar:+m.toFixed(6), angleDeg, sma20:+s20.toFixed(4), atr:+a.toFixed(4),
+    targetName:ok?targetName:null, targetPrice:ok?+targetPrice.toFixed(4):null, etaBars:ok?+etaBars.toFixed(2):null,
+    ray:ok?{x0:cl.length-1,y0:+s20.toFixed(4),x1:+(cl.length-1+etaBars).toFixed(2),y1:+targetPrice.toFixed(4)}:null,
+  };
+}
+
+// Honest accuracy/overshoot backtest of the SMA20 straight-line projection. (1) DIAGNOSTIC: project the
+// SMA20 `H` bars ahead at its current slope and compare to the realized SMA20 → avgErr + overshootBias
+// (signed; >0 = the ray lands ABOVE reality = the lag/deceleration overshoot the charter warns about).
+// (2) ALPHA leg: BUY on a below→up heading with a custom TP at the projected destination (buffered by the
+// expanding-window avg error, no-lookahead) through runBacktest → realized stats + alpha vs matched
+// buy-&-hold. `proven` is alpha-honest: never green without ≥20 trades, significance, AND meanAlpha>0.
+function esdAccuracyBacktest(bars, opts={}){
+  const slopeWin=opts.slopeWin!=null?opts.slopeWin:10;
+  const H=opts.horizon!=null?opts.horizon:Math.max(5,slopeWin);
+  const sepATR=opts.sep!=null?opts.sep:0.25;
+  const costs=opts.costs||{slip:0,comm:0};
+  const data=bars||[];
+  if(data.length<20+slopeWin+H+2) return null;
+  const cl=data.map(d=>d&&d.close);
+  const projErr=new Array(data.length).fill(null);
+  let n=0,absSum=0,signSum=0,pctSum=0;
+  for(let i=20+slopeWin;i+H<data.length;i++){
+    const s20now=sma(cl.slice(0,i+1),20), s20prev=sma(cl.slice(0,i+1-slopeWin),20);
+    if(s20now==null||s20prev==null) continue;
+    const m=(s20now-s20prev)/slopeWin;
+    const proj=s20now+m*H;                                   // straight-line projection H bars out
+    const s20fut=sma(cl.slice(0,i+1+H),20); if(s20fut==null) continue;
+    const e=proj-s20fut;                                     // + = overshoot (projected above realized)
+    projErr[i]=Math.abs(e); n++; absSum+=Math.abs(e); signSum+=e; pctSum+=Math.abs(e)/(Math.abs(s20fut)||1)*100;
+  }
+  const avgErr=n?absSum/n:null, overshootBias=n?signSum/n:null, avgPctErr=n?pctSum/n:null;
+  const avgErrBefore=new Array(data.length).fill(0);
+  { let s=0,c=0; for(let k=0;k<data.length;k++){ avgErrBefore[k]=c?s/c:0; if(projErr[k]!=null){s+=projErr[k];c++;} } }
+  const scorer=(slice)=>{
+    const j=slice.length-1, a=atr(slice,14);
+    const ev=headingEvent(slice,j,{sep:sepATR,slopeWin});
+    if(!ev||!ev.separated||ev.leaning!=="up"||ev.side!=="below") return {signal:"HOLD", atr:a};
+    const sc=slice.map(d=>d&&d.close), s20=sma(sc,20), entry=sc[j], dest=s20+ev.slopePerBar*H;
+    if(!(dest>entry)) return {signal:"HOLD", atr:a};
+    return {signal:"BUY", atr:a, score:ev.slopePerBar, customTp:dest+avgErrBefore[j], customSl:entry-a*1.5};
+  };
+  const bt=runBacktest(data, scorer, 1.5, 2.0, costs, null, false);
+  const legs=bt.trades.map(t=>{
+    const exitIdx=t.openIndex+t.barsHeld, benchClose=data[exitIdx]?data[exitIdx].close:t.exit;
+    const benchPct=(benchClose-t.entry)/t.entry*100;
+    return { alpha:t.pnlPct-benchPct, beat:t.pnlPct>benchPct };
+  });
+  const m2=legs.length;
+  const meanAlpha=m2?legs.reduce((a,l)=>a+l.alpha,0)/m2:null;
+  const beatRate=m2?legs.filter(l=>l.beat).length/m2*100:null;
+  const sig=bt.stats.significance;
+  const proven=m2>=20&&(sig==="SIGNIFICANT"||sig==="SUGGESTIVE")&&meanAlpha>0;
+  return {
+    n, avgErr:avgErr==null?null:+avgErr.toFixed(4), overshootBias:overshootBias==null?null:+overshootBias.toFixed(4),
+    avgPctErr:avgPctErr==null?null:+avgPctErr.toFixed(2),
+    trades:m2, stats:bt.stats, meanAlpha:meanAlpha==null?null:+meanAlpha.toFixed(4),
+    beatRate:beatRate==null?null:+beatRate.toFixed(1), proven,
+  };
+}
+
 // ─── Buffett-style fundamental VALUE score ──────────────────────────────────
 // Grades cheapness + financial health + growth into a composite, the way a
 // quantitative value screen would. Covers the SCREENABLE part of value investing
@@ -2144,7 +2289,7 @@ function fmt(v,dec) {
 }
 
 // ─── Candlestick Chart ─────────────────────────────────────────────────────
-function Chart({rows,analysis,muted,convStartIdx}) {
+function Chart({rows,analysis,muted,convStartIdx,projection}) {
   const ref=useRef(null);
   useEffect(()=>{
     const cv=ref.current; if(!cv||rows.length<2) return;
@@ -2295,6 +2440,32 @@ function Chart({rows,analysis,muted,convStartIdx}) {
         else { ctx.textAlign="left"; ctx.fillText("⚡ CONVERGENCE START",x+3,PAD.t+10); }
         ctx.textAlign="left";
       }
+    }
+    // 🚀 ESD projection ray + error cone (ESD tab) — the SMA20 heading extended toward its destination.
+    // Display-only: the ray starts at the last bar's SMA20 (ray.y0) and rises/falls at the measured slope;
+    // the cone is the ±avgErr band (the projection OVERSHOOTS by construction, so this is honest width).
+    if(projection && projection.ray){
+      const p=projection, up=p.leaning==="up", col=up?"#00e676":"#ff5252";
+      const startX=toX(n-1), startY=toY(p.ray.y0);
+      const slope=(p.ray.y1-p.ray.y0)/((p.ray.x1-p.ray.x0)||1);     // price per bar
+      const clampY=y=>Math.max(PAD.t,Math.min(PAD.t+cH,y));
+      const kEdge=Math.max(1,(W-PAD.r-startX)/cw), endX=W-PAD.r;
+      const endPrice=p.ray.y0+slope*kEdge, endY=clampY(toY(endPrice));
+      const err=p.avgErr||0;
+      if(err>0){
+        ctx.strokeStyle=up?"rgba(0,230,118,0.25)":"rgba(255,82,82,0.25)"; ctx.lineWidth=1; ctx.setLineDash([3,3]);
+        [err,-err].forEach(e=>{ ctx.beginPath(); ctx.moveTo(startX,clampY(toY(p.ray.y0+e))); ctx.lineTo(endX,clampY(toY(endPrice+e))); ctx.stroke(); });
+        ctx.setLineDash([]);
+      }
+      ctx.beginPath(); ctx.strokeStyle=col; ctx.lineWidth=2; ctx.setLineDash([5,3]);
+      ctx.moveTo(startX,startY); ctx.lineTo(endX,endY); ctx.stroke(); ctx.setLineDash([]);
+      const ang=Math.atan2(endY-startY,endX-startX);                // arrowhead at the destination edge
+      ctx.fillStyle=col; ctx.beginPath(); ctx.moveTo(endX,endY);
+      ctx.lineTo(endX-8*Math.cos(ang-0.4),endY-8*Math.sin(ang-0.4)); ctx.lineTo(endX-8*Math.cos(ang+0.4),endY-8*Math.sin(ang+0.4));
+      ctx.closePath(); ctx.fill();
+      ctx.fillStyle=col; ctx.font="bold 9px monospace"; ctx.textAlign="right";
+      const lbl="🚀 ESD "+(p.targetName?("→ "+p.targetName.toUpperCase()+" "):"")+(p.targetPrice!=null?("$"+p.targetPrice):"")+(p.etaBars!=null?(" ~"+Math.round(p.etaBars)+"b"):"")+(p.angleDeg!=null?(" · "+p.angleDeg+"°"):"");
+      ctx.fillText(lbl,endX-2,clampY(endY)-6); ctx.textAlign="left";
     }
     // Latest-signal marker on the most recent candle
     if(analysis){
@@ -3336,7 +3507,7 @@ function App() {
 
       {/* Tabs */}
       <div style={{background:BG3,borderBottom:"1px solid "+BORD,padding:"0 20px",display:"flex"}}>
-        {[["input","▣ DATA"],["live","⚡ LIVE"],["guide","🧑‍🏫 GUIDE"],["outlook","◎ OUTLOOK"],["contenders","★ CONTENDERS"],["monitor","📡 MONITOR"],["signals","◈ SIGNALS"],["value","✚ AUTOPSY"],["evidence","🔬 EVIDENCE"],["position","⊞ SIZE"],["paper","📒 FORWARD TEST"],["backtest","⟲ BACKTEST"],["replay","▶ REPLAY"],["history","◷ HISTORY"]].map(([k,l])=>(
+        {[["input","▣ DATA"],["live","⚡ LIVE"],["guide","🧑‍🏫 GUIDE"],["outlook","◎ OUTLOOK"],["contenders","★ CONTENDERS"],["monitor","📡 MONITOR"],["esd","🚀 ESD"],["signals","◈ SIGNALS"],["value","✚ AUTOPSY"],["evidence","🔬 EVIDENCE"],["position","⊞ SIZE"],["paper","📒 FORWARD TEST"],["backtest","⟲ BACKTEST"],["replay","▶ REPLAY"],["history","◷ HISTORY"]].map(([k,l])=>(
           <button key={k} style={tBtn(tab===k)} onClick={()=>setTab(k)}>{l}</button>
         ))}
       </div>
@@ -3722,6 +3893,101 @@ function App() {
         )}
 
         {/* ── SIGNALS TAB ── */}
+        {tab==="esd"&&(()=>{
+          // 🚀 ESD — Estimated Stock Destination. Treat the SMA20 (purple) line as a navigational HEADING:
+          // measure its kinematics, project a straight ray to the nearest direction-aware level, and show the
+          // destination + ETA + an honest accuracy/overshoot read. STRICTLY display — touches no gate/verdict.
+          const esdInfo=(
+            <div style={{...card,background:"linear-gradient(135deg,#0e1320,#1a1030)"}}>
+              <div style={{display:"flex",justifyContent:"space-between",alignItems:"center",flexWrap:"wrap",gap:8}}>
+                <span style={{fontSize:13,fontWeight:700,letterSpacing:1,color:"#b388ff"}}>🚀 ESTIMATED STOCK DESTINATION</span>
+                <span title="The ESD is a straight-line projection of the SMA20's current slope. A moving average LAGS and DECELERATES as price mean-reverts, so the ray OVERSHOOTS by construction — it is a PROJECTION, never a promise. Its predictive worth is only what the accuracy backtest (and the OOS ledger) prove." style={{fontSize:9,fontWeight:700,letterSpacing:1,padding:"4px 10px",borderRadius:3,color:"#ffb74d",background:"rgba(255,183,77,0.10)",border:"1px solid #ffb74d55"}}>⚠ PROJECTION — NOT A PROMISE</span>
+              </div>
+              <div style={{fontSize:10,color:FADE,marginTop:6,lineHeight:1.5}}>The purple <b>SMA20</b> line sets the <b>nautical heading</b>: when it separates from the fast-MA pack and leans, its angle drives a ray to the nearest level it points at. Enter any ticker to simulate.</div>
+            </div>
+          );
+          const tickerBox=(
+            <div style={card}>
+              <span style={lbl}>SIMULATE ANY STOCK</span>
+              <div style={{display:"flex",gap:8,marginTop:6}}>
+                <input style={{...inp,flex:1}} value={ticker} onChange={e=>setTicker(e.target.value.toUpperCase())} placeholder="AAPL" onKeyDown={e=>{if(e.key==="Enter")fetchLive(ticker);}}/>
+                <button style={{...runBtn,width:"auto",padding:"0 22px",opacity:fetching?0.6:1}} onClick={()=>fetchLive(ticker)} disabled={fetching}>{fetching?"⏳":"SIMULATE →"}</button>
+              </div>
+              <div style={{fontSize:9,color:FADE,marginTop:6}}>Uses your Polygon key from LIVE · the same fetch the SIGNALS tab runs.</div>
+            </div>
+          );
+          if(!analysis||!rows||rows.length<35) return (<>{esdInfo}{tickerBox}
+            <div style={{textAlign:"center",padding:"40px 0",color:"#1e2a3a"}}>
+              <div style={{fontSize:46}}>🚀</div>
+              <div style={{letterSpacing:3,fontSize:12,marginTop:12}}>ENTER A TICKER TO PROJECT ITS DESTINATION</div>
+              <button style={{...runBtn,width:"auto",padding:"10px 30px",marginTop:18}} onClick={()=>setTab("live")}>⚡ FETCH LIVE DATA</button>
+            </div></>);
+          const closes=rows.map(r=>r.close);
+          const atrV=(analysis.indicators&&analysis.indicators.atr)||0;
+          const lv={sl:analysis.sl, tp1:analysis.tp1, support:analysis.support, resistance:analysis.resistance};
+          const esd=esdProject(rows, lv, {});
+          const ev=headingEvent(rows, rows.length-1, {});
+          const acc=esdAccuracyBacktest(rows, {});
+          const s20s=[]; for(let i=19;i<closes.length;i++){ let s=0; for(let j=i-19;j<=i;j++) s+=closes[j]; s20s.push(s/20); }
+          const kin=s20s.length>22?lineKinematics(s20s, 20, atrV):null;
+          const projection=(esd&&esd.valid)?{ray:esd.ray,angleDeg:esd.angleDeg,leaning:esd.leaning,targetName:esd.targetName,targetPrice:esd.targetPrice,etaBars:esd.etaBars,avgErr:acc?acc.avgErr:0}:null;
+          const lean=esd&&esd.leaning, leanCol=lean==="up"?"#00e676":lean==="down"?"#ff5252":"#90a4ae";
+          const row=(k,v,c)=>(<div style={{display:"flex",justifyContent:"space-between",padding:"3px 0",fontSize:11}}><span style={{color:FADE}}>{k}</span><span style={{color:c||"#cfd8dc",fontWeight:600}}>{v}</span></div>);
+          return (<>
+            {esdInfo}
+            {tickerBox}
+            <div style={{...card,padding:8}}>
+              <div style={{fontSize:10,color:FADE,letterSpacing:1,marginBottom:6,paddingLeft:4}}>{ticker} · {RES_LABEL[liveMeta?.resolution]||liveMeta?.resolution||"—"} · {rows.length} candles · SMA20 heading + ESD ray</div>
+              <Chart rows={rows} analysis={analysis} muted projection={projection}/>
+            </div>
+            {/* SMA20 heading kinematics */}
+            <div style={card}>
+              <span style={lbl}>🧭 SMA20 HEADING (the purple line)</span>
+              <div style={{marginTop:8}}>
+                {row("Position vs fast pack", ev?(ev.side==="below"?"BELOW (lagging ↑ catch-up)":ev.side==="above"?"ABOVE (leading ↓)":"level"):"—", ev&&ev.side==="below"?"#00e676":ev&&ev.side==="above"?"#ff5252":null)}
+                {row("Leaning", lean?lean.toUpperCase():"—", leanCol)}
+                {row("Angle 📐 (ATR-normalized)", esd&&esd.angleDeg!=null?(esd.angleDeg+"°"):"—", leanCol)}
+                {row("Speed (slope / bar)", esd?esd.slopePerBar:"—")}
+                {kin&&row("Lift / decline (20-bar)", kin.lift)}
+                {kin&&row("Curvature (accel)", kin.curvature!=null?kin.curvature:"—", kin.curvature>0?"#00e676":kin.curvature<0?"#ff5252":null)}
+                {kin&&row("Trajectory cleanliness (ER)", kin.efficiencyRatio!=null?kin.efficiencyRatio:"—")}
+                {ev&&row("Separated from pack?", ev.separated?("YES ("+ev.gapATR+" ATR)"):("no ("+ev.gapATR+" ATR)"), ev.separated?"#00e676":"#90a4ae")}
+              </div>
+            </div>
+            {/* The destination */}
+            <div style={{...card,border:"1px solid "+(esd&&esd.valid?leanCol+"55":"#1e2a3a")}}>
+              <span style={lbl}>🎯 THE DESTINATION</span>
+              {esd&&esd.valid?(
+                <div style={{marginTop:8}}>
+                  <div style={{fontSize:15,fontWeight:700,color:leanCol}}>{lean==="up"?"↗":"↘"} ${esd.targetPrice} <span style={{fontSize:11,color:FADE,fontWeight:400}}>({(esd.targetName||"").toUpperCase()})</span></div>
+                  <div style={{fontSize:11,color:"#cfd8dc",marginTop:6}}>Heading <b style={{color:leanCol}}>{lean}</b> at <b>{esd.angleDeg}°</b> → reaches the {(esd.targetName||"")} line in <b>~{Math.round(esd.etaBars)} bars</b> at the current slope.</div>
+                  {acc&&acc.avgErr!=null&&<div style={{fontSize:10,color:FADE,marginTop:6}}>Error cone ±${acc.avgErr} (the ray's average miss over history{acc.overshootBias!=null?(" · overshoot bias "+(acc.overshootBias>0?"+":"")+acc.overshootBias):""}).</div>}
+                </div>
+              ):(
+                <div style={{fontSize:11,color:"#90a4ae",marginTop:8,lineHeight:1.5}}>No clean destination right now — the SMA20 is {lean==="up"?"rising but no TP1/resistance sits above it":lean==="down"?"falling but no SL/support sits below it":"flat (no heading)"}. A rising ray only targets levels above; a falling ray only targets levels below.</div>
+              )}
+            </div>
+            {/* Honest accuracy / overshoot read */}
+            <div style={card}>
+              <span style={lbl}>🔬 PROJECTION ACCURACY (in-sample, honest)</span>
+              {acc?(
+                <div style={{marginTop:8}}>
+                  {row("Avg projection error", acc.avgErr!=null?("$"+acc.avgErr+(acc.avgPctErr!=null?(" · "+acc.avgPctErr+"%"):"")):"—")}
+                  {row("Overshoot bias", acc.overshootBias!=null?((acc.overshootBias>0?"+":"")+acc.overshootBias+(acc.overshootBias>0?" (rays land HIGH — the lag overshoot)":"")):"—", acc.overshootBias>0?"#ffb74d":null)}
+                  {row("Backtest trades", acc.trades)}
+                  {row("Alpha vs buy-&-hold", acc.meanAlpha!=null?(acc.meanAlpha+"%"):"—", acc.meanAlpha>0?"#00e676":acc.meanAlpha<0?"#ff5252":null)}
+                  <div style={{marginTop:8,padding:"8px 10px",borderRadius:4,background:acc.proven?"rgba(0,230,118,0.08)":"rgba(144,164,174,0.08)",border:"1px solid "+(acc.proven?"#00e67644":"#90a4ae33"),fontSize:10,color:acc.proven?"#69f0ae":"#90a4ae"}}>
+                    {acc.proven?"✓ Cleared the in-sample alpha bar — still must mature OOS before it's tradeable.":"⚖ NOT PROVEN — a projection, not a proven target. The straight-line ray overshoots by construction; only the OOS ledger can make it tradeable."}
+                  </div>
+                </div>
+              ):<div style={{fontSize:11,color:FADE,marginTop:8}}>Not enough history to backtest the projection.</div>}
+            </div>
+            <div style={{fontSize:9,color:FADE,textAlign:"center",padding:"4px 0 10px",lineHeight:1.5}}>
+              Display-only · the ESD never changes the BUY/HOLD verdict or any gate. The capture study picks the timeframe that surfaces the heading earliest; a per-contender 3×/day sweep is the next increment.
+            </div>
+          </>);
+        })()}
+
         {tab==="signals"&&!analysis&&(
           <div style={{textAlign:"center",padding:"60px 0",color:"#1e2a3a"}}>
             <div style={{fontSize:50}}>◇</div>

@@ -11,7 +11,7 @@
 
 import { test } from "node:test";
 import assert from "node:assert/strict";
-import { analyze, runBacktest, scoreAt, scorePosition, checkBarExit, checkBarExitFine, isAmbiguousBar, tradeNet, realizedStats, convergenceBreakout, convergenceForming, backtestPattern, edgeStatus, avgIndexGainByDate, correctionLevels, backtestCorrection, efficiencyRatio, marketRegime, regimeChecklist, guideBrief, stockStage, trendTemplate, workupChecklist, provenSummary, computeSignal, valueScore, divergenceFixed, recentTrend, patternsContext, correctedVotes, divergence, patterns } from "./engine.mjs";
+import { analyze, runBacktest, scoreAt, scorePosition, checkBarExit, checkBarExitFine, isAmbiguousBar, tradeNet, realizedStats, convergenceBreakout, convergenceForming, backtestPattern, edgeStatus, avgIndexGainByDate, correctionLevels, backtestCorrection, efficiencyRatio, marketRegime, regimeChecklist, guideBrief, stockStage, trendTemplate, workupChecklist, provenSummary, computeSignal, valueScore, divergenceFixed, recentTrend, patternsContext, correctedVotes, divergence, patterns, lineKinematics, headingEvent, esdProject, esdAccuracyBacktest } from "./engine.mjs";
 
 // ─── Helper: deterministic OHLC series (no RNG, fixed formula) ───────────────
 function gen(n){
@@ -808,4 +808,68 @@ test("provenSummary: a promotable variant → provenAny true; none → candidate
   assert.equal(provenSummary({variants:[{promotable:false}]}).provenAny,false);
   assert.equal(provenSummary({variants:{a:{promotable:true}}}).provenAny,true);   // keyed-object form
   assert.match(provenSummary(null).label,/NOT YET PROVEN/);
+});
+
+// ─── ESD (Estimated Stock Destination) — SMA20 heading projection (display-only) ──
+function risingBars(n, step=1, base=100){
+  const r=[]; for(let i=0;i<n;i++){ const c=base+i*step; r.push({open:c-0.3,high:c+0.5,low:c-0.5,close:c,date:"d"+i,volume:1000}); } return r;
+}
+function fallingBars(n, step=1, base=240){
+  const r=[]; for(let i=0;i<n;i++){ const c=base-i*step; r.push({open:c+0.3,high:c+0.5,low:c-0.5,close:c,date:"d"+i,volume:1000}); } return r;
+}
+
+test("lineKinematics: a steadily rising line reads up with positive slope/lift/angle; short series → null", () => {
+  const series=Array.from({length:31},(_,i)=>100+i);     // slope 1/bar
+  const k=lineKinematics(series,20,2);
+  assert.equal(k.dir,"up");
+  assert.ok(k.slopePerBar>0 && k.lift>0 && k.angleDeg>0);
+  assert.equal(lineKinematics([1,2,3],20,2),null);       // fewer than W+1 points
+});
+
+test("lineKinematics: ATR-normalized angle is scale-invariant (wider ATR → flatter degree)", () => {
+  const series=Array.from({length:31},(_,i)=>100+i);
+  const tight=lineKinematics(series,20,2).angleDeg;
+  const wide =lineKinematics(series,20,8).angleDeg;
+  assert.ok(wide<tight && wide>0);                       // same slope, wider ATR → smaller angle
+});
+
+test("headingEvent: SMA20 below the fast pack and rising = below/up, separated; point-in-time (no lookahead)", () => {
+  const bars=risingBars(45);
+  const ev=headingEvent(bars, bars.length-1, {});
+  assert.equal(ev.side,"below");                         // in an uptrend SMA20 lags below the faster MAs
+  assert.equal(ev.leaning,"up");
+  assert.equal(ev.separated,true);
+  const trimmed=headingEvent(bars.slice(0,36), 35, {});  // evaluating at bar 35 must ignore bars after 35
+  const same   =headingEvent(bars, 35, {});
+  assert.deepEqual(same, trimmed);
+});
+
+test("esdProject: up-lean targets the nearest level ABOVE (tp1); a rising ray with no level above is invalid", () => {
+  const bars=risingBars(45);
+  const s20=headingEvent(bars,bars.length-1,{}).s20;
+  const up=esdProject(bars,{tp1:s20+5, sl:s20-5},{});
+  assert.equal(up.valid,true);
+  assert.equal(up.leaning,"up");
+  assert.equal(up.targetName,"tp1");
+  assert.ok(up.etaBars>0 && up.ray && up.ray.y1===up.targetPrice);
+  const noAbove=esdProject(bars,{sl:s20-5},{});          // rising ray, only a level below → no destination
+  assert.equal(noAbove.valid,false);
+});
+
+test("esdProject: down-lean targets the nearest level BELOW (sl)", () => {
+  const bars=fallingBars(45);
+  const s20=headingEvent(bars,bars.length-1,{}).s20;
+  const dn=esdProject(bars,{sl:s20-5, support:s20-10},{});
+  assert.equal(dn.leaning,"down");
+  assert.equal(dn.valid,true);
+  assert.equal(dn.targetName,"sl");
+  assert.ok(dn.etaBars>0);
+});
+
+test("esdAccuracyBacktest: returns honest stats + a boolean proven (never green by construction)", () => {
+  const r=esdAccuracyBacktest(risingBars(120),{});
+  assert.ok(r && r.n>0);
+  assert.equal(typeof r.proven,"boolean");
+  assert.ok(typeof r.trades==="number" && r.trades>=0);
+  assert.ok(r.avgErr==null || r.avgErr>=0);
 });

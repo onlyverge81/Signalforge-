@@ -901,6 +901,34 @@ AGREE. Shipped (R6 ritual — in-sample POINTER + propose-only OOS label, never 
   `breadth-vol-on` ledger cleared through FDR counts; the study's curve/quorum/volume verdict lands when the workflow is
   dispatched in CI (sandbox is egress-blocked + keyless).
 
+**🚀 ESD — Estimated Stock Destination (SMA20 "nautical heading" projection) — DONE, branch `claude/signalforge-esd`:**
+the user's idea (from four SIGNALS-chart screenshots): treat the **SMA20 (purple) line as a navigational HEADING** —
+measure its lift/decline/speed/**angle°**, and when it SEPARATES from the fast-MA pack and leans, project a straight ray
+at its slope to the nearest **direction-aware** level (up-lean→TP1/resistance, down-lean→SL/support — a rising ray can't
+reach a stop below it) → the **Estimated Stock Destination** (price + ETA). Decisions locked A/A/both. Shipped as four
+pure engine fns (exported, tested, mirrored byte-for-byte into `index.html`, parity verified): `lineKinematics` (velocity/
+**ATR-normalized angle**/lift/curvature/ER — scale-invariant degree), `headingEvent` (point-in-time SMA20-vs-pack
+separation + slope, the below→up "launch"), `esdProject` (direction-aware target, **bar-index-anchored** ray so the "36
+gaps" don't distort the ETA, `valid:false` when the ray points at no level), `esdAccuracyBacktest` (the honesty gate:
+straight-line SMA20 projection error + **overshootBias** [>0 = the lagging MA ray lands HIGH, the overshoot the charter
+warns of] + an alpha-vs-buy&hold leg via the `runBacktest` custom-target seam; `proven` only at n≥20 + significant +
+meanAlpha>0). **`Chart` gained an optional `projection` prop** (dashed ESD ray + ±avgErr cone + angle/target/ETA label,
+drawn like the convStartIdx marker; absent prop = byte-identical chart). **🚀 ESD tab** (after MONITOR / before SIGNALS):
+a **ticker box to simulate any stock** (reuses `fetchLive`), the SMA20 heading kinematics read-out, the ESD ray on the
+chart, the destination price+ETA+°, and an honest accuracy/overshoot card ("PROJECTION — NOT A PROMISE", muted until
+`proven`). **Capture study** `scripts/esd-capture-study.mjs` (+`.yml`, workflow_dispatch, artifact/opt-in-commit) measures
+across **30min/1hour/Daily** which timeframe surfaces the launch heading EARLIEST (calendar lead: event→obvious-move) and
+most STABLY (angle sign-flip rate) → recommends the display resolution (settles the SMA20-lags-late tradeoff with data).
+Charter-clean (Polygon bars, survivorship-free roster, liquid default); reuses `selectMeritUniverse`/`clearsLiquidityBar`/
+`fetchPolygonAggs`/`filterRegularHours`/the engine's `headingEvent`. **STRICTLY display/research** — never touches
+`analyze`/`computeSignal`/`scoreAt`/any gate/the verdict (analyze snapshot unchanged). Tests +9 (397 green; 6 engine ESD
++ 3 capture-study); engine↔app parity byte-identical; app mounts clean, ESD tab renders zero JS errors (driver-verified
+empty state — loaded cards + the ray populate on a live fetch, needs a key in a real browser, egress-blocked in CI). The
+ESD is a **labeled projection, never a promise** — its predictive worth accrues only via `esdAccuracyBacktest` and the
+OOS ledger; the straight-line MA ray overshoots by construction. **Next increments (offered, not built):** a per-contender
+3×/day ESD sweep reusing the `scanMonitor` pool (10:10/12:40/3:40 ET); wire the capture study's recommended resolution as
+the tab default after the CI dispatch.
+
 **Next — Track B:**
 - Mature the `momentum-on` / `merits-on` / `news-*` / `earnings-recent-on` OOS ledgers to n≥10; human-ratify
   only if they clear FDR. PASSIVE — the nightly `forward-log → forward-perf → promote` already partitions every
