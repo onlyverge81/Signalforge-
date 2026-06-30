@@ -1,6 +1,6 @@
 {
   "version": 1,
-  "updatedAt": "2026-06-27T08:12:05.601Z",
+  "updatedAt": "2026-06-30T10:42:47.676Z",
   "policy": {
     "promote": {
       "minTrades": 10,
@@ -209,14 +209,20 @@
       ]
     },
     "position": {
-      "state": "candidate",
-      "since": "2026-06-16T16:11:59.506Z",
+      "state": "retired",
+      "since": "2026-06-30T10:42:47.676Z",
       "history": [
         {
           "at": "2026-06-16T16:11:59.506Z",
           "from": null,
           "to": "candidate",
           "reason": "registered"
+        },
+        {
+          "at": "2026-06-30T10:42:47.676Z",
+          "from": "candidate",
+          "to": "retired",
+          "reason": "proven loser: mean alpha -0.5309 over 17 trades, one-sided p=0.0668 < 0.1"
         }
       ]
     },
@@ -377,26 +383,38 @@
       ]
     },
     "quality-position-off": {
-      "state": "candidate",
-      "since": "2026-06-20T08:35:55.513Z",
+      "state": "retired",
+      "since": "2026-06-30T10:42:47.676Z",
       "history": [
         {
           "at": "2026-06-20T08:35:55.513Z",
           "from": null,
           "to": "candidate",
           "reason": "registered"
+        },
+        {
+          "at": "2026-06-30T10:42:47.676Z",
+          "from": "candidate",
+          "to": "retired",
+          "reason": "proven loser: mean alpha -0.6753 over 15 trades, one-sided p=0.0423 < 0.1"
         }
       ]
     },
     "quality-grade-position-on": {
-      "state": "candidate",
-      "since": "2026-06-20T08:35:55.513Z",
+      "state": "retired",
+      "since": "2026-06-30T10:42:47.676Z",
       "history": [
         {
           "at": "2026-06-20T08:35:55.513Z",
           "from": null,
           "to": "candidate",
           "reason": "registered"
+        },
+        {
+          "at": "2026-06-30T10:42:47.676Z",
+          "from": "candidate",
+          "to": "retired",
+          "reason": "proven loser: mean alpha -0.5309 over 17 trades, one-sided p=0.0668 < 0.1"
         }
       ]
     },

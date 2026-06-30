@@ -1,13 +1,13 @@
 {
-  "generatedAt": "2026-06-27T08:12:05.616Z",
+  "generatedAt": "2026-06-30T10:42:47.697Z",
   "method": "matched-window TOTAL-return buy-&-hold (price + dividends); alpha = strategy net − benchmark net (cost-invariant)",
   "costPerTrade": 0.12000000000000001,
   "ledger": {
-    "rows": 948,
-    "closed": 14,
-    "benchmarkable": 14,
-    "suspect": 22,
-    "suspectRate": 2.3207
+    "rows": 1054,
+    "closed": 20,
+    "benchmarkable": 20,
+    "suspect": 24,
+    "suspectRate": 2.277
   },
   "variants": {
     "all": {
@@ -2307,18 +2307,18 @@
       }
     },
     "position": {
-      "n": 11,
-      "closed": 11,
+      "n": 17,
+      "closed": 17,
       "uncovered": 0,
       "beatBench": 6,
-      "beatBenchRate": 54.5455,
-      "stratNetSum": -79.4873,
-      "benchNetSum": -81.0129,
-      "alphaSum": 1.5256,
-      "meanAlphaPerTrade": 0.1387,
-      "stratGrowthPct": -56.2149,
-      "benchGrowthPct": -56.9105,
-      "alphaGrowthPct": 0.6956,
+      "beatBenchRate": 35.2941,
+      "stratNetSum": -117.6973,
+      "benchNetSum": -108.6717,
+      "alphaSum": -9.0256,
+      "meanAlphaPerTrade": -0.5309,
+      "stratGrowthPct": -70.5125,
+      "benchGrowthPct": -67.5583,
+      "alphaGrowthPct": -2.9542,
       "legs": [
         {
           "id": "AAPL-1day-POS-2026-06-15-BUY",
@@ -2351,6 +2351,16 @@
           "beatBench": false
         },
         {
+          "id": "VZ-1day-POS-2026-06-15-BUY",
+          "ticker": "VZ",
+          "stratGross": -6.7094,
+          "stratNet": -6.8294,
+          "benchGross": -6.3098,
+          "benchNet": -6.4298,
+          "alphaPct": -0.3996,
+          "beatBench": false
+        },
+        {
           "id": "AAPL-1day-POS-2026-06-16-BUY",
           "ticker": "AAPL",
           "stratGross": -6.6428,
@@ -2368,6 +2378,16 @@
           "benchGross": -7.2659,
           "benchNet": -7.3859,
           "alphaPct": -1.5777,
+          "beatBench": false
+        },
+        {
+          "id": "VZ-1day-POS-2026-06-16-BUY",
+          "ticker": "VZ",
+          "stratGross": -7.3193,
+          "stratNet": -7.4393,
+          "benchGross": -5.6281,
+          "benchNet": -5.7481,
+          "alphaPct": -1.6912,
           "beatBench": false
         },
         {
@@ -2391,6 +2411,16 @@
           "beatBench": false
         },
         {
+          "id": "VZ-1day-POS-2026-06-17-BUY",
+          "ticker": "VZ",
+          "stratGross": -5.8098,
+          "stratNet": -5.9298,
+          "benchGross": -3.7958,
+          "benchNet": -3.9158,
+          "alphaPct": -2.014,
+          "beatBench": false
+        },
+        {
           "id": "AAPL-1day-POS-2026-06-18-BUY",
           "ticker": "AAPL",
           "stratGross": -6.5575,
@@ -2411,6 +2441,16 @@
           "beatBench": false
         },
         {
+          "id": "VZ-1day-POS-2026-06-18-BUY",
+          "ticker": "VZ",
+          "stratGross": -4.8254,
+          "stratNet": -4.9454,
+          "benchGross": -2.7992,
+          "benchNet": -2.9192,
+          "alphaPct": -2.0262,
+          "beatBench": false
+        },
+        {
           "id": "AAPL-1day-POS-2026-06-22-BUY",
           "ticker": "AAPL",
           "stratGross": -6.4429,
@@ -2421,6 +2461,16 @@
           "beatBench": true
         },
         {
+          "id": "VZ-1day-POS-2026-06-22-BUY",
+          "ticker": "VZ",
+          "stratGross": -4.7668,
+          "stratNet": -4.8868,
+          "benchGross": -2.7778,
+          "benchNet": -2.8978,
+          "alphaPct": -1.989,
+          "beatBench": false
+        },
+        {
           "id": "AAPL-1day-POS-2026-06-23-BUY",
           "ticker": "AAPL",
           "stratGross": -6.3198,
@@ -2429,16 +2479,26 @@
           "benchNet": -6.627,
           "alphaPct": 0.1872,
           "beatBench": true
+        },
+        {
+          "id": "VZ-1day-POS-2026-06-23-BUY",
+          "ticker": "VZ",
+          "stratGross": -8.0593,
+          "stratNet": -8.1793,
+          "benchGross": -5.6281,
+          "benchNet": -5.7481,
+          "alphaPct": -2.4312,
+          "beatBench": false
         }
       ],
       "fdr": false,
       "significance": {
-        "n": 11,
-        "meanAlpha": 0.1387,
-        "tStat": 0.3855,
-        "df": 10,
-        "pUpper": 0.354,
-        "pLower": 0.646,
+        "n": 17,
+        "meanAlpha": -0.5309,
+        "tStat": -1.5802,
+        "df": 16,
+        "pUpper": 0.9332,
+        "pLower": 0.0668,
         "qBH": null,
         "qBY": null,
         "qNegBH": null,
@@ -2501,18 +2561,18 @@
       }
     },
     "quality-position-off": {
-      "n": 9,
-      "closed": 9,
+      "n": 15,
+      "closed": 15,
       "uncovered": 0,
       "beatBench": 4,
-      "beatBenchRate": 44.4444,
-      "stratNetSum": -66.4846,
-      "benchNetSum": -66.9059,
-      "alphaSum": 0.4213,
-      "meanAlphaPerTrade": 0.0468,
-      "stratGrowthPct": -49.914,
-      "benchGrowthPct": -50.1213,
-      "alphaGrowthPct": 0.2073,
+      "beatBenchRate": 26.6667,
+      "stratNetSum": -104.6946,
+      "benchNetSum": -94.5647,
+      "alphaSum": -10.1299,
+      "meanAlphaPerTrade": -0.6753,
+      "stratGrowthPct": -66.2691,
+      "benchGrowthPct": -62.4468,
+      "alphaGrowthPct": -3.8223,
       "legs": [
         {
           "id": "AAPL-1day-POS-2026-06-15-BUY",
@@ -2545,6 +2605,16 @@
           "beatBench": false
         },
         {
+          "id": "VZ-1day-POS-2026-06-15-BUY",
+          "ticker": "VZ",
+          "stratGross": -6.7094,
+          "stratNet": -6.8294,
+          "benchGross": -6.3098,
+          "benchNet": -6.4298,
+          "alphaPct": -0.3996,
+          "beatBench": false
+        },
+        {
           "id": "AAPL-1day-POS-2026-06-16-BUY",
           "ticker": "AAPL",
           "stratGross": -6.6428,
@@ -2562,6 +2632,16 @@
           "benchGross": -7.2659,
           "benchNet": -7.3859,
           "alphaPct": -1.5777,
+          "beatBench": false
+        },
+        {
+          "id": "VZ-1day-POS-2026-06-16-BUY",
+          "ticker": "VZ",
+          "stratGross": -7.3193,
+          "stratNet": -7.4393,
+          "benchGross": -5.6281,
+          "benchNet": -5.7481,
+          "alphaPct": -1.6912,
           "beatBench": false
         },
         {
@@ -2585,6 +2665,16 @@
           "beatBench": false
         },
         {
+          "id": "VZ-1day-POS-2026-06-17-BUY",
+          "ticker": "VZ",
+          "stratGross": -5.8098,
+          "stratNet": -5.9298,
+          "benchGross": -3.7958,
+          "benchNet": -3.9158,
+          "alphaPct": -2.014,
+          "beatBench": false
+        },
+        {
           "id": "AAPL-1day-POS-2026-06-18-BUY",
           "ticker": "AAPL",
           "stratGross": -6.5575,
@@ -2602,39 +2692,69 @@
           "benchGross": -8.3254,
           "benchNet": -8.4454,
           "alphaPct": -0.7773,
+          "beatBench": false
+        },
+        {
+          "id": "VZ-1day-POS-2026-06-18-BUY",
+          "ticker": "VZ",
+          "stratGross": -4.8254,
+          "stratNet": -4.9454,
+          "benchGross": -2.7992,
+          "benchNet": -2.9192,
+          "alphaPct": -2.0262,
+          "beatBench": false
+        },
+        {
+          "id": "VZ-1day-POS-2026-06-22-BUY",
+          "ticker": "VZ",
+          "stratGross": -4.7668,
+          "stratNet": -4.8868,
+          "benchGross": -2.7778,
+          "benchNet": -2.8978,
+          "alphaPct": -1.989,
+          "beatBench": false
+        },
+        {
+          "id": "VZ-1day-POS-2026-06-23-BUY",
+          "ticker": "VZ",
+          "stratGross": -8.0593,
+          "stratNet": -8.1793,
+          "benchGross": -5.6281,
+          "benchNet": -5.7481,
+          "alphaPct": -2.4312,
           "beatBench": false
         }
       ],
       "fdr": false,
       "significance": {
-        "n": 9,
-        "meanAlpha": 0.0468,
-        "tStat": 0.1079,
-        "df": 8,
-        "pUpper": 0.4584,
-        "pLower": 0.5416,
+        "n": 15,
+        "meanAlpha": -0.6753,
+        "tStat": -1.8568,
+        "df": 14,
+        "pUpper": 0.9577,
+        "pLower": 0.0423,
         "qBH": null,
         "qBY": null,
         "qNegBH": null,
         "inFamily": false,
-        "verdict": "TOO FEW TRADES",
+        "verdict": "CONTEXT",
         "promotable": false,
         "provenLoser": false
       }
     },
     "quality-grade-position-on": {
-      "n": 11,
-      "closed": 11,
+      "n": 17,
+      "closed": 17,
       "uncovered": 0,
       "beatBench": 6,
-      "beatBenchRate": 54.5455,
-      "stratNetSum": -79.4873,
-      "benchNetSum": -81.0129,
-      "alphaSum": 1.5256,
-      "meanAlphaPerTrade": 0.1387,
-      "stratGrowthPct": -56.2149,
-      "benchGrowthPct": -56.9105,
-      "alphaGrowthPct": 0.6956,
+      "beatBenchRate": 35.2941,
+      "stratNetSum": -117.6973,
+      "benchNetSum": -108.6717,
+      "alphaSum": -9.0256,
+      "meanAlphaPerTrade": -0.5309,
+      "stratGrowthPct": -70.5125,
+      "benchGrowthPct": -67.5583,
+      "alphaGrowthPct": -2.9542,
       "legs": [
         {
           "id": "AAPL-1day-POS-2026-06-15-BUY",
@@ -2667,6 +2787,16 @@
           "beatBench": false
         },
         {
+          "id": "VZ-1day-POS-2026-06-15-BUY",
+          "ticker": "VZ",
+          "stratGross": -6.7094,
+          "stratNet": -6.8294,
+          "benchGross": -6.3098,
+          "benchNet": -6.4298,
+          "alphaPct": -0.3996,
+          "beatBench": false
+        },
+        {
           "id": "AAPL-1day-POS-2026-06-16-BUY",
           "ticker": "AAPL",
           "stratGross": -6.6428,
@@ -2684,6 +2814,16 @@
           "benchGross": -7.2659,
           "benchNet": -7.3859,
           "alphaPct": -1.5777,
+          "beatBench": false
+        },
+        {
+          "id": "VZ-1day-POS-2026-06-16-BUY",
+          "ticker": "VZ",
+          "stratGross": -7.3193,
+          "stratNet": -7.4393,
+          "benchGross": -5.6281,
+          "benchNet": -5.7481,
+          "alphaPct": -1.6912,
           "beatBench": false
         },
         {
@@ -2707,6 +2847,16 @@
           "beatBench": false
         },
         {
+          "id": "VZ-1day-POS-2026-06-17-BUY",
+          "ticker": "VZ",
+          "stratGross": -5.8098,
+          "stratNet": -5.9298,
+          "benchGross": -3.7958,
+          "benchNet": -3.9158,
+          "alphaPct": -2.014,
+          "beatBench": false
+        },
+        {
           "id": "AAPL-1day-POS-2026-06-18-BUY",
           "ticker": "AAPL",
           "stratGross": -6.5575,
@@ -2724,6 +2874,16 @@
           "benchGross": -8.3254,
           "benchNet": -8.4454,
           "alphaPct": -0.7773,
+          "beatBench": false
+        },
+        {
+          "id": "VZ-1day-POS-2026-06-18-BUY",
+          "ticker": "VZ",
+          "stratGross": -4.8254,
+          "stratNet": -4.9454,
+          "benchGross": -2.7992,
+          "benchNet": -2.9192,
+          "alphaPct": -2.0262,
           "beatBench": false
         },
         {
@@ -2737,6 +2897,16 @@
           "beatBench": true
         },
         {
+          "id": "VZ-1day-POS-2026-06-22-BUY",
+          "ticker": "VZ",
+          "stratGross": -4.7668,
+          "stratNet": -4.8868,
+          "benchGross": -2.7778,
+          "benchNet": -2.8978,
+          "alphaPct": -1.989,
+          "beatBench": false
+        },
+        {
           "id": "AAPL-1day-POS-2026-06-23-BUY",
           "ticker": "AAPL",
           "stratGross": -6.3198,
@@ -2745,19 +2915,29 @@
           "benchNet": -6.627,
           "alphaPct": 0.1872,
           "beatBench": true
+        },
+        {
+          "id": "VZ-1day-POS-2026-06-23-BUY",
+          "ticker": "VZ",
+          "stratGross": -8.0593,
+          "stratNet": -8.1793,
+          "benchGross": -5.6281,
+          "benchNet": -5.7481,
+          "alphaPct": -2.4312,
+          "beatBench": false
         }
       ],
       "fdr": true,
       "significance": {
-        "n": 11,
-        "meanAlpha": 0.1387,
-        "tStat": 0.3855,
-        "df": 10,
-        "pUpper": 0.354,
-        "pLower": 0.646,
-        "qBH": 0.354,
-        "qBY": 0.354,
-        "qNegBH": 0.646,
+        "n": 17,
+        "meanAlpha": -0.5309,
+        "tStat": -1.5802,
+        "df": 16,
+        "pUpper": 0.9332,
+        "pLower": 0.0668,
+        "qBH": 0.9332,
+        "qBY": 0.9332,
+        "qNegBH": 0.0668,
         "inFamily": true,
         "verdict": "NOT SIGNIFICANT",
         "promotable": false,
