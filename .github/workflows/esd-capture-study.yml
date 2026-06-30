@@ -1,0 +1,71 @@
+name: ESD capture timeframe study (research, on-demand)
+
+# The ESD (Estimated Stock Destination) capture study: treat the SMA20 (purple) line as a navigational
+# HEADING — when it separates from the fast-MA pack and leans up (the "launch" the user's screenshots show),
+# we project a ray to a price level. To catch it AT ITS EARLIEST we must pick the right resolution. This
+# study measures, per name across 30min / 1hour / Daily, the calendar LEAD (event → obvious move) and the
+# angle STABILITY (slope sign-flips), and recommends the timeframe that surfaces the pop earliest & steadiest.
+# Manual dispatch only — prints a rollup to the job log + uploads the JSON. IN-SAMPLE measurement that only
+# picks the DISPLAY timeframe; NOT a promotion and NOT wired into any gate. Requires secret POLYGON_API_KEY.
+
+on:
+  workflow_dispatch:
+    inputs:
+      cap:
+        description: "Max universe size (ESD_MAX)"
+        required: false
+        default: "40"
+      universe:
+        description: "Universe screen: 'liquid' (default) or 'full' (survivorship-free bias cross-check)"
+        required: false
+        default: "liquid"
+      commit:
+        description: "Commit esd-capture-study.json to the branch this runs on (default: artifact only)"
+        required: false
+        default: "false"
+
+permissions:
+  contents: write   # only used when the `commit` input is true; harmless otherwise
+
+jobs:
+  study:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 20
+      - name: Run offline unit tests
+        run: node --test scripts/*.test.mjs
+      - name: Run ESD capture study
+        env:
+          POLYGON_API_KEY: ${{ secrets.POLYGON_API_KEY }}
+          ESD_MAX: ${{ github.event.inputs.cap }}
+          ESD_UNIVERSE: ${{ github.event.inputs.universe == 'full' && 'full' || '' }}
+          POLYGON_PACE_MS: "0"
+        run: node scripts/esd-capture-study.mjs
+      - name: Upload esd-capture-study.json
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: esd-capture-study
+          path: esd-capture-study.json
+          if-no-files-found: warn
+      - name: Commit esd-capture-study.json to this branch (opt-in)
+        if: github.event.inputs.commit == 'true'
+        run: |
+          git config user.name "github-actions[bot]"
+          git config user.email "github-actions[bot]@users.noreply.github.com"
+          # Stage first, THEN check the staged diff — `git diff --quiet` ignores untracked files,
+          # so a never-before-committed file would never persist otherwise.
+          [ -f esd-capture-study.json ] && git add esd-capture-study.json || true
+          if git diff --cached --quiet; then
+            echo "esd-capture-study.json unchanged — nothing to commit."
+          else
+            git commit -m "chore: refresh esd-capture-study.json (research snapshot, display-only)"
+            # Push to the SAME branch this workflow was dispatched on — NEVER main.
+            for i in 1 2 3; do
+              git pull --rebase origin "${GITHUB_REF_NAME}" && git push origin "HEAD:${GITHUB_REF_NAME}" && break
+              echo "push race (attempt $i) — retrying"; sleep 3
+            done
+          fi
