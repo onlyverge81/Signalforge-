@@ -1003,6 +1003,30 @@ reports the user's exact fingerprint beside the swept sweet spot. Workflow gains
 Vetting is on fundamentals/momentum, NOT the ESD/convergence geometry → not circular; still a min-fizzle base rate, not
 proven edge. Tests +1 (413 green); app mounts clean (driver). Dispatched on the branch with `source=contenders`,
 `cap=400`, `commit=true` to run the trial.
+**Activate the dormant funnel — surface EVERY grade (DONE) — branch `claude/signalforge-profitability-wheel-qbclby`
+(restarted from `main`; the prior wheel PR was already merged):** the app graded ~490 names but only surfaced/measured
+the top slice — the grade `valueScore()` (AUTOPSY: A≥10 · B 6–9 · C 2–5 · D −2..1 · F <−2) gated three layers
+asymmetrically and the low tiers were invisible. The user's activation ask (three parts, all shipped, display/CI/ledger
+only — no `analyze`/`computeSignal`/`scoreAt`/gate/verdict/parity touch):
+- **D/F → Contenders list.** `build-contenders.mjs` gained pure `rankLowTier()` (D-before-F, then total, then sym) →
+  emits a `lowtier[]` array + `counts.lowtier` in `contenders.json`; D/F now bake COMPANY `about` profiles and always
+  log to console (not `--preview`-only); empty-guard widened. The CONTENDERS tab renders a third **⚠ LOW TIER — AVOID
+  (D/F)** section (existing `renderCard`; D/F grade colors already present), framed as **transparency, NOT buy
+  candidates** — the whole graded ladder is visible. Under the "★ ALL BOXES ONLY" toggle D/F auto-hide (no allBoxes).
+- **Grade C → Monitor.** Pure `selectMonitorNames(db)` = A/B shortlist ∪ grade-C watch tier (dedup, D/F excluded) drives
+  both the CI `contender-monitor.mjs` sweep and the browser `scanMonitor` universe. C names appear as plain (yellow)
+  leads — never `grounded` (grounding still needs all-boxes A/B).
+- **All grades OOS-eligible (BOTH tags AND universe).** `contenderTag` now also returns `contenderC`/`contenderDF`;
+  `forward-perf` adds `contender-c-on/off` + `contender-df-on/off` under the BH/BY FDR family (the `-off` legs
+  auto-excluded from the denominator per R2). Pure `universeForLog(readTickers(), contendersDB)` widens the nightly
+  `forward-log` universe from the 57-name `tickers.txt` to the UNION of the mega-caps + every graded tier (A/B+C+D/F),
+  deduped — so low-grade names actually get logged, not just tagged. Gate untouched: a name still OPENs only if its
+  daily signal clears cost/edge/data. EVIDENCE scoreboard rows added (hidden until data lands).
+- **Honesty (binding):** eligibility ≠ endorsement. Widening pulls in lower-quality / less-liquid names (the R3 micro-cap
+  contamination risk) — but the OOS ledger is FDR-gated at the locked R1 bar, so junk can't falsely promote; the new
+  grade-tier variants let us MEASURE whether low grades carry (likely negative) edge — evidence, never a re-wire. Tests
+  +5 (402 green); app mounts clean (driver, zero JS errors). D/F cards + `lowtier` populate on the next `contenders.yml`
+  CI run; the C monitor sweep + low-grade ledger rows populate as `contender-monitor.yml` / nightly `forward-log` run.
 
 **Next — Track B:**
 - Mature the `momentum-on` / `merits-on` / `news-*` / `earnings-recent-on` OOS ledgers to n≥10; human-ratify

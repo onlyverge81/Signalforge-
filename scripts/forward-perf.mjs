@@ -250,6 +250,15 @@ export function defaultVariants() {
     { label: "contenders-off", where: t => tac(t) && !(t.tags && t.tags.contenderAllBoxes) },
     { label: "contenders-ab-on", where: t => tac(t) && !!(t.tags && t.tags.contenderAB) },
     { label: "contenders-ab-off", where: t => tac(t) && !(t.tags && t.tags.contenderAB) },
+    //   contender GRADE TIERS — every graded tier is now OOS-eligible, not just A/B. contender-C = the
+    //   grade-C watch tier; contender-DF = the grade-D/F low ("avoid") tier. The A/B for each: do the
+    //   tactical BUYs the engine took on that tier beat a matched total-return buy-&-hold more than its
+    //   BUYs elsewhere? These MEASURE whether low grades carry (likely negative) edge — evidence, never an
+    //   endorsement; eligibility ≠ a signal, and the FDR family + R1 bar still gate any promotion.
+    { label: "contender-c-on", where: t => tac(t) && !!(t.tags && t.tags.contenderC) },
+    { label: "contender-c-off", where: t => tac(t) && !(t.tags && t.tags.contenderC) },
+    { label: "contender-df-on", where: t => tac(t) && !!(t.tags && t.tags.contenderDF) },
+    { label: "contender-df-off", where: t => tac(t) && !(t.tags && t.tags.contenderDF) },
     //   conv-grounded — the user's "convergence as a TRIGGER, not a signal" insight made DECIDABLE. The
     //   coil→pop geometry alone is a measured LOSER (≈ −0.71% universe-wide), so it can't be a signal — but
     //   it is a legitimate ATTENTION trigger (narrow ~490 names → a few). conv-grounded-ON = tactical BUYs

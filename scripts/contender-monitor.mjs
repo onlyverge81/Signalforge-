@@ -46,6 +46,22 @@ export function etParts(epochMs){
   return { weekday: wd, etMin: etMinutes(epochMs) };
 }
 
+// The universe the monitor sweeps: the A/B shortlist PLUS the grade-C watch tier (a C name can
+// print an intraday BUY / coil→pop worth flagging — it just never grounds, since grounding needs
+// all-boxes A/B). The D/F low tier is deliberately EXCLUDED from the live sweep (avoid names, not
+// candidates to watch intraday). Pure; dedup by symbol (A/B wins if a name somehow appears twice).
+export function selectMonitorNames(db){
+  const src = [ ...((db && db.contenders) || []), ...((db && db.watchlist) || []) ];
+  const seen = new Set(), out = [];
+  for(const c of src){
+    if(!c || !c.sym) continue;
+    const k = String(c.sym).toUpperCase();
+    if(seen.has(k)) continue;
+    seen.add(k); out.push(c);
+  }
+  return out;
+}
+
 // Classify one scanned record into a lead. A lead fires on ANY notable signal (extensible —
 // add future setups to the OR); "grounded" is the evidence-leaning case (vetted quality + a
 // live engine BUY). The convergence flag is labeled as geometry-only so it never reads as proof.
@@ -134,11 +150,11 @@ async function main(){
   let db;
   try { db = JSON.parse(fs.readFileSync(path.join(ROOT, "contenders.json"), "utf8")); }
   catch { console.error("contenders.json missing — run build-contenders first."); process.exit(2); }
-  const names = (db.contenders || []).filter(c => c && c.sym);
+  const names = selectMonitorNames(db);   // A/B shortlist + grade-C watch tier (D/F excluded)
   const resolution = process.env.MON_RESOLUTION || "15min";
   const lookbackDays = +(process.env.MON_LOOKBACK_DAYS || 20);   // ~14 trading days of 15-min RTH bars
   const pace = +(process.env.POLYGON_PACE_MS || 0);
-  console.log(`monitor: ${names.length} contenders @ ${resolution}, ~${lookbackDays}d, ET min ${etMin}`);
+  console.log(`monitor: ${names.length} names (A/B + C watch) @ ${resolution}, ~${lookbackDays}d, ET min ${etMin}`);
 
   const records = [];
   let withData = 0, freshCount = 0;

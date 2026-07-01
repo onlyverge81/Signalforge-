@@ -2833,7 +2833,8 @@ function App() {
     const key=(polyKey||"").trim();
     if(!key){ setScanState({running:false,done:0,total:0,error:"Enter your Polygon key in the LIVE tab first — the browser scan fetches live 15-min bars with your key."}); return; }
     if(scanRef.current) return;
-    const all=(contenders&&Array.isArray(contenders.contenders)?contenders.contenders:[]).filter(c=>c&&c.sym);
+    // A/B shortlist + grade-C watch tier (mirrors the CI monitor's selectMonitorNames); D/F excluded.
+    const all=[...(contenders&&Array.isArray(contenders.contenders)?contenders.contenders:[]),...(contenders&&Array.isArray(contenders.watchlist)?contenders.watchlist:[])].filter(c=>c&&c.sym);
     if(!all.length){ setScanState({running:false,done:0,total:0,error:"Contenders list isn't loaded yet — open the CONTENDERS tab once (it publishes contenders.json), then scan."}); return; }
     // Priority: vetted all-boxes first, then A→B→C…, capped — so grounded names are always covered,
     // and the remaining budget adds breadth for coil→pop / forming leads. (CI scans the full set.)
@@ -5352,6 +5353,7 @@ function App() {
               const when=contenders.generatedAt?new Date(contenders.generatedAt):null;
               const pctEdge=v=>v!=null?(v*100>=0?"+":"")+(v*100).toFixed(2)+"%":"—";
               const watch=contenders.watchlist||[];
+              const low=contenders.lowtier||[];
               const WATCH_LABELS={borderline:"BORDERLINE",techEdge:"TECH EDGE",deepValue:"DEEP VALUE",highGrowth:"HIGH GROWTH"};
               // COMPANY panel: prefer the baked profile (works with no key); else lazy-fetch from Polygon if a
               // key is set; else a gentle note. Context only — never touches the grade/signal.
@@ -5571,6 +5573,18 @@ function App() {
                         </div>
                       </div>
                       {pickFilter(sortByPicks(watch)).map(renderCard)}
+                    </>
+                  )}
+
+                  {!contenderAllBoxesOnly&&low.length>0&&(
+                    <>
+                      <div style={{...card,border:"1px solid rgba(255,82,82,0.3)",marginTop:18}}>
+                        <span style={{...lbl,color:"#ff8a80"}}>⚠ LOW TIER — AVOID (D/F) · {cnt.lowtier!=null?cnt.lowtier:low.length}</span>
+                        <div style={{fontSize:11,color:"#90a4ae",lineHeight:1.8}}>
+                          Grade <strong style={{color:"#ff8a80"}}>D</strong> and <strong style={{color:"#ff5252"}}>F</strong> — <strong style={{color:"#ff8a80"}}>WEAK / POOR fundamentals</strong> (expensive and/or financially strained). Shown here for <strong>transparency</strong> — the whole graded ladder is visible, not just the picks — <strong style={{color:"#ff5252"}}>NOT buy candidates</strong>. A name climbs out of this tier only when its fundamentals (or price, re-rating the valuation grade) improve on the next build.
+                        </div>
+                      </div>
+                      {pickFilter(sortByPicks(low)).map(renderCard)}
                     </>
                   )}
                 </>
@@ -5860,6 +5874,8 @@ function App() {
                 ["macd-fade-on","MACD faded (bought vs a bearish MACD)"],
                 ["contenders-on","Contenders shortlist (all boxes)"],
                 ["contenders-ab-on","Contenders A/B grade tier"],
+                ["contender-c-on","Contenders C watch tier"],
+                ["contender-df-on","Contenders D/F low tier (avoid — measured)"],
                 ["conv-grounded-on","Coil→pop trigger × grounded (all boxes)"],
                 ["breadth-quorum-on","Show-of-hands quorum (≥3 votes, ≥⅔ bullish)"],
                 ["breadth-vol-on","…× RVOL≥1.5 volume-confirmed"],
