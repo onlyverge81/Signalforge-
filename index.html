@@ -4007,7 +4007,8 @@ function App() {
                 <div style={{fontSize:11,fontWeight:700,color:"#ce93d8",marginBottom:4}}>A · ESD LAUNCH-FINGERPRINT SWEET SPOT</div>
                 {ss? row("min-fizzle combo", "sep "+ss.sep+" · "+ss.angleDeg+"° · curv "+ss.curvature+" → "+pctv(ss.conversionRate)+" conversion (n="+(ss.reached+ss.fizzled)+")", "#00e676")
                    : <div style={{fontSize:10,color:FADE}}>no combo reached the minimum episode count yet.</div>}
-                {bl&&row("your baseline (1.75 / 20° / 0.5)", pctv(bl.conversionRate)+" conversion (n="+(bl.reached+bl.fizzled)+")","#90caf9")}
+                {f.esdFingerprintRow&&row("your fingerprint (below · up · 20° · sep)", (f.esdFingerprintRow.conversionRate!=null?pctv(f.esdFingerprintRow.conversionRate)+" conversion (n="+(f.esdFingerprintRow.reached+f.esdFingerprintRow.fizzled)+")":"no episodes fired"),"#4dd0e1")}
+                {bl&&row("baseline (1.75 / 20° / 0.5)", pctv(bl.conversionRate)+" conversion (n="+(bl.reached+bl.fizzled)+")","#90caf9")}
                 {ss&&row("median favorable move (sweet spot)", spct(ss.medianFavMovePct))}
               </div>
               <div style={card}>
