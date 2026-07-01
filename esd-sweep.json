@@ -1,0 +1,4084 @@
+{
+ "generatedAt": "2026-07-01T19:29:45.010Z",
+ "resolution": "1hour",
+ "sessionET": {
+  "weekday": 3,
+  "etMin": 925
+ },
+ "marketOpen": true,
+ "delayedMin": 15,
+ "dataFresh": true,
+ "scanned": 362,
+ "withData": 362,
+ "counts": {
+  "leads": 323,
+  "grounded": 96,
+  "up": 184,
+  "down": 139
+ },
+ "esdNote": "The ESD is a straight-line SMA20 projection — it OVERSHOOTS by construction (a moving average lags and decelerates). A heading lead is a candidate for your own eyes, never a proven target.",
+ "leads": [
+  {
+   "sym": "NUE",
+   "entity": "NUCOR CORPORATION",
+   "grade": "B",
+   "allBoxes": true,
+   "price": 218.49,
+   "lastBarMs": 1782932400000,
+   "fresh": true,
+   "heading": {
+    "separated": true,
+    "side": "above",
+    "leaning": "down",
+    "gapATR": 2.593
+   },
+   "esd": {
+    "valid": true,
+    "leaning": "down",
+    "angleDeg": -26.87,
+    "targetName": "sl",
+    "targetPrice": 222.172,
+    "etaBars": 2.73
+   },
+   "engine": {
+    "signal": "HOLD",
+    "score": -4.6,
+    "confidence": 64
+   },
+   "lead": true,
+   "grounded": true,
+   "reasons": [
+    "SMA20 heading down (above the pack) → sl $222.172 in ~3 bars at -26.87° (projection)",
+    "vetted all-boxes (A/B + momentum + filing)"
+   ]
+  },
+  {
+   "sym": "STLD",
+   "entity": "Steel Dynamics, Inc.",
+   "grade": "B",
+   "allBoxes": true,
+   "price": 222.139,
+   "lastBarMs": 1782932400000,
+   "fresh": true,
+   "heading": {
+    "separated": true,
+    "side": "above",
+    "leaning": "down",
+    "gapATR": 2.856
+   },
+   "esd": {
+    "valid": true,
+    "leaning": "down",
+    "angleDeg": -23.76,
+    "targetName": "sl",
+    "targetPrice": 225.848,
+    "etaBars": 4.49
+   },
+   "engine": {
+    "signal": "HOLD",
+    "score": -4.6,
+    "confidence": 64
+   },
+   "lead": true,
+   "grounded": true,
+   "reasons": [
+    "SMA20 heading down (above the pack) → sl $225.848 in ~4 bars at -23.76° (projection)",
+    "vetted all-boxes (A/B + momentum + filing)"
+   ]
+  },
+  {
+   "sym": "MLM",
+   "entity": "MARTIN MARIETTA MATERIALS INC",
+   "grade": "A",
+   "allBoxes": true,
+   "price": 581.175,
+   "lastBarMs": 1782932400000,
+   "fresh": true,
+   "heading": {
+    "separated": true,
+    "side": "above",
+    "leaning": "down",
+    "gapATR": 0.619
+   },
+   "esd": {
+    "valid": true,
+    "leaning": "down",
+    "angleDeg": -23.33,
+    "targetName": "support",
+    "targetPrice": 569.53,
+    "etaBars": 4.85
+   },
+   "engine": {
+    "signal": "SELL",
+    "score": -7.1,
+    "confidence": 71
+   },
+   "lead": true,
+   "grounded": true,
+   "reasons": [
+    "SMA20 heading down (above the pack) → support $569.53 in ~5 bars at -23.33° (projection)",
+    "vetted all-boxes (A/B + momentum + filing)"
+   ]
+  },
+  {
+   "sym": "APP",
+   "entity": "AppLovin Corp",
+   "grade": "B",
+   "allBoxes": true,
+   "price": 569.045,
+   "lastBarMs": 1782932400000,
+   "fresh": true,
+   "heading": {
+    "separated": true,
+    "side": "below",
+    "leaning": "up",
+    "gapATR": -3.367
+   },
+   "esd": {
+    "valid": true,
+    "leaning": "up",
+    "angleDeg": 21.95,
+    "targetName": "resistance",
+    "targetPrice": 574.75,
+    "etaBars": 12.11
+   },
+   "engine": {
+    "signal": "BUY",
+    "score": 6.1,
+    "confidence": 69
+   },
+   "lead": true,
+   "grounded": true,
+   "reasons": [
+    "SMA20 heading up (below the pack) → resistance $574.75 in ~12 bars at 21.95° (projection)",
+    "vetted all-boxes (A/B + momentum + filing)"
+   ]
+  },
+  {
+   "sym": "DAVE",
+   "entity": "Dave Inc./DE",
+   "grade": "A",
+   "allBoxes": true,
+   "price": 391.79,
+   "lastBarMs": 1782932400000,
+   "fresh": true,
+   "heading": {
+    "separated": true,
+    "side": "below",
+    "leaning": "up",
+    "gapATR": -2.25
+   },
+   "esd": {
+    "valid": true,
+    "leaning": "up",
+    "angleDeg": 20.22,
+    "targetName": "resistance",
+    "targetPrice": 404.44,
+    "etaBars": 10.38
+   },
+   "engine": {
+    "signal": "BUY",
+    "score": 12.7,
+    "confidence": 91
+   },
+   "lead": true,
+   "grounded": true,
+   "reasons": [
+    "SMA20 heading up (below the pack) → resistance $404.44 in ~10 bars at 20.22° (projection)",
+    "vetted all-boxes (A/B + momentum + filing)"
+   ]
+  },
+  {
+   "sym": "TWLO",
+   "entity": "TWILIO INC.",
+   "grade": "B",
+   "allBoxes": true,
+   "price": 209.325,
+   "lastBarMs": 1782932400000,
+   "fresh": true,
+   "heading": {
+    "separated": true,
+    "side": "below",
+    "leaning": "up",
+    "gapATR": -2.439
+   },
+   "esd": {
+    "valid": true,
+    "leaning": "up",
+    "angleDeg": 19.56,
+    "targetName": "resistance",
+    "targetPrice": 210.4,
+    "etaBars": 9.71
+   },
+   "engine": {
+    "signal": "BUY",
+    "score": 10.9,
+    "confidence": 85
+   },
+   "lead": true,
+   "grounded": true,
+   "reasons": [
+    "SMA20 heading up (below the pack) → resistance $210.4 in ~10 bars at 19.56° (projection)",
+    "vetted all-boxes (A/B + momentum + filing)"
+   ]
+  },
+  {
+   "sym": "AMD",
+   "entity": "ADVANCED MICRO DEVICES INC",
+   "grade": "B",
+   "allBoxes": true,
+   "price": 522.3445,
+   "lastBarMs": 1779984000000,
+   "fresh": false,
+   "heading": {
+    "separated": true,
+    "side": "below",
+    "leaning": "up",
+    "gapATR": -1.589
+   },
+   "esd": {
+    "valid": true,
+    "leaning": "up",
+    "angleDeg": 18.48,
+    "targetName": "resistance",
+    "targetPrice": 527.1999,
+    "etaBars": 12.54
+   },
+   "engine": {
+    "signal": "BUY",
+    "score": 11.9,
+    "confidence": 88
+   },
+   "lead": true,
+   "grounded": true,
+   "reasons": [
+    "SMA20 heading up (below the pack) → resistance $527.1999 in ~13 bars at 18.48° (projection)",
+    "vetted all-boxes (A/B + momentum + filing)"
+   ]
+  },
+  {
+   "sym": "BB",
+   "entity": "BlackBerry Limited",
+   "grade": "B",
+   "allBoxes": true,
+   "price": 13.125,
+   "lastBarMs": 1782932400000,
+   "fresh": true,
+   "heading": {
+    "separated": true,
+    "side": "below",
+    "leaning": "up",
+    "gapATR": -1.617
+   },
+   "esd": {
+    "valid": true,
+    "leaning": "up",
+    "angleDeg": 18.3,
+    "targetName": "resistance",
+    "targetPrice": 13.59,
+    "etaBars": 9.98
+   },
+   "engine": {
+    "signal": "BUY",
+    "score": 11.7,
+    "confidence": 88
+   },
+   "lead": true,
+   "grounded": true,
+   "reasons": [
+    "SMA20 heading up (below the pack) → resistance $13.59 in ~10 bars at 18.3° (projection)",
+    "vetted all-boxes (A/B + momentum + filing)"
+   ]
+  },
+  {
+   "sym": "RDDT",
+   "entity": "Reddit, Inc.",
+   "grade": "B",
+   "allBoxes": true,
+   "price": 196.815,
+   "lastBarMs": 1782932400000,
+   "fresh": true,
+   "heading": {
+    "separated": true,
+    "side": "below",
+    "leaning": "up",
+    "gapATR": -3.083
+   },
+   "esd": {
+    "valid": true,
+    "leaning": "up",
+    "angleDeg": 18.22,
+    "targetName": "resistance",
+    "targetPrice": 201.16,
+    "etaBars": 17.59
+   },
+   "engine": {
+    "signal": "BUY",
+    "score": 10.4,
+    "confidence": 83
+   },
+   "lead": true,
+   "grounded": true,
+   "reasons": [
+    "SMA20 heading up (below the pack) → resistance $201.16 in ~18 bars at 18.22° (projection)",
+    "vetted all-boxes (A/B + momentum + filing)"
+   ]
+  },
+  {
+   "sym": "VMC",
+   "entity": "VULCAN MATERIALS COMPANY",
+   "grade": "B",
+   "allBoxes": true,
+   "price": 294.64,
+   "lastBarMs": 1782932400000,
+   "fresh": true,
+   "heading": {
+    "separated": true,
+    "side": "above",
+    "leaning": "down",
+    "gapATR": 1.937
+   },
+   "esd": {
+    "valid": true,
+    "leaning": "down",
+    "angleDeg": -17.89,
+    "targetName": "sl",
+    "targetPrice": 298.9497,
+    "etaBars": 0.69
+   },
+   "engine": {
+    "signal": "HOLD",
+    "score": -2.6,
+    "confidence": 57
+   },
+   "lead": true,
+   "grounded": true,
+   "reasons": [
+    "SMA20 heading down (above the pack) → sl $298.9497 in ~1 bars at -17.89° (projection)",
+    "vetted all-boxes (A/B + momentum + filing)"
+   ]
+  },
+  {
+   "sym": "GOOGL",
+   "entity": "ALPHABET INC.",
+   "grade": "B",
+   "allBoxes": true,
+   "price": 359.33,
+   "lastBarMs": 1780513200000,
+   "fresh": false,
+   "heading": {
+    "separated": true,
+    "side": "above",
+    "leaning": "down",
+    "gapATR": 2.049
+   },
+   "esd": {
+    "valid": true,
+    "leaning": "down",
+    "angleDeg": -17.76,
+    "targetName": "sl",
+    "targetPrice": 365.076,
+    "etaBars": 3.33
+   },
+   "engine": {
+    "signal": "HOLD",
+    "score": -2.8,
+    "confidence": 57
+   },
+   "lead": true,
+   "grounded": true,
+   "reasons": [
+    "SMA20 heading down (above the pack) → sl $365.076 in ~3 bars at -17.76° (projection)",
+    "vetted all-boxes (A/B + momentum + filing)"
+   ]
+  },
+  {
+   "sym": "BRK.A",
+   "entity": "BERKSHIRE HATHAWAY INC",
+   "grade": "B",
+   "allBoxes": true,
+   "price": 753154.8,
+   "lastBarMs": 1782932400000,
+   "fresh": true,
+   "heading": {
+    "separated": true,
+    "side": "below",
+    "leaning": "up",
+    "gapATR": -2.173
+   },
+   "esd": {
+    "valid": true,
+    "leaning": "up",
+    "angleDeg": 17.68,
+    "targetName": "resistance",
+    "targetPrice": 755910,
+    "etaBars": 10.95
+   },
+   "engine": {
+    "signal": "BUY",
+    "score": 6.1,
+    "confidence": 69
+   },
+   "lead": true,
+   "grounded": true,
+   "reasons": [
+    "SMA20 heading up (below the pack) → resistance $755910 in ~11 bars at 17.68° (projection)",
+    "vetted all-boxes (A/B + momentum + filing)"
+   ]
+  },
+  {
+   "sym": "WDC",
+   "entity": "WESTERN DIGITAL CORPORATION",
+   "grade": "B",
+   "allBoxes": true,
+   "price": 746.22,
+   "lastBarMs": 1781809200000,
+   "fresh": false,
+   "heading": {
+    "separated": true,
+    "side": "below",
+    "leaning": "up",
+    "gapATR": -1.301
+   },
+   "esd": {
+    "valid": true,
+    "leaning": "up",
+    "angleDeg": 17.62,
+    "targetName": "resistance",
+    "targetPrice": 792.6,
+    "etaBars": 10.47
+   },
+   "engine": {
+    "signal": "BUY",
+    "score": 7.9,
+    "confidence": 75
+   },
+   "lead": true,
+   "grounded": true,
+   "reasons": [
+    "SMA20 heading up (below the pack) → resistance $792.6 in ~10 bars at 17.62° (projection)",
+    "vetted all-boxes (A/B + momentum + filing)"
+   ]
+  },
+  {
+   "sym": "CB",
+   "entity": "Chubb Limited",
+   "grade": "A",
+   "allBoxes": true,
+   "price": 350.86,
+   "lastBarMs": 1782932400000,
+   "fresh": true,
+   "heading": {
+    "separated": true,
+    "side": "below",
+    "leaning": "up",
+    "gapATR": -2.121
+   },
+   "esd": {
+    "valid": true,
+    "leaning": "up",
+    "angleDeg": 16.95,
+    "targetName": "tp1",
+    "targetPrice": 346.3176,
+    "etaBars": 2.47
+   },
+   "engine": {
+    "signal": "HOLD",
+    "score": 2.3,
+    "confidence": 56
+   },
+   "lead": true,
+   "grounded": true,
+   "reasons": [
+    "SMA20 heading up (below the pack) → tp1 $346.3176 in ~2 bars at 16.95° (projection)",
+    "vetted all-boxes (A/B + momentum + filing)"
+   ]
+  },
+  {
+   "sym": "WBS",
+   "entity": "WEBSTER FINANCIAL CORPORATION",
+   "grade": "B",
+   "allBoxes": true,
+   "price": 76.695,
+   "lastBarMs": 1782932400000,
+   "fresh": true,
+   "heading": {
+    "separated": true,
+    "side": "below",
+    "leaning": "up",
+    "gapATR": -2.526
+   },
+   "esd": {
+    "valid": true,
+    "leaning": "up",
+    "angleDeg": 16.76,
+    "targetName": "resistance",
+    "targetPrice": 76.77,
+    "etaBars": 12.87
+   },
+   "engine": {
+    "signal": "BUY",
+    "score": 10.4,
+    "confidence": 83
+   },
+   "lead": true,
+   "grounded": true,
+   "reasons": [
+    "SMA20 heading up (below the pack) → resistance $76.77 in ~13 bars at 16.76° (projection)",
+    "vetted all-boxes (A/B + momentum + filing)"
+   ]
+  },
+  {
+   "sym": "DLR",
+   "entity": "DIGITAL REALTY TRUST, INC.",
+   "grade": "B",
+   "allBoxes": true,
+   "price": 177.54,
+   "lastBarMs": 1782932400000,
+   "fresh": true,
+   "heading": {
+    "separated": true,
+    "side": "above",
+    "leaning": "down",
+    "gapATR": 2.382
+   },
+   "esd": {
+    "valid": true,
+    "leaning": "down",
+    "angleDeg": -16.38,
+    "targetName": "sl",
+    "targetPrice": 180.777,
+    "etaBars": 4.76
+   },
+   "engine": {
+    "signal": "SELL",
+    "score": -8.9,
+    "confidence": 78
+   },
+   "lead": true,
+   "grounded": true,
+   "reasons": [
+    "SMA20 heading down (above the pack) → sl $180.777 in ~5 bars at -16.38° (projection)",
+    "vetted all-boxes (A/B + momentum + filing)"
+   ]
+  },
+  {
+   "sym": "TTMI",
+   "entity": "TTM TECHNOLOGIES INC",
+   "grade": "B",
+   "allBoxes": true,
+   "price": 181.15,
+   "lastBarMs": 1782932400000,
+   "fresh": true,
+   "heading": {
+    "separated": true,
+    "side": "above",
+    "leaning": "down",
+    "gapATR": 1.108
+   },
+   "esd": {
+    "valid": true,
+    "leaning": "down",
+    "angleDeg": -16.12,
+    "targetName": "support",
+    "targetPrice": 173.6,
+    "etaBars": 9.53
+   },
+   "engine": {
+    "signal": "SELL",
+    "score": -9.7,
+    "confidence": 82
+   },
+   "lead": true,
+   "grounded": true,
+   "reasons": [
+    "SMA20 heading down (above the pack) → support $173.6 in ~10 bars at -16.12° (projection)",
+    "vetted all-boxes (A/B + momentum + filing)"
+   ]
+  },
+  {
+   "sym": "ONDS",
+   "entity": "Ondas Inc.",
+   "grade": "B",
+   "allBoxes": true,
+   "price": 9.195,
+   "lastBarMs": 1779390000000,
+   "fresh": false,
+   "heading": {
+    "separated": true,
+    "side": "above",
+    "leaning": "down",
+    "gapATR": 0.511
+   },
+   "esd": {
+    "valid": true,
+    "leaning": "down",
+    "angleDeg": -15.99,
+    "targetName": "support",
+    "targetPrice": 8.97,
+    "etaBars": 5.28
+   },
+   "engine": {
+    "signal": "SELL",
+    "score": -9.7,
+    "confidence": 82
+   },
+   "lead": true,
+   "grounded": true,
+   "reasons": [
+    "SMA20 heading down (above the pack) → support $8.97 in ~5 bars at -15.99° (projection)",
+    "vetted all-boxes (A/B + momentum + filing)"
+   ]
+  },
+  {
+   "sym": "ROAD",
+   "entity": "Construction Partners, Inc.",
+   "grade": "B",
+   "allBoxes": true,
+   "price": 108.065,
+   "lastBarMs": 1782932400000,
+   "fresh": true,
+   "heading": {
+    "separated": true,
+    "side": "above",
+    "leaning": "down",
+    "gapATR": 2.644
+   },
+   "esd": {
+    "valid": true,
+    "leaning": "down",
+    "angleDeg": -15.75,
+    "targetName": "sl",
+    "targetPrice": 111.5205,
+    "etaBars": 7.28
+   },
+   "engine": {
+    "signal": "SELL",
+    "score": -10.4,
+    "confidence": 83
+   },
+   "lead": true,
+   "grounded": true,
+   "reasons": [
+    "SMA20 heading down (above the pack) → sl $111.5205 in ~7 bars at -15.75° (projection)",
+    "vetted all-boxes (A/B + momentum + filing)"
+   ]
+  },
+  {
+   "sym": "BRK.B",
+   "entity": "BERKSHIRE HATHAWAY INC",
+   "grade": "B",
+   "allBoxes": true,
+   "price": 501.76,
+   "lastBarMs": 1782932400000,
+   "fresh": true,
+   "heading": {
+    "separated": true,
+    "side": "below",
+    "leaning": "up",
+    "gapATR": -1.776
+   },
+   "esd": {
+    "valid": true,
+    "leaning": "up",
+    "angleDeg": 15.43,
+    "targetName": "resistance",
+    "targetPrice": 503.83,
+    "etaBars": 10.67
+   },
+   "engine": {
+    "signal": "BUY",
+    "score": 6.1,
+    "confidence": 69
+   },
+   "lead": true,
+   "grounded": true,
+   "reasons": [
+    "SMA20 heading up (below the pack) → resistance $503.83 in ~11 bars at 15.43° (projection)",
+    "vetted all-boxes (A/B + momentum + filing)"
+   ]
+  },
+  {
+   "sym": "JBHT",
+   "entity": "J.B. HUNT TRANSPORT SERVICES, INC.",
+   "grade": "B",
+   "allBoxes": true,
+   "price": 289.25,
+   "lastBarMs": 1782932400000,
+   "fresh": true,
+   "heading": {
+    "separated": true,
+    "side": "below",
+    "leaning": "up",
+    "gapATR": -1.498
+   },
+   "esd": {
+    "valid": true,
+    "leaning": "up",
+    "angleDeg": 15.41,
+    "targetName": "resistance",
+    "targetPrice": 294.98,
+    "etaBars": 10.72
+   },
+   "engine": {
+    "signal": "HOLD",
+    "score": 4.6,
+    "confidence": 64
+   },
+   "lead": true,
+   "grounded": true,
+   "reasons": [
+    "SMA20 heading up (below the pack) → resistance $294.98 in ~11 bars at 15.41° (projection)",
+    "vetted all-boxes (A/B + momentum + filing)"
+   ]
+  },
+  {
+   "sym": "TJX",
+   "entity": "THE TJX COMPANIES, INC.",
+   "grade": "B",
+   "allBoxes": true,
+   "price": 151.84,
+   "lastBarMs": 1782932400000,
+   "fresh": true,
+   "heading": {
+    "separated": true,
+    "side": "above",
+    "leaning": "down",
+    "gapATR": 0.667
+   },
+   "esd": {
+    "valid": true,
+    "leaning": "down",
+    "angleDeg": -15.26,
+    "targetName": "support",
+    "targetPrice": 149.71,
+    "etaBars": 8.62
+   },
+   "engine": {
+    "signal": "SELL",
+    "score": -17,
+    "confidence": 95
+   },
+   "lead": true,
+   "grounded": true,
+   "reasons": [
+    "SMA20 heading down (above the pack) → support $149.71 in ~9 bars at -15.26° (projection)",
+    "vetted all-boxes (A/B + momentum + filing)"
+   ]
+  },
+  {
+   "sym": "GD",
+   "entity": "GENERAL DYNAMICS CORPORATION",
+   "grade": "B",
+   "allBoxes": true,
+   "price": 361.92,
+   "lastBarMs": 1782932400000,
+   "fresh": true,
+   "heading": {
+    "separated": true,
+    "side": "below",
+    "leaning": "up",
+    "gapATR": -3.022
+   },
+   "esd": {
+    "valid": true,
+    "leaning": "up",
+    "angleDeg": 15.19,
+    "targetName": "resistance",
+    "targetPrice": 365.06,
+    "etaBars": 17.86
+   },
+   "engine": {
+    "signal": "BUY",
+    "score": 7.4,
+    "confidence": 73
+   },
+   "lead": true,
+   "grounded": true,
+   "reasons": [
+    "SMA20 heading up (below the pack) → resistance $365.06 in ~18 bars at 15.19° (projection)",
+    "vetted all-boxes (A/B + momentum + filing)"
+   ]
+  },
+  {
+   "sym": "SN",
+   "entity": "SHARKNINJA, INC.",
+   "grade": "B",
+   "allBoxes": true,
+   "price": 151.3,
+   "lastBarMs": 1782932400000,
+   "fresh": true,
+   "heading": {
+    "separated": true,
+    "side": "below",
+    "leaning": "up",
+    "gapATR": -2.046
+   },
+   "esd": {
+    "valid": true,
+    "leaning": "up",
+    "angleDeg": 15.03,
+    "targetName": "resistance",
+    "targetPrice": 152.55,
+    "etaBars": 11.39
+   },
+   "engine": {
+    "signal": "BUY",
+    "score": 9.4,
+    "confidence": 80
+   },
+   "lead": true,
+   "grounded": true,
+   "reasons": [
+    "SMA20 heading up (below the pack) → resistance $152.55 in ~11 bars at 15.03° (projection)",
+    "vetted all-boxes (A/B + momentum + filing)"
+   ]
+  },
+  {
+   "sym": "HST",
+   "entity": "HOST HOTELS & RESORTS, INC.",
+   "grade": "B",
+   "allBoxes": true,
+   "price": 23.205,
+   "lastBarMs": 1782932400000,
+   "fresh": true,
+   "heading": {
+    "separated": true,
+    "side": "above",
+    "leaning": "down",
+    "gapATR": 2.911
+   },
+   "esd": {
+    "valid": true,
+    "leaning": "down",
+    "angleDeg": -14.94,
+    "targetName": "sl",
+    "targetPrice": 23.61,
+    "etaBars": 6.15
+   },
+   "engine": {
+    "signal": "HOLD",
+    "score": -2.3,
+    "confidence": 56
+   },
+   "lead": true,
+   "grounded": true,
+   "reasons": [
+    "SMA20 heading down (above the pack) → sl $23.61 in ~6 bars at -14.94° (projection)",
+    "vetted all-boxes (A/B + momentum + filing)"
+   ]
+  },
+  {
+   "sym": "ZM",
+   "entity": "Zoom Communications, Inc.",
+   "grade": "A",
+   "allBoxes": true,
+   "price": 90.96,
+   "lastBarMs": 1782932400000,
+   "fresh": true,
+   "heading": {
+    "separated": true,
+    "side": "below",
+    "leaning": "up",
+    "gapATR": -2.458
+   },
+   "esd": {
+    "valid": true,
+    "leaning": "up",
+    "angleDeg": 14.89,
+    "targetName": "resistance",
+    "targetPrice": 91.09,
+    "etaBars": 14.98
+   },
+   "engine": {
+    "signal": "BUY",
+    "score": 7.6,
+    "confidence": 74
+   },
+   "lead": true,
+   "grounded": true,
+   "reasons": [
+    "SMA20 heading up (below the pack) → resistance $91.09 in ~15 bars at 14.89° (projection)",
+    "vetted all-boxes (A/B + momentum + filing)"
+   ]
+  },
+  {
+   "sym": "AFRM",
+   "entity": "Affirm Holdings, Inc.",
+   "grade": "B",
+   "allBoxes": true,
+   "price": 84.58,
+   "lastBarMs": 1782932400000,
+   "fresh": true,
+   "heading": {
+    "separated": true,
+    "side": "below",
+    "leaning": "up",
+    "gapATR": -1.986
+   },
+   "esd": {
+    "valid": true,
+    "leaning": "up",
+    "angleDeg": 14.75,
+    "targetName": "resistance",
+    "targetPrice": 85.305,
+    "etaBars": 12.38
+   },
+   "engine": {
+    "signal": "BUY",
+    "score": 6.1,
+    "confidence": 69
+   },
+   "lead": true,
+   "grounded": true,
+   "reasons": [
+    "SMA20 heading up (below the pack) → resistance $85.305 in ~12 bars at 14.75° (projection)",
+    "vetted all-boxes (A/B + momentum + filing)"
+   ]
+  },
+  {
+   "sym": "SCHW",
+   "entity": "SCHWAB CHARLES CORP",
+   "grade": "A",
+   "allBoxes": true,
+   "price": 95.444,
+   "lastBarMs": 1782932400000,
+   "fresh": true,
+   "heading": {
+    "separated": true,
+    "side": "below",
+    "leaning": "up",
+    "gapATR": -2.865
+   },
+   "esd": {
+    "valid": true,
+    "leaning": "up",
+    "angleDeg": 14.21,
+    "targetName": "resistance",
+    "targetPrice": 95.86,
+    "etaBars": 17.22
+   },
+   "engine": {
+    "signal": "BUY",
+    "score": 7.4,
+    "confidence": 73
+   },
+   "lead": true,
+   "grounded": true,
+   "reasons": [
+    "SMA20 heading up (below the pack) → resistance $95.86 in ~17 bars at 14.21° (projection)",
+    "vetted all-boxes (A/B + momentum + filing)"
+   ]
+  },
+  {
+   "sym": "EOG",
+   "entity": "EOG RESOURCES, INC.",
+   "grade": "A",
+   "allBoxes": true,
+   "price": 128.71,
+   "lastBarMs": 1782932400000,
+   "fresh": true,
+   "heading": {
+    "separated": true,
+    "side": "above",
+    "leaning": "down",
+    "gapATR": 2.226
+   },
+   "esd": {
+    "valid": true,
+    "leaning": "down",
+    "angleDeg": -13.8,
+    "targetName": "sl",
+    "targetPrice": 129.9605,
+    "etaBars": 4.74
+   },
+   "engine": {
+    "signal": "SELL",
+    "score": -7.4,
+    "confidence": 73
+   },
+   "lead": true,
+   "grounded": true,
+   "reasons": [
+    "SMA20 heading down (above the pack) → sl $129.9605 in ~5 bars at -13.8° (projection)",
+    "vetted all-boxes (A/B + momentum + filing)"
+   ]
+  },
+  {
+   "sym": "ALL",
+   "entity": "ALLSTATE CORP",
+   "grade": "A",
+   "allBoxes": true,
+   "price": 242.28,
+   "lastBarMs": 1782932400000,
+   "fresh": true,
+   "heading": {
+    "separated": true,
+    "side": "below",
+    "leaning": "up",
+    "gapATR": -0.741
+   },
+   "esd": {
+    "valid": true,
+    "leaning": "up",
+    "angleDeg": 13.21,
+    "targetName": "resistance",
+    "targetPrice": 243.6425,
+    "etaBars": 6.63
+   },
+   "engine": {
+    "signal": "BUY",
+    "score": 7.4,
+    "confidence": 73
+   },
+   "lead": true,
+   "grounded": true,
+   "reasons": [
+    "SMA20 heading up (below the pack) → resistance $243.6425 in ~7 bars at 13.21° (projection)",
+    "vetted all-boxes (A/B + momentum + filing)"
+   ]
+  },
+  {
+   "sym": "NXPI",
+   "entity": "NXP Semiconductors N.V.",
+   "grade": "B",
+   "allBoxes": true,
+   "price": 282.07,
+   "lastBarMs": 1782932400000,
+   "fresh": true,
+   "heading": {
+    "separated": true,
+    "side": "below",
+    "leaning": "down",
+    "gapATR": -0.615
+   },
+   "esd": {
+    "valid": true,
+    "leaning": "down",
+    "angleDeg": -13.1,
+    "targetName": "support",
+    "targetPrice": 268.85,
+    "etaBars": 17.47
+   },
+   "engine": {
+    "signal": "SELL",
+    "score": -9.6,
+    "confidence": 80
+   },
+   "lead": true,
+   "grounded": true,
+   "reasons": [
+    "SMA20 heading down (below the pack) → support $268.85 in ~17 bars at -13.1° (projection)",
+    "vetted all-boxes (A/B + momentum + filing)"
+   ]
+  },
+  {
+   "sym": "DOV",
+   "entity": "DOVER Corp",
+   "grade": "B",
+   "allBoxes": true,
+   "price": 217.74,
+   "lastBarMs": 1782932400000,
+   "fresh": true,
+   "heading": {
+    "separated": true,
+    "side": "above",
+    "leaning": "down",
+    "gapATR": 1.609
+   },
+   "esd": {
+    "valid": true,
+    "leaning": "down",
+    "angleDeg": -12.52,
+    "targetName": "sl",
+    "targetPrice": 220.121,
+    "etaBars": 8.8
+   },
+   "engine": {
+    "signal": "SELL",
+    "score": -5.1,
+    "confidence": 66
+   },
+   "lead": true,
+   "grounded": true,
+   "reasons": [
+    "SMA20 heading down (above the pack) → sl $220.121 in ~9 bars at -12.52° (projection)",
+    "vetted all-boxes (A/B + momentum + filing)"
+   ]
+  },
+  {
+   "sym": "SNDK",
+   "entity": "Sandisk Corporation",
+   "grade": "B",
+   "allBoxes": true,
+   "price": 1547.98,
+   "lastBarMs": 1779890400000,
+   "fresh": false,
+   "heading": {
+    "separated": true,
+    "side": "below",
+    "leaning": "up",
+    "gapATR": -1.179
+   },
+   "esd": {
+    "valid": true,
+    "leaning": "up",
+    "angleDeg": 12.5,
+    "targetName": "tp1",
+    "targetPrice": 1631.1179,
+    "etaBars": 10.82
+   },
+   "engine": {
+    "signal": "BUY",
+    "score": 14.5,
+    "confidence": 95
+   },
+   "lead": true,
+   "grounded": true,
+   "reasons": [
+    "SMA20 heading up (below the pack) → tp1 $1631.1179 in ~11 bars at 12.5° (projection)",
+    "vetted all-boxes (A/B + momentum + filing)"
+   ]
+  },
+  {
+   "sym": "PPL",
+   "entity": "PPL Corp",
+   "grade": "B",
+   "allBoxes": true,
+   "price": 35.7,
+   "lastBarMs": 1782932400000,
+   "fresh": true,
+   "heading": {
+    "separated": true,
+    "side": "above",
+    "leaning": "down",
+    "gapATR": 2.723
+   },
+   "esd": {
+    "valid": true,
+    "leaning": "down",
+    "angleDeg": -12.37,
+    "targetName": "sl",
+    "targetPrice": 36.0004,
+    "etaBars": 11.62
+   },
+   "engine": {
+    "signal": "HOLD",
+    "score": -4.6,
+    "confidence": 64
+   },
+   "lead": true,
+   "grounded": true,
+   "reasons": [
+    "SMA20 heading down (above the pack) → sl $36.0004 in ~12 bars at -12.37° (projection)",
+    "vetted all-boxes (A/B + momentum + filing)"
+   ]
+  },
+  {
+   "sym": "APH",
+   "entity": "AMPHENOL CORP /DE/",
+   "grade": "B",
+   "allBoxes": true,
+   "price": 172.81,
+   "lastBarMs": 1782932400000,
+   "fresh": true,
+   "heading": {
+    "separated": true,
+    "side": "below",
+    "leaning": "up",
+    "gapATR": -1.379
+   },
+   "esd": {
+    "valid": true,
+    "leaning": "up",
+    "angleDeg": 12.33,
+    "targetName": "tp1",
+    "targetPrice": 176.9037,
+    "etaBars": 14.38
+   },
+   "engine": {
+    "signal": "BUY",
+    "score": 8.9,
+    "confidence": 78
+   },
+   "lead": true,
+   "grounded": true,
+   "reasons": [
+    "SMA20 heading up (below the pack) → tp1 $176.9037 in ~14 bars at 12.33° (projection)",
+    "vetted all-boxes (A/B + momentum + filing)"
+   ]
+  },
+  {
+   "sym": "C",
+   "entity": "Citigroup Inc",
+   "grade": "B",
+   "allBoxes": true,
+   "price": 140.14,
+   "lastBarMs": 1782932400000,
+   "fresh": true,
+   "heading": {
+    "separated": true,
+    "side": "above",
+    "leaning": "down",
+    "gapATR": 1.099
+   },
+   "esd": {
+    "valid": true,
+    "leaning": "down",
+    "angleDeg": -12.05,
+    "targetName": "support",
+    "targetPrice": 138.75,
+    "etaBars": 12.41
+   },
+   "engine": {
+    "signal": "SELL",
+    "score": -8.4,
+    "confidence": 77
+   },
+   "lead": true,
+   "grounded": true,
+   "reasons": [
+    "SMA20 heading down (above the pack) → support $138.75 in ~12 bars at -12.05° (projection)",
+    "vetted all-boxes (A/B + momentum + filing)"
+   ]
+  },
+  {
+   "sym": "BKR",
+   "entity": "Baker Hughes Co",
+   "grade": "B",
+   "allBoxes": true,
+   "price": 54.025,
+   "lastBarMs": 1782932400000,
+   "fresh": true,
+   "heading": {
+    "separated": true,
+    "side": "above",
+    "leaning": "down",
+    "gapATR": 2.124
+   },
+   "esd": {
+    "valid": true,
+    "leaning": "down",
+    "angleDeg": -11.78,
+    "targetName": "sl",
+    "targetPrice": 54.7458,
+    "etaBars": 8.34
+   },
+   "engine": {
+    "signal": "SELL",
+    "score": -6.1,
+    "confidence": 69
+   },
+   "lead": true,
+   "grounded": true,
+   "reasons": [
+    "SMA20 heading down (above the pack) → sl $54.7458 in ~8 bars at -11.78° (projection)",
+    "vetted all-boxes (A/B + momentum + filing)"
+   ]
+  },
+  {
+   "sym": "STRL",
+   "entity": "Sterling Infrastructure, Inc.",
+   "grade": "B",
+   "allBoxes": true,
+   "price": 779.57,
+   "lastBarMs": 1782932400000,
+   "fresh": true,
+   "heading": {
+    "separated": true,
+    "side": "above",
+    "leaning": "down",
+    "gapATR": 1.066
+   },
+   "esd": {
+    "valid": true,
+    "leaning": "down",
+    "angleDeg": -11.55,
+    "targetName": "sl",
+    "targetPrice": 804.2979,
+    "etaBars": 2.32
+   },
+   "engine": {
+    "signal": "HOLD",
+    "score": -2.6,
+    "confidence": 57
+   },
+   "lead": true,
+   "grounded": true,
+   "reasons": [
+    "SMA20 heading down (above the pack) → sl $804.2979 in ~2 bars at -11.55° (projection)",
+    "vetted all-boxes (A/B + momentum + filing)"
+   ]
+  },
+  {
+   "sym": "NVDA",
+   "entity": "NVIDIA CORP",
+   "grade": "B",
+   "allBoxes": true,
+   "price": 230.82,
+   "lastBarMs": 1778864400000,
+   "fresh": false,
+   "heading": {
+    "separated": true,
+    "side": "below",
+    "leaning": "up",
+    "gapATR": -0.977
+   },
+   "esd": {
+    "valid": true,
+    "leaning": "up",
+    "angleDeg": 11.55,
+    "targetName": "resistance",
+    "targetPrice": 236.54,
+    "etaBars": 12.8
+   },
+   "engine": {
+    "signal": "BUY",
+    "score": 14.7,
+    "confidence": 95
+   },
+   "lead": true,
+   "grounded": true,
+   "reasons": [
+    "SMA20 heading up (below the pack) → resistance $236.54 in ~13 bars at 11.55° (projection)",
+    "vetted all-boxes (A/B + momentum + filing)"
+   ]
+  },
+  {
+   "sym": "RCL",
+   "entity": "ROYAL CARIBBEAN CRUISES LTD",
+   "grade": "B",
+   "allBoxes": true,
+   "price": 309.455,
+   "lastBarMs": 1782932400000,
+   "fresh": true,
+   "heading": {
+    "separated": true,
+    "side": "above",
+    "leaning": "down",
+    "gapATR": 1.702
+   },
+   "esd": {
+    "valid": true,
+    "leaning": "down",
+    "angleDeg": -11.38,
+    "targetName": "sl",
+    "targetPrice": 313.3925,
+    "etaBars": 7.08
+   },
+   "engine": {
+    "signal": "HOLD",
+    "score": 1.2,
+    "confidence": 53
+   },
+   "lead": true,
+   "grounded": true,
+   "reasons": [
+    "SMA20 heading down (above the pack) → sl $313.3925 in ~7 bars at -11.38° (projection)",
+    "vetted all-boxes (A/B + momentum + filing)"
+   ]
+  },
+  {
+   "sym": "KLAC",
+   "entity": "KLA CORPORATION",
+   "grade": "B",
+   "allBoxes": true,
+   "price": 264.78,
+   "lastBarMs": 1782932400000,
+   "fresh": true,
+   "heading": {
+    "separated": true,
+    "side": "above",
+    "leaning": "up",
+    "gapATR": 0.438
+   },
+   "esd": {
+    "valid": true,
+    "leaning": "up",
+    "angleDeg": 11.18,
+    "targetName": "resistance",
+    "targetPrice": 307.3743,
+    "etaBars": 20.83
+   },
+   "engine": {
+    "signal": "HOLD",
+    "score": 0.3,
+    "confidence": 50
+   },
+   "lead": true,
+   "grounded": true,
+   "reasons": [
+    "SMA20 heading up (above the pack) → resistance $307.3743 in ~21 bars at 11.18° (projection)",
+    "vetted all-boxes (A/B + momentum + filing)"
+   ]
+  },
+  {
+   "sym": "APD",
+   "entity": "AIR PRODUCTS AND CHEMICALS, INC.",
+   "grade": "B",
+   "allBoxes": true,
+   "price": 302.425,
+   "lastBarMs": 1782932400000,
+   "fresh": true,
+   "heading": {
+    "separated": true,
+    "side": "below",
+    "leaning": "up",
+    "gapATR": -2.543
+   },
+   "esd": {
+    "valid": true,
+    "leaning": "up",
+    "angleDeg": 10.87,
+    "targetName": "tp1",
+    "targetPrice": 291.878,
+    "etaBars": 3.13
+   },
+   "engine": {
+    "signal": "HOLD",
+    "score": 0,
+    "confidence": 49
+   },
+   "lead": true,
+   "grounded": true,
+   "reasons": [
+    "SMA20 heading up (below the pack) → tp1 $291.878 in ~3 bars at 10.87° (projection)",
+    "vetted all-boxes (A/B + momentum + filing)"
+   ]
+  },
+  {
+   "sym": "AMZN",
+   "entity": "AMAZON COM INC",
+   "grade": "B",
+   "allBoxes": true,
+   "price": 258.31,
+   "lastBarMs": 1780423200000,
+   "fresh": false,
+   "heading": {
+    "separated": true,
+    "side": "above",
+    "leaning": "down",
+    "gapATR": 2.433
+   },
+   "esd": {
+    "valid": true,
+    "leaning": "down",
+    "angleDeg": -10.47,
+    "targetName": "sl",
+    "targetPrice": 262.0927,
+    "etaBars": 8.19
+   },
+   "engine": {
+    "signal": "HOLD",
+    "score": -4.6,
+    "confidence": 64
+   },
+   "lead": true,
+   "grounded": true,
+   "reasons": [
+    "SMA20 heading down (above the pack) → sl $262.0927 in ~8 bars at -10.47° (projection)",
+    "vetted all-boxes (A/B + momentum + filing)"
+   ]
+  },
+  {
+   "sym": "ROST",
+   "entity": "Ross Stores, Inc.",
+   "grade": "B",
+   "allBoxes": true,
+   "price": 212.17,
+   "lastBarMs": 1782932400000,
+   "fresh": true,
+   "heading": {
+    "separated": true,
+    "side": "below",
+    "leaning": "down",
+    "gapATR": -0.513
+   },
+   "esd": {
+    "valid": true,
+    "leaning": "down",
+    "angleDeg": -10.25,
+    "targetName": "support",
+    "targetPrice": 207,
+    "etaBars": 14.74
+   },
+   "engine": {
+    "signal": "HOLD",
+    "score": -3.3,
+    "confidence": 59
+   },
+   "lead": true,
+   "grounded": true,
+   "reasons": [
+    "SMA20 heading down (below the pack) → support $207 in ~15 bars at -10.25° (projection)",
+    "vetted all-boxes (A/B + momentum + filing)"
+   ]
+  },
+  {
+   "sym": "XEL",
+   "entity": "XCEL ENERGY INC",
+   "grade": "B",
+   "allBoxes": true,
+   "price": 79.5,
+   "lastBarMs": 1782932400000,
+   "fresh": true,
+   "heading": {
+    "separated": true,
+    "side": "above",
+    "leaning": "down",
+    "gapATR": 2.334
+   },
+   "esd": {
+    "valid": true,
+    "leaning": "down",
+    "angleDeg": -10.11,
+    "targetName": "sl",
+    "targetPrice": 80.234,
+    "etaBars": 8.7
+   },
+   "engine": {
+    "signal": "HOLD",
+    "score": -3.1,
+    "confidence": 59
+   },
+   "lead": true,
+   "grounded": true,
+   "reasons": [
+    "SMA20 heading down (above the pack) → sl $80.234 in ~9 bars at -10.11° (projection)",
+    "vetted all-boxes (A/B + momentum + filing)"
+   ]
+  },
+  {
+   "sym": "KTOS",
+   "entity": "Kratos Defense & Security Solutions, Inc.",
+   "grade": "B",
+   "allBoxes": true,
+   "price": 52.8399,
+   "lastBarMs": 1782932400000,
+   "fresh": true,
+   "heading": {
+    "separated": true,
+    "side": "below",
+    "leaning": "up",
+    "gapATR": -2.269
+   },
+   "esd": {
+    "valid": true,
+    "leaning": "up",
+    "angleDeg": 10.06,
+    "targetName": "tp1",
+    "targetPrice": 50.473,
+    "etaBars": 4.2
+   },
+   "engine": {
+    "signal": "HOLD",
+    "score": -0.2,
+    "confidence": 49
+   },
+   "lead": true,
+   "grounded": true,
+   "reasons": [
+    "SMA20 heading up (below the pack) → tp1 $50.473 in ~4 bars at 10.06° (projection)",
+    "vetted all-boxes (A/B + momentum + filing)"
+   ]
+  },
+  {
+   "sym": "FTNT",
+   "entity": "FORTINET, INC.",
+   "grade": "B",
+   "allBoxes": true,
+   "price": 158.57,
+   "lastBarMs": 1782932400000,
+   "fresh": true,
+   "heading": {
+    "separated": true,
+    "side": "below",
+    "leaning": "up",
+    "gapATR": -1.291
+   },
+   "esd": {
+    "valid": true,
+    "leaning": "up",
+    "angleDeg": 9.73,
+    "targetName": "resistance",
+    "targetPrice": 159.8,
+    "etaBars": 15.32
+   },
+   "engine": {
+    "signal": "BUY",
+    "score": 10.4,
+    "confidence": 83
+   },
+   "lead": true,
+   "grounded": true,
+   "reasons": [
+    "SMA20 heading up (below the pack) → resistance $159.8 in ~15 bars at 9.73° (projection)",
+    "vetted all-boxes (A/B + momentum + filing)"
+   ]
+  },
+  {
+   "sym": "NSC",
+   "entity": "NORFOLK SOUTHERN CORP",
+   "grade": "B",
+   "allBoxes": true,
+   "price": 317.955,
+   "lastBarMs": 1782932400000,
+   "fresh": true,
+   "heading": {
+    "separated": true,
+    "side": "below",
+    "leaning": "up",
+    "gapATR": -1.098
+   },
+   "esd": {
+    "valid": true,
+    "leaning": "up",
+    "angleDeg": 9.43,
+    "targetName": "resistance",
+    "targetPrice": 320.19,
+    "etaBars": 14.57
+   },
+   "engine": {
+    "signal": "BUY",
+    "score": 11.7,
+    "confidence": 88
+   },
+   "lead": true,
+   "grounded": true,
+   "reasons": [
+    "SMA20 heading up (below the pack) → resistance $320.19 in ~15 bars at 9.43° (projection)",
+    "vetted all-boxes (A/B + momentum + filing)"
+   ]
+  },
+  {
+   "sym": "MU",
+   "entity": "Micron Technology, Inc.",
+   "grade": "A",
+   "allBoxes": true,
+   "price": 681.7,
+   "lastBarMs": 1779130800000,
+   "fresh": false,
+   "heading": {
+    "separated": true,
+    "side": "above",
+    "leaning": "down",
+    "gapATR": 2.585
+   },
+   "esd": {
+    "valid": true,
+    "leaning": "down",
+    "angleDeg": -8.54,
+    "targetName": "sl",
+    "targetPrice": 709.735,
+    "etaBars": 11.75
+   },
+   "engine": {
+    "signal": "HOLD",
+    "score": 2,
+    "confidence": 54
+   },
+   "lead": true,
+   "grounded": true,
+   "reasons": [
+    "SMA20 heading down (above the pack) → sl $709.735 in ~12 bars at -8.54° (projection)",
+    "vetted all-boxes (A/B + momentum + filing)"
+   ]
+  },
+  {
+   "sym": "GLW",
+   "entity": "CORNING INC /NY",
+   "grade": "B",
+   "allBoxes": true,
+   "price": 193.035,
+   "lastBarMs": 1782230400000,
+   "fresh": false,
+   "heading": {
+    "separated": true,
+    "side": "below",
+    "leaning": "up",
+    "gapATR": -1.252
+   },
+   "esd": {
+    "valid": true,
+    "leaning": "up",
+    "angleDeg": 8.49,
+    "targetName": "tp1",
+    "targetPrice": 205.2128,
+    "etaBars": 15.58
+   },
+   "engine": {
+    "signal": "BUY",
+    "score": 15.7,
+    "confidence": 95
+   },
+   "lead": true,
+   "grounded": true,
+   "reasons": [
+    "SMA20 heading up (below the pack) → tp1 $205.2128 in ~16 bars at 8.49° (projection)",
+    "vetted all-boxes (A/B + momentum + filing)"
+   ]
+  },
+  {
+   "sym": "JHG",
+   "entity": "JANUS HENDERSON GROUP PLC",
+   "grade": "A",
+   "allBoxes": true,
+   "price": 51.98,
+   "lastBarMs": 1782846000000,
+   "fresh": false,
+   "heading": {
+    "separated": true,
+    "side": "below",
+    "leaning": "up",
+    "gapATR": -0.633
+   },
+   "esd": {
+    "valid": true,
+    "leaning": "up",
+    "angleDeg": 8.37,
+    "targetName": "resistance",
+    "targetPrice": 52,
+    "etaBars": 15.3
+   },
+   "engine": {
+    "signal": "BUY",
+    "score": 12.5,
+    "confidence": 93
+   },
+   "lead": true,
+   "grounded": true,
+   "reasons": [
+    "SMA20 heading up (below the pack) → resistance $52 in ~15 bars at 8.37° (projection)",
+    "vetted all-boxes (A/B + momentum + filing)"
+   ]
+  },
+  {
+   "sym": "NOC",
+   "entity": "NORTHROP GRUMMAN CORP /DE/",
+   "grade": "B",
+   "allBoxes": true,
+   "price": 519.31,
+   "lastBarMs": 1782932400000,
+   "fresh": true,
+   "heading": {
+    "separated": true,
+    "side": "below",
+    "leaning": "up",
+    "gapATR": -2.755
+   },
+   "esd": {
+    "valid": true,
+    "leaning": "up",
+    "angleDeg": 8.12,
+    "targetName": "tp1",
+    "targetPrice": 511.094,
+    "etaBars": 7.57
+   },
+   "engine": {
+    "signal": "HOLD",
+    "score": -2.5,
+    "confidence": 55
+   },
+   "lead": true,
+   "grounded": true,
+   "reasons": [
+    "SMA20 heading up (below the pack) → tp1 $511.094 in ~8 bars at 8.12° (projection)",
+    "vetted all-boxes (A/B + momentum + filing)"
+   ]
+  },
+  {
+   "sym": "NEM",
+   "entity": "NEWMONT CORPORATION",
+   "grade": "A",
+   "allBoxes": true,
+   "price": 93.625,
+   "lastBarMs": 1782932400000,
+   "fresh": true,
+   "heading": {
+    "separated": true,
+    "side": "above",
+    "leaning": "down",
+    "gapATR": 0.363
+   },
+   "esd": {
+    "valid": true,
+    "leaning": "down",
+    "angleDeg": -8.04,
+    "targetName": "support",
+    "targetPrice": 91.88,
+    "etaBars": 17.13
+   },
+   "engine": {
+    "signal": "SELL",
+    "score": -5.9,
+    "confidence": 68
+   },
+   "lead": true,
+   "grounded": true,
+   "reasons": [
+    "SMA20 heading down (above the pack) → support $91.88 in ~17 bars at -8.04° (projection)",
+    "vetted all-boxes (A/B + momentum + filing)"
+   ]
+  },
+  {
+   "sym": "LLY",
+   "entity": "ELI LILLY & Co",
+   "grade": "B",
+   "allBoxes": true,
+   "price": 1183.805,
+   "lastBarMs": 1782932400000,
+   "fresh": true,
+   "heading": {
+    "separated": true,
+    "side": "above",
+    "leaning": "up",
+    "gapATR": 1.205
+   },
+   "esd": {
+    "valid": true,
+    "leaning": "up",
+    "angleDeg": 7.83,
+    "targetName": "resistance",
+    "targetPrice": 1234,
+    "etaBars": 17.28
+   },
+   "engine": {
+    "signal": "HOLD",
+    "score": 2.8,
+    "confidence": 57
+   },
+   "lead": true,
+   "grounded": true,
+   "reasons": [
+    "SMA20 heading up (above the pack) → resistance $1234 in ~17 bars at 7.83° (projection)",
+    "vetted all-boxes (A/B + momentum + filing)"
+   ]
+  },
+  {
+   "sym": "VRTX",
+   "entity": "VERTEX PHARMACEUTICALS INC / MA",
+   "grade": "B",
+   "allBoxes": true,
+   "price": 496.81,
+   "lastBarMs": 1782932400000,
+   "fresh": true,
+   "heading": {
+    "separated": true,
+    "side": "below",
+    "leaning": "up",
+    "gapATR": -0.647
+   },
+   "esd": {
+    "valid": true,
+    "leaning": "up",
+    "angleDeg": 7.76,
+    "targetName": "resistance",
+    "targetPrice": 501.82,
+    "etaBars": 12.2
+   },
+   "engine": {
+    "signal": "BUY",
+    "score": 8.2,
+    "confidence": 77
+   },
+   "lead": true,
+   "grounded": true,
+   "reasons": [
+    "SMA20 heading up (below the pack) → resistance $501.82 in ~12 bars at 7.76° (projection)",
+    "vetted all-boxes (A/B + momentum + filing)"
+   ]
+  },
+  {
+   "sym": "NXT",
+   "entity": "Nextpower Inc.",
+   "grade": "B",
+   "allBoxes": true,
+   "price": 118.72,
+   "lastBarMs": 1782932400000,
+   "fresh": true,
+   "heading": {
+    "separated": true,
+    "side": "below",
+    "leaning": "up",
+    "gapATR": -1.522
+   },
+   "esd": {
+    "valid": true,
+    "leaning": "up",
+    "angleDeg": 7.14,
+    "targetName": "resistance",
+    "targetPrice": 123.62,
+    "etaBars": 22.57
+   },
+   "engine": {
+    "signal": "HOLD",
+    "score": 1.1,
+    "confidence": 53
+   },
+   "lead": true,
+   "grounded": true,
+   "reasons": [
+    "SMA20 heading up (below the pack) → resistance $123.62 in ~23 bars at 7.14° (projection)",
+    "vetted all-boxes (A/B + momentum + filing)"
+   ]
+  },
+  {
+   "sym": "TXN",
+   "entity": "TEXAS INSTRUMENTS INCORPORATED",
+   "grade": "B",
+   "allBoxes": true,
+   "price": 300.155,
+   "lastBarMs": 1782932400000,
+   "fresh": true,
+   "heading": {
+    "separated": true,
+    "side": "below",
+    "leaning": "down",
+    "gapATR": -1.583
+   },
+   "esd": {
+    "valid": true,
+    "leaning": "down",
+    "angleDeg": -7.08,
+    "targetName": "support",
+    "targetPrice": 275.78,
+    "etaBars": 46.18
+   },
+   "engine": {
+    "signal": "HOLD",
+    "score": -0.8,
+    "confidence": 51
+   },
+   "lead": true,
+   "grounded": true,
+   "reasons": [
+    "SMA20 heading down (below the pack) → support $275.78 in ~46 bars at -7.08° (projection)",
+    "vetted all-boxes (A/B + momentum + filing)"
+   ]
+  },
+  {
+   "sym": "AMAT",
+   "entity": "APPLIED MATERIALS INC /DE",
+   "grade": "B",
+   "allBoxes": true,
+   "price": 650.189,
+   "lastBarMs": 1782932400000,
+   "fresh": true,
+   "heading": {
+    "separated": true,
+    "side": "above",
+    "leaning": "up",
+    "gapATR": 1.332
+   },
+   "esd": {
+    "valid": true,
+    "leaning": "up",
+    "angleDeg": 7.04,
+    "targetName": "resistance",
+    "targetPrice": 739.67,
+    "etaBars": 28.84
+   },
+   "engine": {
+    "signal": "HOLD",
+    "score": 2.3,
+    "confidence": 56
+   },
+   "lead": true,
+   "grounded": true,
+   "reasons": [
+    "SMA20 heading up (above the pack) → resistance $739.67 in ~29 bars at 7.04° (projection)",
+    "vetted all-boxes (A/B + momentum + filing)"
+   ]
+  },
+  {
+   "sym": "CRS",
+   "entity": "CARPENTER TECHNOLOGY CORPORATION",
+   "grade": "B",
+   "allBoxes": true,
+   "price": 610.8,
+   "lastBarMs": 1782932400000,
+   "fresh": true,
+   "heading": {
+    "separated": true,
+    "side": "below",
+    "leaning": "up",
+    "gapATR": -0.649
+   },
+   "esd": {
+    "valid": true,
+    "leaning": "up",
+    "angleDeg": 6.7,
+    "targetName": "resistance",
+    "targetPrice": 624.5,
+    "etaBars": 20
+   },
+   "engine": {
+    "signal": "BUY",
+    "score": 14.5,
+    "confidence": 95
+   },
+   "lead": true,
+   "grounded": true,
+   "reasons": [
+    "SMA20 heading up (below the pack) → resistance $624.5 in ~20 bars at 6.7° (projection)",
+    "vetted all-boxes (A/B + momentum + filing)"
+   ]
+  },
+  {
+   "sym": "ANET",
+   "entity": "Arista Networks, Inc.",
+   "grade": "B",
+   "allBoxes": true,
+   "price": 167.84,
+   "lastBarMs": 1782932400000,
+   "fresh": true,
+   "heading": {
+    "separated": true,
+    "side": "below",
+    "leaning": "up",
+    "gapATR": -0.964
+   },
+   "esd": {
+    "valid": true,
+    "leaning": "up",
+    "angleDeg": 6.45,
+    "targetName": "resistance",
+    "targetPrice": 172.549,
+    "etaBars": 25.03
+   },
+   "engine": {
+    "signal": "HOLD",
+    "score": 3.4,
+    "confidence": 61
+   },
+   "lead": true,
+   "grounded": true,
+   "reasons": [
+    "SMA20 heading up (below the pack) → resistance $172.549 in ~25 bars at 6.45° (projection)",
+    "vetted all-boxes (A/B + momentum + filing)"
+   ]
+  },
+  {
+   "sym": "CDNS",
+   "entity": "CADENCE DESIGN SYSTEMS, INC.",
+   "grade": "B",
+   "allBoxes": true,
+   "price": 381.38,
+   "lastBarMs": 1782932400000,
+   "fresh": true,
+   "heading": {
+    "separated": true,
+    "side": "below",
+    "leaning": "up",
+    "gapATR": -0.84
+   },
+   "esd": {
+    "valid": true,
+    "leaning": "up",
+    "angleDeg": 6.39,
+    "targetName": "resistance",
+    "targetPrice": 387.19,
+    "etaBars": 25.18
+   },
+   "engine": {
+    "signal": "HOLD",
+    "score": 3.6,
+    "confidence": 61
+   },
+   "lead": true,
+   "grounded": true,
+   "reasons": [
+    "SMA20 heading up (below the pack) → resistance $387.19 in ~25 bars at 6.39° (projection)",
+    "vetted all-boxes (A/B + momentum + filing)"
+   ]
+  },
+  {
+   "sym": "MTSI",
+   "entity": "MACOM Technology Solutions Holdings, Inc.",
+   "grade": "B",
+   "allBoxes": true,
+   "price": 352.61,
+   "lastBarMs": 1782932400000,
+   "fresh": true,
+   "heading": {
+    "separated": true,
+    "side": "above",
+    "leaning": "down",
+    "gapATR": 1.143
+   },
+   "esd": {
+    "valid": true,
+    "leaning": "down",
+    "angleDeg": -6.31,
+    "targetName": "sl",
+    "targetPrice": 363.992,
+    "etaBars": 1.5
+   },
+   "engine": {
+    "signal": "HOLD",
+    "score": 1.2,
+    "confidence": 53
+   },
+   "lead": true,
+   "grounded": true,
+   "reasons": [
+    "SMA20 heading down (above the pack) → sl $363.992 in ~2 bars at -6.31° (projection)",
+    "vetted all-boxes (A/B + momentum + filing)"
+   ]
+  },
+  {
+   "sym": "LRCX",
+   "entity": "LAM RESEARCH CORPORATION",
+   "grade": "B",
+   "allBoxes": true,
+   "price": 386.79,
+   "lastBarMs": 1782932400000,
+   "fresh": true,
+   "heading": {
+    "separated": true,
+    "side": "above",
+    "leaning": "up",
+    "gapATR": 1.054
+   },
+   "esd": {
+    "valid": true,
+    "leaning": "up",
+    "angleDeg": 5.84,
+    "targetName": "resistance",
+    "targetPrice": 438.5,
+    "etaBars": 32.69
+   },
+   "engine": {
+    "signal": "HOLD",
+    "score": -2,
+    "confidence": 55
+   },
+   "lead": true,
+   "grounded": true,
+   "reasons": [
+    "SMA20 heading up (above the pack) → resistance $438.5 in ~33 bars at 5.84° (projection)",
+    "vetted all-boxes (A/B + momentum + filing)"
+   ]
+  },
+  {
+   "sym": "MPWR",
+   "entity": "MONOLITHIC POWER SYSTEMS INC",
+   "grade": "B",
+   "allBoxes": true,
+   "price": 1351.605,
+   "lastBarMs": 1782932400000,
+   "fresh": true,
+   "heading": {
+    "separated": true,
+    "side": "below",
+    "leaning": "down",
+    "gapATR": -0.448
+   },
+   "esd": {
+    "valid": true,
+    "leaning": "down",
+    "angleDeg": -5.76,
+    "targetName": "support",
+    "targetPrice": 1276.22,
+    "etaBars": 28.65
+   },
+   "engine": {
+    "signal": "HOLD",
+    "score": -4.6,
+    "confidence": 64
+   },
+   "lead": true,
+   "grounded": true,
+   "reasons": [
+    "SMA20 heading down (below the pack) → support $1276.22 in ~29 bars at -5.76° (projection)",
+    "vetted all-boxes (A/B + momentum + filing)"
+   ]
+  },
+  {
+   "sym": "SPG",
+   "entity": "SIMON PROPERTY GROUP, INC.",
+   "grade": "B",
+   "allBoxes": true,
+   "price": 222.71,
+   "lastBarMs": 1782932400000,
+   "fresh": true,
+   "heading": {
+    "separated": true,
+    "side": "above",
+    "leaning": "down",
+    "gapATR": 1.562
+   },
+   "esd": {
+    "valid": true,
+    "leaning": "down",
+    "angleDeg": -5.38,
+    "targetName": "support",
+    "targetPrice": 220.04,
+    "etaBars": 34.19
+   },
+   "engine": {
+    "signal": "HOLD",
+    "score": -0.6,
+    "confidence": 51
+   },
+   "lead": true,
+   "grounded": true,
+   "reasons": [
+    "SMA20 heading down (above the pack) → support $220.04 in ~34 bars at -5.38° (projection)",
+    "vetted all-boxes (A/B + momentum + filing)"
+   ]
+  },
+  {
+   "sym": "FERG",
+   "entity": "Ferguson Enterprises Inc.",
+   "grade": "B",
+   "allBoxes": true,
+   "price": 231.82,
+   "lastBarMs": 1782932400000,
+   "fresh": true,
+   "heading": {
+    "separated": true,
+    "side": "above",
+    "leaning": "down",
+    "gapATR": 1.074
+   },
+   "esd": {
+    "valid": true,
+    "leaning": "down",
+    "angleDeg": -5.33,
+    "targetName": "sl",
+    "targetPrice": 234.6312,
+    "etaBars": 10.6
+   },
+   "engine": {
+    "signal": "HOLD",
+    "score": -2.8,
+    "confidence": 58
+   },
+   "lead": true,
+   "grounded": true,
+   "reasons": [
+    "SMA20 heading down (above the pack) → sl $234.6312 in ~11 bars at -5.33° (projection)",
+    "vetted all-boxes (A/B + momentum + filing)"
+   ]
+  },
+  {
+   "sym": "CART",
+   "entity": "MAPLEBEAR INC.",
+   "grade": "B",
+   "allBoxes": true,
+   "price": 44.8,
+   "lastBarMs": 1782932400000,
+   "fresh": true,
+   "heading": {
+    "separated": true,
+    "side": "above",
+    "leaning": "down",
+    "gapATR": 1.944
+   },
+   "esd": {
+    "valid": true,
+    "leaning": "down",
+    "angleDeg": -5.09,
+    "targetName": "sl",
+    "targetPrice": 45.98,
+    "etaBars": 10.78
+   },
+   "engine": {
+    "signal": "HOLD",
+    "score": -2.1,
+    "confidence": 56
+   },
+   "lead": true,
+   "grounded": true,
+   "reasons": [
+    "SMA20 heading down (above the pack) → sl $45.98 in ~11 bars at -5.09° (projection)",
+    "vetted all-boxes (A/B + momentum + filing)"
+   ]
+  },
+  {
+   "sym": "JPM",
+   "entity": "JPMORGAN CHASE & CO",
+   "grade": "B",
+   "allBoxes": true,
+   "price": 333.36,
+   "lastBarMs": 1782932400000,
+   "fresh": true,
+   "heading": {
+    "separated": true,
+    "side": "below",
+    "leaning": "down",
+    "gapATR": -1.027
+   },
+   "esd": {
+    "valid": true,
+    "leaning": "down",
+    "angleDeg": -5.09,
+    "targetName": "support",
+    "targetPrice": 326.68,
+    "etaBars": 24.67
+   },
+   "engine": {
+    "signal": "HOLD",
+    "score": -0.9,
+    "confidence": 52
+   },
+   "lead": true,
+   "grounded": true,
+   "reasons": [
+    "SMA20 heading down (below the pack) → support $326.68 in ~25 bars at -5.09° (projection)",
+    "vetted all-boxes (A/B + momentum + filing)"
+   ]
+  },
+  {
+   "sym": "CFG",
+   "entity": "CITIZENS FINANCIAL GROUP INC/RI",
+   "grade": "A",
+   "allBoxes": true,
+   "price": 71.67,
+   "lastBarMs": 1782932400000,
+   "fresh": true,
+   "heading": {
+    "separated": true,
+    "side": "below",
+    "leaning": "up",
+    "gapATR": -2.039
+   },
+   "esd": {
+    "valid": true,
+    "leaning": "up",
+    "angleDeg": 4.75,
+    "targetName": "tp1",
+    "targetPrice": 70.9413,
+    "etaBars": 8.41
+   },
+   "engine": {
+    "signal": "HOLD",
+    "score": 1.3,
+    "confidence": 53
+   },
+   "lead": true,
+   "grounded": true,
+   "reasons": [
+    "SMA20 heading up (below the pack) → tp1 $70.9413 in ~8 bars at 4.75° (projection)",
+    "vetted all-boxes (A/B + momentum + filing)"
+   ]
+  },
+  {
+   "sym": "FTI",
+   "entity": "TechnipFMC plc",
+   "grade": "B",
+   "allBoxes": true,
+   "price": 64.94,
+   "lastBarMs": 1782932400000,
+   "fresh": true,
+   "heading": {
+    "separated": true,
+    "side": "above",
+    "leaning": "down",
+    "gapATR": 0.274
+   },
+   "esd": {
+    "valid": true,
+    "leaning": "down",
+    "angleDeg": -4.32,
+    "targetName": "support",
+    "targetPrice": 64.13,
+    "etaBars": 28.37
+   },
+   "engine": {
+    "signal": "SELL",
+    "score": -5.9,
+    "confidence": 69
+   },
+   "lead": true,
+   "grounded": true,
+   "reasons": [
+    "SMA20 heading down (above the pack) → support $64.13 in ~28 bars at -4.32° (projection)",
+    "vetted all-boxes (A/B + momentum + filing)"
+   ]
+  },
+  {
+   "sym": "HL",
+   "entity": "HECLA MINING COMPANY",
+   "grade": "B",
+   "allBoxes": true,
+   "price": 15.815,
+   "lastBarMs": 1782932400000,
+   "fresh": true,
+   "heading": {
+    "separated": true,
+    "side": "below",
+    "leaning": "up",
+    "gapATR": -1.016
+   },
+   "esd": {
+    "valid": true,
+    "leaning": "up",
+    "angleDeg": 4.11,
+    "targetName": "resistance",
+    "targetPrice": 16.185,
+    "etaBars": 38.8
+   },
+   "engine": {
+    "signal": "HOLD",
+    "score": -0.4,
+    "confidence": 51
+   },
+   "lead": true,
+   "grounded": true,
+   "reasons": [
+    "SMA20 heading up (below the pack) → resistance $16.185 in ~39 bars at 4.11° (projection)",
+    "vetted all-boxes (A/B + momentum + filing)"
+   ]
+  },
+  {
+   "sym": "KO",
+   "entity": "COCA COLA CO",
+   "grade": "B",
+   "allBoxes": true,
+   "price": 81.02,
+   "lastBarMs": 1782932400000,
+   "fresh": true,
+   "heading": {
+    "separated": true,
+    "side": "above",
+    "leaning": "up",
+    "gapATR": 1.215
+   },
+   "esd": {
+    "valid": true,
+    "leaning": "up",
+    "angleDeg": 4.09,
+    "targetName": "resistance",
+    "targetPrice": 83.62,
+    "etaBars": 51.59
+   },
+   "engine": {
+    "signal": "HOLD",
+    "score": 3.8,
+    "confidence": 60
+   },
+   "lead": true,
+   "grounded": true,
+   "reasons": [
+    "SMA20 heading up (above the pack) → resistance $83.62 in ~52 bars at 4.09° (projection)",
+    "vetted all-boxes (A/B + momentum + filing)"
+   ]
+  },
+  {
+   "sym": "BNY",
+   "entity": "THE BANK OF NEW YORK MELLON CORPORATION",
+   "grade": "B",
+   "allBoxes": true,
+   "price": 146.51,
+   "lastBarMs": 1782932400000,
+   "fresh": true,
+   "heading": {
+    "separated": true,
+    "side": "below",
+    "leaning": "up",
+    "gapATR": -1.279
+   },
+   "esd": {
+    "valid": true,
+    "leaning": "up",
+    "angleDeg": 3.61,
+    "targetName": "resistance",
+    "targetPrice": 147.45,
+    "etaBars": 39.41
+   },
+   "engine": {
+    "signal": "HOLD",
+    "score": -3.5,
+    "confidence": 59
+   },
+   "lead": true,
+   "grounded": true,
+   "reasons": [
+    "SMA20 heading up (below the pack) → resistance $147.45 in ~39 bars at 3.61° (projection)",
+    "vetted all-boxes (A/B + momentum + filing)"
+   ]
+  },
+  {
+   "sym": "TEL",
+   "entity": "TE CONNECTIVITY PLC",
+   "grade": "A",
+   "allBoxes": true,
+   "price": 201.455,
+   "lastBarMs": 1782932400000,
+   "fresh": true,
+   "heading": {
+    "separated": true,
+    "side": "below",
+    "leaning": "up",
+    "gapATR": -1.133
+   },
+   "esd": {
+    "valid": true,
+    "leaning": "up",
+    "angleDeg": 3.53,
+    "targetName": "resistance",
+    "targetPrice": 204.855,
+    "etaBars": 43.52
+   },
+   "engine": {
+    "signal": "HOLD",
+    "score": -2.7,
+    "confidence": 56
+   },
+   "lead": true,
+   "grounded": true,
+   "reasons": [
+    "SMA20 heading up (below the pack) → resistance $204.855 in ~44 bars at 3.53° (projection)",
+    "vetted all-boxes (A/B + momentum + filing)"
+   ]
+  },
+  {
+   "sym": "FCX",
+   "entity": "Freeport-McMoRan Inc.",
+   "grade": "B",
+   "allBoxes": true,
+   "price": 61.05,
+   "lastBarMs": 1782932400000,
+   "fresh": true,
+   "heading": {
+    "separated": true,
+    "side": "above",
+    "leaning": "down",
+    "gapATR": 0.595
+   },
+   "esd": {
+    "valid": true,
+    "leaning": "down",
+    "angleDeg": -3.35,
+    "targetName": "support",
+    "targetPrice": 60.51,
+    "etaBars": 38.44
+   },
+   "engine": {
+    "signal": "HOLD",
+    "score": -0.3,
+    "confidence": 50
+   },
+   "lead": true,
+   "grounded": true,
+   "reasons": [
+    "SMA20 heading down (above the pack) → support $60.51 in ~38 bars at -3.35° (projection)",
+    "vetted all-boxes (A/B + momentum + filing)"
+   ]
+  },
+  {
+   "sym": "MNST",
+   "entity": "Monster Beverage Corp",
+   "grade": "B",
+   "allBoxes": true,
+   "price": 97.34,
+   "lastBarMs": 1782932400000,
+   "fresh": true,
+   "heading": {
+    "separated": true,
+    "side": "below",
+    "leaning": "up",
+    "gapATR": -0.59
+   },
+   "esd": {
+    "valid": true,
+    "leaning": "up",
+    "angleDeg": 3.34,
+    "targetName": "resistance",
+    "targetPrice": 98.305,
+    "etaBars": 32.16
+   },
+   "engine": {
+    "signal": "BUY",
+    "score": 13,
+    "confidence": 94
+   },
+   "lead": true,
+   "grounded": true,
+   "reasons": [
+    "SMA20 heading up (below the pack) → resistance $98.305 in ~32 bars at 3.34° (projection)",
+    "vetted all-boxes (A/B + momentum + filing)"
+   ]
+  },
+  {
+   "sym": "MET",
+   "entity": "MetLife, Inc.",
+   "grade": "A",
+   "allBoxes": true,
+   "price": 87.15,
+   "lastBarMs": 1782932400000,
+   "fresh": true,
+   "heading": {
+    "separated": true,
+    "side": "below",
+    "leaning": "up",
+    "gapATR": -1.157
+   },
+   "esd": {
+    "valid": true,
+    "leaning": "up",
+    "angleDeg": 3.17,
+    "targetName": "resistance",
+    "targetPrice": 87.53,
+    "etaBars": 45.86
+   },
+   "engine": {
+    "signal": "HOLD",
+    "score": 2.6,
+    "confidence": 58
+   },
+   "lead": true,
+   "grounded": true,
+   "reasons": [
+    "SMA20 heading up (below the pack) → resistance $87.53 in ~46 bars at 3.17° (projection)",
+    "vetted all-boxes (A/B + momentum + filing)"
+   ]
+  },
+  {
+   "sym": "BAC",
+   "entity": "BofA Finance LLC",
+   "grade": "A",
+   "allBoxes": true,
+   "price": 58.305,
+   "lastBarMs": 1782932400000,
+   "fresh": true,
+   "heading": {
+    "separated": true,
+    "side": "below",
+    "leaning": "down",
+    "gapATR": -0.6
+   },
+   "esd": {
+    "valid": true,
+    "leaning": "down",
+    "angleDeg": -3.1,
+    "targetName": "support",
+    "targetPrice": 56.84,
+    "etaBars": 51.74
+   },
+   "engine": {
+    "signal": "HOLD",
+    "score": 1.6,
+    "confidence": 55
+   },
+   "lead": true,
+   "grounded": true,
+   "reasons": [
+    "SMA20 heading down (below the pack) → support $56.84 in ~52 bars at -3.1° (projection)",
+    "vetted all-boxes (A/B + momentum + filing)"
+   ]
+  },
+  {
+   "sym": "HBAN",
+   "entity": "Huntington Bancshares Incorporated",
+   "grade": "B",
+   "allBoxes": true,
+   "price": 18.145,
+   "lastBarMs": 1782932400000,
+   "fresh": true,
+   "heading": {
+    "separated": true,
+    "side": "below",
+    "leaning": "up",
+    "gapATR": -1.693
+   },
+   "esd": {
+    "valid": true,
+    "leaning": "up",
+    "angleDeg": 3.07,
+    "targetName": "tp1",
+    "targetPrice": 17.9457,
+    "etaBars": 9.1
+   },
+   "engine": {
+    "signal": "HOLD",
+    "score": 1.3,
+    "confidence": 53
+   },
+   "lead": true,
+   "grounded": true,
+   "reasons": [
+    "SMA20 heading up (below the pack) → tp1 $17.9457 in ~9 bars at 3.07° (projection)",
+    "vetted all-boxes (A/B + momentum + filing)"
+   ]
+  },
+  {
+   "sym": "CDE",
+   "entity": "COEUR MINING, INC.",
+   "grade": "A",
+   "allBoxes": true,
+   "price": 16.67,
+   "lastBarMs": 1782932400000,
+   "fresh": true,
+   "heading": {
+    "separated": true,
+    "side": "below",
+    "leaning": "up",
+    "gapATR": -1.105
+   },
+   "esd": {
+    "valid": true,
+    "leaning": "up",
+    "angleDeg": 2.98,
+    "targetName": "resistance",
+    "targetPrice": 17.12,
+    "etaBars": 69.25
+   },
+   "engine": {
+    "signal": "HOLD",
+    "score": 2.1,
+    "confidence": 56
+   },
+   "lead": true,
+   "grounded": true,
+   "reasons": [
+    "SMA20 heading up (below the pack) → resistance $17.12 in ~69 bars at 2.98° (projection)",
+    "vetted all-boxes (A/B + momentum + filing)"
+   ]
+  },
+  {
+   "sym": "LHX",
+   "entity": "L3HARRIS TECHNOLOGIES, INC.",
+   "grade": "B",
+   "allBoxes": true,
+   "price": 293.1,
+   "lastBarMs": 1782932400000,
+   "fresh": true,
+   "heading": {
+    "separated": true,
+    "side": "below",
+    "leaning": "up",
+    "gapATR": -1.296
+   },
+   "esd": {
+    "valid": true,
+    "leaning": "up",
+    "angleDeg": 2.85,
+    "targetName": "resistance",
+    "targetPrice": 296.35,
+    "etaBars": 59.51
+   },
+   "engine": {
+    "signal": "BUY",
+    "score": 5.9,
+    "confidence": 69
+   },
+   "lead": true,
+   "grounded": true,
+   "reasons": [
+    "SMA20 heading up (below the pack) → resistance $296.35 in ~60 bars at 2.85° (projection)",
+    "vetted all-boxes (A/B + momentum + filing)"
+   ]
+  },
+  {
+   "sym": "USB",
+   "entity": "US BANCORP \\DE\\",
+   "grade": "B",
+   "allBoxes": true,
+   "price": 61.855,
+   "lastBarMs": 1782932400000,
+   "fresh": true,
+   "heading": {
+    "separated": true,
+    "side": "below",
+    "leaning": "up",
+    "gapATR": -1.185
+   },
+   "esd": {
+    "valid": true,
+    "leaning": "up",
+    "angleDeg": 2.48,
+    "targetName": "resistance",
+    "targetPrice": 62.195,
+    "etaBars": 59.71
+   },
+   "engine": {
+    "signal": "HOLD",
+    "score": 1.6,
+    "confidence": 55
+   },
+   "lead": true,
+   "grounded": true,
+   "reasons": [
+    "SMA20 heading up (below the pack) → resistance $62.195 in ~60 bars at 2.48° (projection)",
+    "vetted all-boxes (A/B + momentum + filing)"
+   ]
+  },
+  {
+   "sym": "TMO",
+   "entity": "THERMO FISHER SCIENTIFIC INC.",
+   "grade": "B",
+   "allBoxes": true,
+   "price": 513.39,
+   "lastBarMs": 1782932400000,
+   "fresh": true,
+   "heading": {
+    "separated": true,
+    "side": "below",
+    "leaning": "up",
+    "gapATR": -1.104
+   },
+   "esd": {
+    "valid": true,
+    "leaning": "up",
+    "angleDeg": 2.46,
+    "targetName": "resistance",
+    "targetPrice": 521.17,
+    "etaBars": 64.09
+   },
+   "engine": {
+    "signal": "HOLD",
+    "score": 3.6,
+    "confidence": 61
+   },
+   "lead": true,
+   "grounded": true,
+   "reasons": [
+    "SMA20 heading up (below the pack) → resistance $521.17 in ~64 bars at 2.46° (projection)",
+    "vetted all-boxes (A/B + momentum + filing)"
+   ]
+  },
+  {
+   "sym": "CIEN",
+   "entity": "Ciena Corp",
+   "grade": "B",
+   "allBoxes": true,
+   "price": 462.64,
+   "lastBarMs": 1782932400000,
+   "fresh": true,
+   "heading": {
+    "separated": true,
+    "side": "above",
+    "leaning": "down",
+    "gapATR": 0.592
+   },
+   "esd": {
+    "valid": true,
+    "leaning": "down",
+    "angleDeg": -2.05,
+    "targetName": "support",
+    "targetPrice": 435.12,
+    "etaBars": 120.88
+   },
+   "engine": {
+    "signal": "HOLD",
+    "score": 0.8,
+    "confidence": 51
+   },
+   "lead": true,
+   "grounded": true,
+   "reasons": [
+    "SMA20 heading down (above the pack) → support $435.12 in ~121 bars at -2.05° (projection)",
+    "vetted all-boxes (A/B + momentum + filing)"
+   ]
+  },
+  {
+   "sym": "NEE",
+   "entity": "NEXTERA ENERGY, INC.",
+   "grade": "B",
+   "allBoxes": true,
+   "price": 86.69,
+   "lastBarMs": 1782932400000,
+   "fresh": true,
+   "heading": {
+    "separated": true,
+    "side": "above",
+    "leaning": "down",
+    "gapATR": 1.071
+   },
+   "esd": {
+    "valid": true,
+    "leaning": "down",
+    "angleDeg": -1.73,
+    "targetName": "sl",
+    "targetPrice": 87.5275,
+    "etaBars": 8.12
+   },
+   "engine": {
+    "signal": "HOLD",
+    "score": -0.3,
+    "confidence": 50
+   },
+   "lead": true,
+   "grounded": true,
+   "reasons": [
+    "SMA20 heading down (above the pack) → sl $87.5275 in ~8 bars at -1.73° (projection)",
+    "vetted all-boxes (A/B + momentum + filing)"
+   ]
+  },
+  {
+   "sym": "WFC",
+   "entity": "WELLS        FARGO & COMPANY/MN",
+   "grade": "B",
+   "allBoxes": true,
+   "price": 85.535,
+   "lastBarMs": 1782932400000,
+   "fresh": true,
+   "heading": {
+    "separated": true,
+    "side": "below",
+    "leaning": "down",
+    "gapATR": -1.326
+   },
+   "esd": {
+    "valid": true,
+    "leaning": "down",
+    "angleDeg": -1.65,
+    "targetName": "support",
+    "targetPrice": 82.54,
+    "etaBars": 92.75
+   },
+   "engine": {
+    "signal": "HOLD",
+    "score": 1.3,
+    "confidence": 53
+   },
+   "lead": true,
+   "grounded": true,
+   "reasons": [
+    "SMA20 heading down (below the pack) → support $82.54 in ~93 bars at -1.65° (projection)",
+    "vetted all-boxes (A/B + momentum + filing)"
+   ]
+  },
+  {
+   "sym": "TT",
+   "entity": "TRANE TECHNOLOGIES PLC",
+   "grade": "B",
+   "allBoxes": true,
+   "price": 487.97,
+   "lastBarMs": 1782932400000,
+   "fresh": true,
+   "heading": {
+    "separated": true,
+    "side": "below",
+    "leaning": "down",
+    "gapATR": -1.071
+   },
+   "esd": {
+    "valid": true,
+    "leaning": "down",
+    "angleDeg": -1.64,
+    "targetName": "support",
+    "targetPrice": 463.84,
+    "etaBars": 180.65
+   },
+   "engine": {
+    "signal": "HOLD",
+    "score": 3.1,
+    "confidence": 59
+   },
+   "lead": true,
+   "grounded": true,
+   "reasons": [
+    "SMA20 heading down (below the pack) → support $463.84 in ~181 bars at -1.64° (projection)",
+    "vetted all-boxes (A/B + momentum + filing)"
+   ]
+  },
+  {
+   "sym": "TFC",
+   "entity": "TRUIST FINANCIAL CORP",
+   "grade": "B",
+   "allBoxes": true,
+   "price": 50.705,
+   "lastBarMs": 1782932400000,
+   "fresh": true,
+   "heading": {
+    "separated": true,
+    "side": "below",
+    "leaning": "down",
+    "gapATR": -0.682
+   },
+   "esd": {
+    "valid": true,
+    "leaning": "down",
+    "angleDeg": -1.58,
+    "targetName": "support",
+    "targetPrice": 49.655,
+    "etaBars": 97.02
+   },
+   "engine": {
+    "signal": "HOLD",
+    "score": 1.6,
+    "confidence": 55
+   },
+   "lead": true,
+   "grounded": true,
+   "reasons": [
+    "SMA20 heading down (below the pack) → support $49.655 in ~97 bars at -1.58° (projection)",
+    "vetted all-boxes (A/B + momentum + filing)"
+   ]
+  },
+  {
+   "sym": "O",
+   "entity": "REALTY INCOME CORP",
+   "grade": "B",
+   "allBoxes": true,
+   "price": 62.34,
+   "lastBarMs": 1782932400000,
+   "fresh": true,
+   "heading": {
+    "separated": true,
+    "side": "above",
+    "leaning": "up",
+    "gapATR": 0.636
+   },
+   "esd": {
+    "valid": true,
+    "leaning": "up",
+    "angleDeg": 1.44,
+    "targetName": "resistance",
+    "targetPrice": 63.26,
+    "etaBars": 92.47
+   },
+   "engine": {
+    "signal": "HOLD",
+    "score": -2.2,
+    "confidence": 55
+   },
+   "lead": true,
+   "grounded": true,
+   "reasons": [
+    "SMA20 heading up (above the pack) → resistance $63.26 in ~92 bars at 1.44° (projection)",
+    "vetted all-boxes (A/B + momentum + filing)"
+   ]
+  },
+  {
+   "sym": "VRT",
+   "entity": "Vertiv Holdings Co",
+   "grade": "B",
+   "allBoxes": true,
+   "price": 312.27,
+   "lastBarMs": 1782932400000,
+   "fresh": true,
+   "heading": {
+    "separated": true,
+    "side": "below",
+    "leaning": "up",
+    "gapATR": -0.417
+   },
+   "esd": {
+    "valid": true,
+    "leaning": "up",
+    "angleDeg": 1.39,
+    "targetName": "resistance",
+    "targetPrice": 337.23,
+    "etaBars": 139.17
+   },
+   "engine": {
+    "signal": "HOLD",
+    "score": 0.9,
+    "confidence": 52
+   },
+   "lead": true,
+   "grounded": true,
+   "reasons": [
+    "SMA20 heading up (below the pack) → resistance $337.23 in ~139 bars at 1.39° (projection)",
+    "vetted all-boxes (A/B + momentum + filing)"
+   ]
+  },
+  {
+   "sym": "REGN",
+   "entity": "REGENERON PHARMACEUTICALS, INC.",
+   "grade": "B",
+   "allBoxes": true,
+   "price": 625.73,
+   "lastBarMs": 1782932400000,
+   "fresh": true,
+   "heading": {
+    "separated": true,
+    "side": "above",
+    "leaning": "down",
+    "gapATR": 0.489
+   },
+   "esd": {
+    "valid": true,
+    "leaning": "down",
+    "angleDeg": -1.33,
+    "targetName": "support",
+    "targetPrice": 622.29,
+    "etaBars": 68.13
+   },
+   "engine": {
+    "signal": "HOLD",
+    "score": 1.1,
+    "confidence": 53
+   },
+   "lead": true,
+   "grounded": true,
+   "reasons": [
+    "SMA20 heading down (above the pack) → support $622.29 in ~68 bars at -1.33° (projection)",
+    "vetted all-boxes (A/B + momentum + filing)"
+   ]
+  },
+  {
+   "sym": "FN",
+   "entity": "FABRINET",
+   "grade": "B",
+   "allBoxes": true,
+   "price": 548.94,
+   "lastBarMs": 1782932400000,
+   "fresh": true,
+   "heading": {
+    "separated": true,
+    "side": "below",
+    "leaning": "down",
+    "gapATR": -0.611
+   },
+   "esd": {
+    "valid": true,
+    "leaning": "down",
+    "angleDeg": -1.28,
+    "targetName": "support",
+    "targetPrice": 503.68,
+    "etaBars": 177.64
+   },
+   "engine": {
+    "signal": "HOLD",
+    "score": -2.9,
+    "confidence": 59
+   },
+   "lead": true,
+   "grounded": true,
+   "reasons": [
+    "SMA20 heading down (below the pack) → support $503.68 in ~178 bars at -1.28° (projection)",
+    "vetted all-boxes (A/B + momentum + filing)"
+   ]
+  },
+  {
+   "sym": "GOOG",
+   "entity": "ALPHABET INC.",
+   "grade": "B",
+   "allBoxes": true,
+   "price": 359.22,
+   "lastBarMs": 1780930800000,
+   "fresh": false,
+   "heading": {
+    "separated": true,
+    "side": "below",
+    "leaning": "down",
+    "gapATR": -0.337
+   },
+   "esd": {
+    "valid": true,
+    "leaning": "down",
+    "angleDeg": -0.88,
+    "targetName": "support",
+    "targetPrice": 354.38,
+    "etaBars": 156.69
+   },
+   "engine": {
+    "signal": "HOLD",
+    "score": 0.2,
+    "confidence": 50
+   },
+   "lead": true,
+   "grounded": true,
+   "reasons": [
+    "SMA20 heading down (below the pack) → support $354.38 in ~157 bars at -0.88° (projection)",
+    "vetted all-boxes (A/B + momentum + filing)"
+   ]
+  },
+  {
+   "sym": "CRDO",
+   "entity": "CREDO TECHNOLOGY GROUP HOLDING LTD",
+   "grade": "B",
+   "allBoxes": true,
+   "price": 264.6,
+   "lastBarMs": 1782932400000,
+   "fresh": true,
+   "heading": {
+    "separated": true,
+    "side": "below",
+    "leaning": "up",
+    "gapATR": -0.978
+   },
+   "esd": {
+    "valid": true,
+    "leaning": "up",
+    "angleDeg": 0.85,
+    "targetName": "resistance",
+    "targetPrice": 275.43,
+    "etaBars": 186.36
+   },
+   "engine": {
+    "signal": "HOLD",
+    "score": -2.7,
+    "confidence": 56
+   },
+   "lead": true,
+   "grounded": true,
+   "reasons": [
+    "SMA20 heading up (below the pack) → resistance $275.43 in ~186 bars at 0.85° (projection)",
+    "vetted all-boxes (A/B + momentum + filing)"
+   ]
+  },
+  {
+   "sym": "AXP",
+   "entity": "AMERICAN EXPRESS CO",
+   "grade": "B",
+   "allBoxes": true,
+   "price": 348.88,
+   "lastBarMs": 1782932400000,
+   "fresh": true,
+   "heading": {
+    "separated": true,
+    "side": "below",
+    "leaning": "up",
+    "gapATR": -1.713
+   },
+   "esd": {
+    "valid": true,
+    "leaning": "up",
+    "angleDeg": 0.45,
+    "targetName": "tp1",
+    "targetPrice": 344.1106,
+    "etaBars": 94.58
+   },
+   "engine": {
+    "signal": "HOLD",
+    "score": -0.2,
+    "confidence": 50
+   },
+   "lead": true,
+   "grounded": true,
+   "reasons": [
+    "SMA20 heading up (below the pack) → tp1 $344.1106 in ~95 bars at 0.45° (projection)",
+    "vetted all-boxes (A/B + momentum + filing)"
+   ]
+  },
+  {
+   "sym": "TER",
+   "entity": "TERADYNE, INC.",
+   "grade": "B",
+   "allBoxes": true,
+   "price": 432.92,
+   "lastBarMs": 1782932400000,
+   "fresh": true,
+   "heading": {
+    "separated": true,
+    "side": "above",
+    "leaning": "up",
+    "gapATR": 1.218
+   },
+   "esd": {
+    "valid": true,
+    "leaning": "up",
+    "angleDeg": 0.29,
+    "targetName": "resistance",
+    "targetPrice": 487.91,
+    "etaBars": 575.91
+   },
+   "engine": {
+    "signal": "HOLD",
+    "score": 2.8,
+    "confidence": 57
+   },
+   "lead": true,
+   "grounded": true,
+   "reasons": [
+    "SMA20 heading up (above the pack) → resistance $487.91 in ~576 bars at 0.29° (projection)",
+    "vetted all-boxes (A/B + momentum + filing)"
+   ]
+  },
+  {
+   "sym": "FBIN",
+   "entity": "Fortune Brands Innovations, Inc.",
+   "grade": "C",
+   "allBoxes": false,
+   "price": 54.74,
+   "lastBarMs": 1782932400000,
+   "fresh": true,
+   "heading": {
+    "separated": true,
+    "side": "below",
+    "leaning": "up",
+    "gapATR": -2.817
+   },
+   "esd": {
+    "valid": true,
+    "leaning": "up",
+    "angleDeg": 28,
+    "targetName": "resistance",
+    "targetPrice": 55.149,
+    "etaBars": 6.23
+   },
+   "engine": {
+    "signal": "BUY",
+    "score": 9.4,
+    "confidence": 80
+   },
+   "lead": true,
+   "grounded": false,
+   "reasons": [
+    "SMA20 heading up (below the pack) → resistance $55.149 in ~6 bars at 28° (projection)"
+   ]
+  },
+  {
+   "sym": "DDOG",
+   "entity": "Datadog, Inc.",
+   "grade": "C",
+   "allBoxes": false,
+   "price": 263.965,
+   "lastBarMs": 1782932400000,
+   "fresh": true,
+   "heading": {
+    "separated": true,
+    "side": "below",
+    "leaning": "up",
+    "gapATR": -2.437
+   },
+   "esd": {
+    "valid": true,
+    "leaning": "up",
+    "angleDeg": 26.5,
+    "targetName": "resistance",
+    "targetPrice": 270.9799,
+    "etaBars": 8.13
+   },
+   "engine": {
+    "signal": "BUY",
+    "score": 13.2,
+    "confidence": 93
+   },
+   "lead": true,
+   "grounded": false,
+   "reasons": [
+    "SMA20 heading up (below the pack) → resistance $270.9799 in ~8 bars at 26.5° (projection)"
+   ]
+  },
+  {
+   "sym": "AXON",
+   "entity": "Axon Enterprise, Inc.",
+   "grade": "C",
+   "allBoxes": false,
+   "price": 589.0093,
+   "lastBarMs": 1782932400000,
+   "fresh": true,
+   "heading": {
+    "separated": true,
+    "side": "below",
+    "leaning": "up",
+    "gapATR": -3.51
+   },
+   "esd": {
+    "valid": true,
+    "leaning": "up",
+    "angleDeg": 25.46,
+    "targetName": "resistance",
+    "targetPrice": 610.87,
+    "etaBars": 10.66
+   },
+   "engine": {
+    "signal": "BUY",
+    "score": 9.4,
+    "confidence": 80
+   },
+   "lead": true,
+   "grounded": false,
+   "reasons": [
+    "SMA20 heading up (below the pack) → resistance $610.87 in ~11 bars at 25.46° (projection)"
+   ]
+  },
+  {
+   "sym": "MDB",
+   "entity": "MONGODB, INC.",
+   "grade": "C",
+   "allBoxes": false,
+   "price": 360.35,
+   "lastBarMs": 1782932400000,
+   "fresh": true,
+   "heading": {
+    "separated": true,
+    "side": "below",
+    "leaning": "up",
+    "gapATR": -2.936
+   },
+   "esd": {
+    "valid": true,
+    "leaning": "up",
+    "angleDeg": 25.05,
+    "targetName": "resistance",
+    "targetPrice": 361.76,
+    "etaBars": 9.44
+   },
+   "engine": {
+    "signal": "BUY",
+    "score": 9.4,
+    "confidence": 80
+   },
+   "lead": true,
+   "grounded": false,
+   "reasons": [
+    "SMA20 heading up (below the pack) → resistance $361.76 in ~9 bars at 25.05° (projection)"
+   ]
+  },
+  {
+   "sym": "OKTA",
+   "entity": "Okta, Inc.",
+   "grade": "C",
+   "allBoxes": false,
+   "price": 141.18,
+   "lastBarMs": 1782932400000,
+   "fresh": true,
+   "heading": {
+    "separated": true,
+    "side": "below",
+    "leaning": "up",
+    "gapATR": -3.089
+   },
+   "esd": {
+    "valid": true,
+    "leaning": "up",
+    "angleDeg": 24.92,
+    "targetName": "resistance",
+    "targetPrice": 142.94,
+    "etaBars": 9.9
+   },
+   "engine": {
+    "signal": "BUY",
+    "score": 9.4,
+    "confidence": 80
+   },
+   "lead": true,
+   "grounded": false,
+   "reasons": [
+    "SMA20 heading up (below the pack) → resistance $142.94 in ~10 bars at 24.92° (projection)"
+   ]
+  },
+  {
+   "sym": "VSAT",
+   "entity": "VIASAT, INC.",
+   "grade": "C",
+   "allBoxes": false,
+   "price": 83.125,
+   "lastBarMs": 1782932400000,
+   "fresh": true,
+   "heading": {
+    "separated": true,
+    "side": "below",
+    "leaning": "up",
+    "gapATR": -2.199
+   },
+   "esd": {
+    "valid": true,
+    "leaning": "up",
+    "angleDeg": 24.39,
+    "targetName": "tp1",
+    "targetPrice": 89.0772,
+    "etaBars": 6.29
+   },
+   "engine": {
+    "signal": "BUY",
+    "score": 9.1,
+    "confidence": 78
+   },
+   "lead": true,
+   "grounded": false,
+   "reasons": [
+    "SMA20 heading up (below the pack) → tp1 $89.0772 in ~6 bars at 24.39° (projection)"
+   ]
+  },
+  {
+   "sym": "CRWD",
+   "entity": "CROWDSTRIKE HOLDINGS, INC.",
+   "grade": "C",
+   "allBoxes": false,
+   "price": 768.63,
+   "lastBarMs": 1782932400000,
+   "fresh": true,
+   "heading": {
+    "separated": true,
+    "side": "below",
+    "leaning": "up",
+    "gapATR": -1.882
+   },
+   "esd": {
+    "valid": true,
+    "leaning": "up",
+    "angleDeg": 23.81,
+    "targetName": "resistance",
+    "targetPrice": 786,
+    "etaBars": 7.67
+   },
+   "engine": {
+    "signal": "BUY",
+    "score": 8.4,
+    "confidence": 77
+   },
+   "lead": true,
+   "grounded": false,
+   "reasons": [
+    "SMA20 heading up (below the pack) → resistance $786 in ~8 bars at 23.81° (projection)"
+   ]
+  },
+  {
+   "sym": "VEEV",
+   "entity": "Veeva Systems Inc.",
+   "grade": "B",
+   "allBoxes": false,
+   "price": 185.33,
+   "lastBarMs": 1782932400000,
+   "fresh": true,
+   "heading": {
+    "separated": true,
+    "side": "below",
+    "leaning": "up",
+    "gapATR": -2.753
+   },
+   "esd": {
+    "valid": true,
+    "leaning": "up",
+    "angleDeg": 22.8,
+    "targetName": "tp1",
+    "targetPrice": 180.716,
+    "etaBars": 2.57
+   },
+   "engine": {
+    "signal": "HOLD",
+    "score": 3.8,
+    "confidence": 61
+   },
+   "lead": true,
+   "grounded": false,
+   "reasons": [
+    "SMA20 heading up (below the pack) → tp1 $180.716 in ~3 bars at 22.8° (projection)"
+   ]
+  },
+  {
+   "sym": "SMCI",
+   "entity": "SUPER MICRO COMPUTER, INC.",
+   "grade": "A",
+   "allBoxes": false,
+   "price": 50.17,
+   "lastBarMs": 1780426800000,
+   "fresh": false,
+   "heading": {
+    "separated": true,
+    "side": "below",
+    "leaning": "up",
+    "gapATR": -2.04
+   },
+   "esd": {
+    "valid": true,
+    "leaning": "up",
+    "angleDeg": 22.54,
+    "targetName": "resistance",
+    "targetPrice": 50.83,
+    "etaBars": 7.86
+   },
+   "engine": {
+    "signal": "BUY",
+    "score": 9.4,
+    "confidence": 80
+   },
+   "lead": true,
+   "grounded": false,
+   "reasons": [
+    "SMA20 heading up (below the pack) → resistance $50.83 in ~8 bars at 22.54° (projection)"
+   ]
+  },
+  {
+   "sym": "ON",
+   "entity": "ON Semiconductor Corporation",
+   "grade": "C",
+   "allBoxes": false,
+   "price": 96.02,
+   "lastBarMs": 1782932400000,
+   "fresh": true,
+   "heading": {
+    "separated": true,
+    "side": "below",
+    "leaning": "down",
+    "gapATR": -1.688
+   },
+   "esd": {
+    "valid": true,
+    "leaning": "down",
+    "angleDeg": -22.42,
+    "targetName": "support",
+    "targetPrice": 86.47,
+    "etaBars": 9.1
+   },
+   "engine": {
+    "signal": "HOLD",
+    "score": -1.8,
+    "confidence": 54
+   },
+   "lead": true,
+   "grounded": false,
+   "reasons": [
+    "SMA20 heading down (below the pack) → support $86.47 in ~9 bars at -22.42° (projection)"
+   ]
+  },
+  {
+   "sym": "CRH",
+   "entity": "CRH public limited company",
+   "grade": "C",
+   "allBoxes": false,
+   "price": 105.665,
+   "lastBarMs": 1782932400000,
+   "fresh": true,
+   "heading": {
+    "separated": true,
+    "side": "above",
+    "leaning": "down",
+    "gapATR": 1.744
+   },
+   "esd": {
+    "valid": true,
+    "leaning": "down",
+    "angleDeg": -22.15,
+    "targetName": "sl",
+    "targetPrice": 107.0145,
+    "etaBars": 1.92
+   },
+   "engine": {
+    "signal": "SELL",
+    "score": -10.9,
+    "confidence": 85
+   },
+   "lead": true,
+   "grounded": false,
+   "reasons": [
+    "SMA20 heading down (above the pack) → sl $107.0145 in ~2 bars at -22.15° (projection)"
+   ]
+  },
+  {
+   "sym": "OUST",
+   "entity": "Ouster, Inc.",
+   "grade": "C",
+   "allBoxes": false,
+   "price": 59.73,
+   "lastBarMs": 1782932400000,
+   "fresh": true,
+   "heading": {
+    "separated": true,
+    "side": "below",
+    "leaning": "up",
+    "gapATR": -1.86
+   },
+   "esd": {
+    "valid": true,
+    "leaning": "up",
+    "angleDeg": 22.05,
+    "targetName": "resistance",
+    "targetPrice": 63.79,
+    "etaBars": 7.6
+   },
+   "engine": {
+    "signal": "BUY",
+    "score": 10.4,
+    "confidence": 83
+   },
+   "lead": true,
+   "grounded": false,
+   "reasons": [
+    "SMA20 heading up (below the pack) → resistance $63.79 in ~8 bars at 22.05° (projection)"
+   ]
+  },
+  {
+   "sym": "NET",
+   "entity": "CLOUDFLARE, INC.",
+   "grade": "C",
+   "allBoxes": false,
+   "price": 249.65,
+   "lastBarMs": 1782932400000,
+   "fresh": true,
+   "heading": {
+    "separated": true,
+    "side": "below",
+    "leaning": "up",
+    "gapATR": -1.256
+   },
+   "esd": {
+    "valid": true,
+    "leaning": "up",
+    "angleDeg": 21.69,
+    "targetName": "resistance",
+    "targetPrice": 252.349,
+    "etaBars": 5.96
+   },
+   "engine": {
+    "signal": "HOLD",
+    "score": 1.3,
+    "confidence": 53
+   },
+   "lead": true,
+   "grounded": false,
+   "reasons": [
+    "SMA20 heading up (below the pack) → resistance $252.349 in ~6 bars at 21.69° (projection)"
+   ]
+  },
+  {
+   "sym": "NOW",
+   "entity": "ServiceNow, Inc.",
+   "grade": "C",
+   "allBoxes": false,
+   "price": 127.64,
+   "lastBarMs": 1780426800000,
+   "fresh": false,
+   "heading": {
+    "separated": true,
+    "side": "below",
+    "leaning": "up",
+    "gapATR": -0.569
+   },
+   "esd": {
+    "valid": true,
+    "leaning": "up",
+    "angleDeg": 21.54,
+    "targetName": "tp1",
+    "targetPrice": 134.016,
+    "etaBars": 5.93
+   },
+   "engine": {
+    "signal": "BUY",
+    "score": 13.2,
+    "confidence": 93
+   },
+   "lead": true,
+   "grounded": false,
+   "reasons": [
+    "SMA20 heading up (below the pack) → tp1 $134.016 in ~6 bars at 21.54° (projection)"
+   ]
+  },
+  {
+   "sym": "ELF",
+   "entity": "e.l.f. Beauty, Inc.",
+   "grade": "C",
+   "allBoxes": false,
+   "price": 78.9,
+   "lastBarMs": 1782932400000,
+   "fresh": true,
+   "heading": {
+    "separated": true,
+    "side": "below",
+    "leaning": "up",
+    "gapATR": -3.564
+   },
+   "esd": {
+    "valid": true,
+    "leaning": "up",
+    "angleDeg": 21.32,
+    "targetName": "resistance",
+    "targetPrice": 80.41,
+    "etaBars": 13.19
+   },
+   "engine": {
+    "signal": "BUY",
+    "score": 7.4,
+    "confidence": 73
+   },
+   "lead": true,
+   "grounded": false,
+   "reasons": [
+    "SMA20 heading up (below the pack) → resistance $80.41 in ~13 bars at 21.32° (projection)"
+   ]
+  },
+  {
+   "sym": "VZ",
+   "entity": "VERIZON COMMUNICATIONS INC",
+   "grade": "B",
+   "allBoxes": false,
+   "price": 41.695,
+   "lastBarMs": 1782932400000,
+   "fresh": true,
+   "heading": {
+    "separated": true,
+    "side": "above",
+    "leaning": "down",
+    "gapATR": 2.004
+   },
+   "esd": {
+    "valid": true,
+    "leaning": "down",
+    "angleDeg": -21.29,
+    "targetName": "sl",
+    "targetPrice": 42.4525,
+    "etaBars": 3.22
+   },
+   "engine": {
+    "signal": "SELL",
+    "score": -7.1,
+    "confidence": 72
+   },
+   "lead": true,
+   "grounded": false,
+   "reasons": [
+    "SMA20 heading down (above the pack) → sl $42.4525 in ~3 bars at -21.29° (projection)"
+   ]
+  },
+  {
+   "sym": "ULTA",
+   "entity": "ULTA BEAUTY, INC.",
+   "grade": "B",
+   "allBoxes": false,
+   "price": 455.8561,
+   "lastBarMs": 1782932400000,
+   "fresh": true,
+   "heading": {
+    "separated": true,
+    "side": "above",
+    "leaning": "down",
+    "gapATR": 1.244
+   },
+   "esd": {
+    "valid": true,
+    "leaning": "down",
+    "angleDeg": -21.07,
+    "targetName": "support",
+    "targetPrice": 443.6,
+    "etaBars": 9.53
+   },
+   "engine": {
+    "signal": "SELL",
+    "score": -10.4,
+    "confidence": 83
+   },
+   "lead": true,
+   "grounded": false,
+   "reasons": [
+    "SMA20 heading down (above the pack) → support $443.6 in ~10 bars at -21.07° (projection)"
+   ]
+  },
+  {
+   "sym": "IBM",
+   "entity": "INTERNATIONAL BUSINESS MACHINES CORP",
+   "grade": "C",
+   "allBoxes": false,
+   "price": 287.735,
+   "lastBarMs": 1782932400000,
+   "fresh": true,
+   "heading": {
+    "separated": true,
+    "side": "below",
+    "leaning": "up",
+    "gapATR": -2.439
+   },
+   "esd": {
+    "valid": true,
+    "leaning": "up",
+    "angleDeg": 20.76,
+    "targetName": "tp1",
+    "targetPrice": 293.6195,
+    "etaBars": 11.43
+   },
+   "engine": {
+    "signal": "BUY",
+    "score": 7.6,
+    "confidence": 74
+   },
+   "lead": true,
+   "grounded": false,
+   "reasons": [
+    "SMA20 heading up (below the pack) → tp1 $293.6195 in ~11 bars at 20.76° (projection)"
+   ]
+  },
+  {
+   "sym": "T",
+   "entity": "AT&T INC.",
+   "grade": "C",
+   "allBoxes": false,
+   "price": 20.433,
+   "lastBarMs": 1782932400000,
+   "fresh": true,
+   "heading": {
+    "separated": true,
+    "side": "above",
+    "leaning": "down",
+    "gapATR": 2.258
+   },
+   "esd": {
+    "valid": true,
+    "leaning": "down",
+    "angleDeg": -20.61,
+    "targetName": "sl",
+    "targetPrice": 20.801,
+    "etaBars": 3.84
+   },
+   "engine": {
+    "signal": "SELL",
+    "score": -11.9,
+    "confidence": 88
+   },
+   "lead": true,
+   "grounded": false,
+   "reasons": [
+    "SMA20 heading down (above the pack) → sl $20.801 in ~4 bars at -20.61° (projection)"
+   ]
+  },
+  {
+   "sym": "NTNX",
+   "entity": "NUTANIX, INC.",
+   "grade": "C",
+   "allBoxes": false,
+   "price": 51.475,
+   "lastBarMs": 1782932400000,
+   "fresh": true,
+   "heading": {
+    "separated": true,
+    "side": "below",
+    "leaning": "up",
+    "gapATR": -0.969
+   },
+   "esd": {
+    "valid": true,
+    "leaning": "up",
+    "angleDeg": 20.44,
+    "targetName": "resistance",
+    "targetPrice": 52.34,
+    "etaBars": 5.88
+   },
+   "engine": {
+    "signal": "BUY",
+    "score": 7.4,
+    "confidence": 73
+   },
+   "lead": true,
+   "grounded": false,
+   "reasons": [
+    "SMA20 heading up (below the pack) → resistance $52.34 in ~6 bars at 20.44° (projection)"
+   ]
+  },
+  {
+   "sym": "HOOD",
+   "entity": "Robinhood Markets, Inc.",
+   "grade": "C",
+   "allBoxes": false,
+   "price": 94.35,
+   "lastBarMs": 1780081200000,
+   "fresh": false,
+   "heading": {
+    "separated": true,
+    "side": "below",
+    "leaning": "up",
+    "gapATR": -4.351
+   },
+   "esd": {
+    "valid": true,
+    "leaning": "up",
+    "angleDeg": 20.22,
+    "targetName": "resistance",
+    "targetPrice": 94.4,
+    "etaBars": 16.67
+   },
+   "engine": {
+    "signal": "BUY",
+    "score": 11.9,
+    "confidence": 88
+   },
+   "lead": true,
+   "grounded": false,
+   "reasons": [
+    "SMA20 heading up (below the pack) → resistance $94.4 in ~17 bars at 20.22° (projection)"
+   ]
+  },
+  {
+   "sym": "RBRK",
+   "entity": "RUBRIK, INC.",
+   "grade": "C",
+   "allBoxes": false,
+   "price": 82.36,
+   "lastBarMs": 1782932400000,
+   "fresh": true,
+   "heading": {
+    "separated": true,
+    "side": "below",
+    "leaning": "up",
+    "gapATR": -2.325
+   },
+   "esd": {
+    "valid": true,
+    "leaning": "up",
+    "angleDeg": 19.89,
+    "targetName": "resistance",
+    "targetPrice": 83.99,
+    "etaBars": 9.65
+   },
+   "engine": {
+    "signal": "BUY",
+    "score": 6.1,
+    "confidence": 69
+   },
+   "lead": true,
+   "grounded": false,
+   "reasons": [
+    "SMA20 heading up (below the pack) → resistance $83.99 in ~10 bars at 19.89° (projection)"
+   ]
+  },
+  {
+   "sym": "TGT",
+   "entity": "TARGET CORPORATION",
+   "grade": "C",
+   "allBoxes": false,
+   "price": 130.27,
+   "lastBarMs": 1782932400000,
+   "fresh": true,
+   "heading": {
+    "separated": true,
+    "side": "above",
+    "leaning": "down",
+    "gapATR": 1.975
+   },
+   "esd": {
+    "valid": true,
+    "leaning": "down",
+    "angleDeg": -19.85,
+    "targetName": "sl",
+    "targetPrice": 132.3987,
+    "etaBars": 1.1
+   },
+   "engine": {
+    "signal": "HOLD",
+    "score": -4.6,
+    "confidence": 64
+   },
+   "lead": true,
+   "grounded": false,
+   "reasons": [
+    "SMA20 heading down (above the pack) → sl $132.3987 in ~1 bars at -19.85° (projection)"
+   ]
+  },
+  {
+   "sym": "MRVL",
+   "entity": "MARVELL TECHNOLOGY, INC",
+   "grade": "C",
+   "allBoxes": false,
+   "price": 305.89,
+   "lastBarMs": 1780585200000,
+   "fresh": false,
+   "heading": {
+    "separated": true,
+    "side": "below",
+    "leaning": "up",
+    "gapATR": -2.205
+   },
+   "esd": {
+    "valid": true,
+    "leaning": "up",
+    "angleDeg": 19.73,
+    "targetName": "resistance",
+    "targetPrice": 316.79,
+    "etaBars": 8.98
+   },
+   "engine": {
+    "signal": "BUY",
+    "score": 10.4,
+    "confidence": 83
+   },
+   "lead": true,
+   "grounded": false,
+   "reasons": [
+    "SMA20 heading up (below the pack) → resistance $316.79 in ~9 bars at 19.73° (projection)"
+   ]
+  }
+ ],
+ "caveats": [
+  "Feed is 15-MINUTE DELAYED (Polygon Stocks Starter) — every read is ~15 min behind. Awareness, NOT real-time execution.",
+  "The ESD is a labeled PROJECTION that overshoots by construction; the SMA20 heading and the engine read are both UNPROVEN.",
+  "A lead = the SMA20 has separated from the fast-MA pack AND its ray reaches a level. Candidates for the human eye, never proven buys.",
+  "Display/awareness only — touches no gate or verdict."
+ ]
+}
