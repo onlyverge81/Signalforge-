@@ -3,7 +3,25 @@
 
 import { test } from "node:test";
 import assert from "node:assert/strict";
-import { withinSession, classifyLead, rankLeads, buildReport, PATTERN_EDGE_NOTE, OPEN_MIN, CLOSE_MIN } from "./contender-monitor.mjs";
+import { withinSession, classifyLead, rankLeads, buildReport, selectMonitorNames, PATTERN_EDGE_NOTE, OPEN_MIN, CLOSE_MIN } from "./contender-monitor.mjs";
+
+// ── selectMonitorNames — the swept universe: A/B shortlist + grade-C watch tier ─
+test("selectMonitorNames: includes A/B contenders + C watchlist, excludes D/F lowtier", () => {
+  const db = {
+    contenders: [{ sym: "AAA", grade: "A" }, { sym: "BBB", grade: "B" }],
+    watchlist:  [{ sym: "CCC", grade: "C" }],
+    lowtier:    [{ sym: "DDD", grade: "D" }, { sym: "FFF", grade: "F" }],
+  };
+  assert.deepEqual(selectMonitorNames(db).map(c => c.sym), ["AAA", "BBB", "CCC"]);
+});
+test("selectMonitorNames: dedups by symbol (A/B wins) and is empty-safe", () => {
+  const db = { contenders: [{ sym: "AAA", grade: "A" }], watchlist: [{ sym: "aaa", grade: "C" }, { sym: null }] };
+  const r = selectMonitorNames(db);
+  assert.deepEqual(r.map(c => c.sym), ["AAA"]);
+  assert.equal(r[0].grade, "A");                 // the A/B record wins over the duplicate C
+  assert.deepEqual(selectMonitorNames(null), []); // no db → no throw
+  assert.deepEqual(selectMonitorNames({}), []);
+});
 
 // ── withinSession — the 09:50–16:00 ET weekday gate ─────────────────────────
 test("withinSession: open during the weekday window, closed outside it", () => {

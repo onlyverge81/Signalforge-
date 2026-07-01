@@ -221,6 +221,18 @@ export function rankWatchlist(list){
       a.sym.localeCompare(b.sym));
 }
 
+// The "avoid / low tier": grade D & F names — WEAK/POOR fundamentals. Surfaced for
+// TRANSPARENCY (the human sees the whole graded ladder, not just the picks), NEVER as
+// buy candidates. D floats above F, then higher total first, then symbol. Pure.
+export function rankLowTier(list){
+  return list
+    .filter(c => c.grade === "D" || c.grade === "F")
+    .sort((a, b) =>
+      (a.grade === b.grade ? 0 : a.grade === "D" ? -1 : 1) ||   // D before F
+      (b.total - a.total) ||
+      a.sym.localeCompare(b.sym));
+}
+
 // ─── Network (not unit-tested; the container blocks api.polygon.io) ───────────
 
 async function fetchSnapshotPrices(syms, key){
@@ -345,10 +357,10 @@ async function main(){
 
       const c = buildContender({ sym, rec, price, patternRow: patternMap[sym], signalRow: signalMap[sym], fin, momo });
       if (!c) continue;
-      // Bake a COMPANY profile for every name that will be DISPLAYED (A/B shortlist + C watch tier) so the
-      // app's "🏢 COMPANY" button works without an API key. Non-fatal: a miss just leaves the button to
-      // lazy-fetch (or show a note). Context only — never feeds the grade.
-      if (c.grade === "A" || c.grade === "B" || c.grade === "C"){
+      // Bake a COMPANY profile for every name that will be DISPLAYED (A/B shortlist + C watch tier +
+      // D/F low tier) so the app's "🏢 COMPANY" button works without an API key. Non-fatal: a miss just
+      // leaves the button to lazy-fetch (or show a note). Context only — never feeds the grade.
+      if (c.grade){
         try{ c.about = await fetchTickerDetails(sym, key); }
         catch(_){ /* no profile — app falls back to a lazy fetch / note */ }
       }
@@ -362,8 +374,9 @@ async function main(){
         const tags = classifyWatch(c);
         console.log("◦ " + sym.padEnd(6) + " C total " + String(c.total).padStart(3) +
           (tags.length ? "  💎 " + tags.join("/") : "") + "  " + momoStr);
-      } else if (args.preview){
-        console.log("· " + sym.padEnd(6) + " " + c.grade + " total " + c.total + " (below watch tier)");
+      } else {
+        // D/F low tier — WEAK/POOR fundamentals, surfaced for transparency (avoid, not a pick).
+        console.log("⚠ " + sym.padEnd(6) + " " + c.grade + " total " + String(c.total).padStart(3) + "  " + momoStr + "  (low tier — avoid)");
       }
     }catch(e){
       console.log("✗ " + sym.padEnd(6) + " " + e.message);
@@ -373,6 +386,7 @@ async function main(){
 
   const ranked = rankContenders(graded);
   const watch = rankWatchlist(graded);
+  const lowtier = rankLowTier(graded);
   const allBoxesN = ranked.filter(c => c.allBoxes).length;
   const out = {
     generatedAt: new Date().toISOString(),
@@ -383,20 +397,22 @@ async function main(){
       filing: "SEC & Polygon agree on the latest reporting period (within ~one quarter)",
       allBoxes: "grade A/B AND positive 12-1 momentum AND the filing cross-check passes",
       watch: "grade C kept as a watch-later tier; tags flag the upside angle (borderline / techEdge / deepValue / highGrowth)",
+      lowtier: "grade D/F — WEAK/POOR fundamentals, surfaced for TRANSPARENCY (the whole graded ladder is visible), NEVER as buy candidates",
     },
-    counts: { universe: syms.length, aOrB: ranked.length, allBoxes: allBoxesN, watch: watch.length },
+    counts: { universe: syms.length, aOrB: ranked.length, allBoxes: allBoxesN, watch: watch.length, lowtier: lowtier.length },
     contenders: ranked,
     watchlist: watch,
+    lowtier,
   };
 
   if (args.preview || args.dryRun){
-    console.log("\nA/B contenders: " + ranked.length + " · all boxes checked: " + allBoxesN + " · watch-later (C): " + watch.length);
+    console.log("\nA/B contenders: " + ranked.length + " · all boxes checked: " + allBoxesN + " · watch-later (C): " + watch.length + " · low tier (D/F): " + lowtier.length);
     return;
   }
   // Never clobber a good list with an empty one (bad key, outage, or stale inputs).
-  if (ranked.length === 0 && watch.length === 0){ console.error("No A/B or watch-tier name produced — refusing to overwrite contenders.json."); process.exit(1); }
+  if (ranked.length === 0 && watch.length === 0 && lowtier.length === 0){ console.error("No graded name produced — refusing to overwrite contenders.json."); process.exit(1); }
   fs.writeFileSync(path.join(ROOT, "contenders.json"), JSON.stringify(out) + "\n");
-  console.log("\nWrote contenders.json — " + ranked.length + " A/B names (" + allBoxesN + " all boxes), " + watch.length + " watch-later (C).");
+  console.log("\nWrote contenders.json — " + ranked.length + " A/B names (" + allBoxesN + " all boxes), " + watch.length + " watch-later (C), " + lowtier.length + " low tier (D/F).");
 }
 
 if (process.argv[1] && path.resolve(process.argv[1]) === fileURLToPath(import.meta.url)){

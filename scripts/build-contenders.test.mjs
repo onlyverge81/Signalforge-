@@ -7,7 +7,7 @@ import assert from "node:assert/strict";
 import {
   metricMap, parseSnapshotPrices, parsePolygonFinancials, crossCheck,
   techVerdict, momentumFromMonthly, indexUniverse, buildContender, rankContenders,
-  classifyWatch, rankWatchlist, parseTickerDetails,
+  classifyWatch, rankWatchlist, rankLowTier, parseTickerDetails,
 } from "./build-contenders.mjs";
 
 test("parseTickerDetails: extracts name/industry/homepage/description, truncates, rejects non-http homepages", () => {
@@ -173,4 +173,19 @@ test("rankWatchlist: only C-grade, tagged float above plain, attaches watchTags"
   assert.deepEqual(r.map(c => c.sym), ["GEM", "PLAIN"]);
   assert.deepEqual(r[0].watchTags, ["borderline", "techEdge"]);
   assert.deepEqual(r[1].watchTags, []);
+});
+
+test("rankLowTier: only D/F, D before F, then total desc then symbol", () => {
+  const list = [
+    { sym:"A1", grade:"A", total:12 },   // excluded
+    { sym:"C1", grade:"C", total:3 },    // excluded
+    { sym:"F1", grade:"F", total:-5 },
+    { sym:"D2", grade:"D", total:-1 },
+    { sym:"D1", grade:"D", total:1 },
+    { sym:"F0", grade:"F", total:-5 },   // ties F1 on total → symbol order
+  ];
+  const r = rankLowTier(list);
+  assert.deepEqual(r.map(c => c.sym), ["D1", "D2", "F0", "F1"]); // D tier first (by total), then F tier
+  assert.equal(r.every(c => c.grade === "D" || c.grade === "F"), true);
+  assert.deepEqual(rankLowTier([]), []);
 });

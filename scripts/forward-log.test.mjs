@@ -2,7 +2,7 @@
 // Run: node --test scripts/
 import { test } from "node:test";
 import assert from "node:assert/strict";
-import { splitSettled, markToMarket, mergeLedger, buildEntry, parseFeed, gradeFor, forwardGates, meritGate, momentumValue, momentumRankGate, reversalValue, reversalRankGate, lowVolValue, lowVolRankGate, qualityValue, qualityRankGate, eventTags, earningsGate, buildPositionEntry, markToMarketPosition, liquidAtBar, buildShadowEntries, SHADOW_CONFIGS, contenderTag } from "./forward-log.mjs";
+import { splitSettled, markToMarket, mergeLedger, buildEntry, parseFeed, gradeFor, forwardGates, meritGate, momentumValue, momentumRankGate, reversalValue, reversalRankGate, lowVolValue, lowVolRankGate, qualityValue, qualityRankGate, eventTags, earningsGate, buildPositionEntry, markToMarketPosition, liquidAtBar, buildShadowEntries, SHADOW_CONFIGS, contenderTag, universeForLog } from "./forward-log.mjs";
 
 // A long uptrend of `up` rising bars then `dip` declining bars (a pullback inside the trend).
 const _pbar = c => { c=+(+c).toFixed(4); return { date:"2025-01-01", open:c, high:+(c+1).toFixed(4), low:+(c-1).toFixed(4), close:c, volume:1e6 }; };
@@ -431,15 +431,34 @@ test("buildEntry: news labels ride the captured events and never change the OPEN
 });
 
 // ─── contenders overlay — propose-only membership LABEL ───────────────────────
-test("contenderTag: marks A/B membership and all-boxes from the current contenders.json", () => {
-  const db = { contenders: [
-    { sym: "AAPL", allBoxes: true },
-    { sym: "msft", allBoxes: false },   // graded A/B but didn't clear every box; case-insensitive
-  ] };
-  assert.deepEqual(contenderTag(db, "AAPL"), { contenderAB: true,  contenderAllBoxes: true });
-  assert.deepEqual(contenderTag(db, "MSFT"), { contenderAB: true,  contenderAllBoxes: false });
-  assert.deepEqual(contenderTag(db, "TSLA"), { contenderAB: false, contenderAllBoxes: false });
-  assert.deepEqual(contenderTag(null, "AAPL"), { contenderAB: false, contenderAllBoxes: false });
+test("contenderTag: marks A/B, all-boxes, and the C / D-F tiers from the current contenders.json", () => {
+  const db = {
+    contenders: [
+      { sym: "AAPL", allBoxes: true },
+      { sym: "msft", allBoxes: false },   // graded A/B but didn't clear every box; case-insensitive
+    ],
+    watchlist: [{ sym: "SOFI" }],          // grade-C watch tier
+    lowtier:   [{ sym: "gme", grade: "F" }], // grade-D/F low tier; case-insensitive
+  };
+  assert.deepEqual(contenderTag(db, "AAPL"), { contenderAB: true,  contenderAllBoxes: true,  contenderC: false, contenderDF: false });
+  assert.deepEqual(contenderTag(db, "MSFT"), { contenderAB: true,  contenderAllBoxes: false, contenderC: false, contenderDF: false });
+  assert.deepEqual(contenderTag(db, "SOFI"), { contenderAB: false, contenderAllBoxes: false, contenderC: true,  contenderDF: false });
+  assert.deepEqual(contenderTag(db, "GME"),  { contenderAB: false, contenderAllBoxes: false, contenderC: false, contenderDF: true });
+  assert.deepEqual(contenderTag(db, "TSLA"), { contenderAB: false, contenderAllBoxes: false, contenderC: false, contenderDF: false });
+  assert.deepEqual(contenderTag(null, "AAPL"), { contenderAB: false, contenderAllBoxes: false, contenderC: false, contenderDF: false });
+});
+
+test("universeForLog: unions the base mega-caps with every graded contender tier, deduped", () => {
+  const db = {
+    contenders: [{ sym: "AAPL" }, { sym: "NVDA" }],   // AAPL also in base → deduped
+    watchlist:  [{ sym: "SOFI" }],
+    lowtier:    [{ sym: "GME" }, { sym: "nvda" }],     // NVDA dup (case-insensitive) → deduped
+  };
+  const u = universeForLog(["AAPL", "MSFT"], db);
+  assert.deepEqual(u, ["AAPL", "MSFT", "NVDA", "SOFI", "GME"]); // base first, then new tiers, unique
+  // Empty/missing contendersDB → exactly the base set (byte-identical fallback)
+  assert.deepEqual(universeForLog(["AAPL", "MSFT"], null), ["AAPL", "MSFT"]);
+  assert.deepEqual(universeForLog(["AAPL", "MSFT"], {}), ["AAPL", "MSFT"]);
 });
 
 test("buildEntry: the contenders label rides the current list and never changes the OPEN/OBSERVATION decision", () => {

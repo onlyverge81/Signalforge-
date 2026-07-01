@@ -164,14 +164,46 @@ export function liquidAtBar(candles, { minADV = LIQ_MIN_ADV, minPrice = LIQ_MIN_
 }
 
 // ─── Contenders overlay (propose-only) ───────────────────────────────────────
-// contenders.json is the daily A/B research shortlist (build-contenders.mjs). This tags
-// whether the name logged on THIS bar is currently a contender — point-in-time (we log the
-// current bar against the current list, like every other label; no lookahead). A LABEL only:
-// it never enters forwardGates/actionable, so it does not change which trades open. Pure.
+// contenders.json carries the whole graded ladder (build-contenders.mjs): A/B shortlist
+// (`contenders`), grade-C watch tier (`watchlist`), grade-D/F low tier (`lowtier`). This tags
+// which tier the name logged on THIS bar sits in — point-in-time (we log the current bar
+// against the current list, like every other label; no lookahead). LABELS only: none enter
+// forwardGates/actionable, so they do not change which trades open. Every grade tier is now
+// OOS-eligible (each gets its own A/B question below); eligibility ≠ endorsement. Pure.
 export function contenderTag(contendersDB, sym) {
-  const list = contendersDB && Array.isArray(contendersDB.contenders) ? contendersDB.contenders : [];
-  const hit = list.find(c => c && String(c.sym).toUpperCase() === String(sym).toUpperCase());
-  return { contenderAB: !!hit, contenderAllBoxes: !!(hit && hit.allBoxes) };
+  const inList = key => {
+    const list = contendersDB && Array.isArray(contendersDB[key]) ? contendersDB[key] : [];
+    return list.some(c => c && String(c.sym).toUpperCase() === String(sym).toUpperCase());
+  };
+  const ab = contendersDB && Array.isArray(contendersDB.contenders) ? contendersDB.contenders : [];
+  const hit = ab.find(c => c && String(c.sym).toUpperCase() === String(sym).toUpperCase());
+  return {
+    contenderAB: !!hit,                              // in the A/B shortlist
+    contenderAllBoxes: !!(hit && hit.allBoxes),      // A/B + momentum + filing cross-check
+    contenderC: inList("watchlist"),                 // grade-C watch tier
+    contenderDF: inList("lowtier"),                  // grade-D/F low tier (avoid — measured, not endorsed)
+  };
+}
+
+// The nightly forward-log universe: the legacy mega-cap set (tickers.txt — kept for continuity of
+// the existing ledger history) UNIONED with EVERY graded name on the contenders ladder (A/B + C +
+// D/F). This is what makes "all grades eligible for the OOS ledger" real — low-grade / non-mega-cap
+// names now actually get logged, not just tagged. Deduped, stable-ordered (base first). A name still
+// only OPENs if its daily signal clears the cost/edge/data gate — widening changes WHO is scanned,
+// never HOW any name is decided. Empty/missing contendersDB falls back to exactly `base`. Pure.
+export function universeForLog(base, contendersDB) {
+  const seen = new Set(), out = [];
+  const add = sym => {
+    const k = String(sym || "").toUpperCase();
+    if (!k || seen.has(k)) return;
+    seen.add(k); out.push(k);
+  };
+  for (const s of (Array.isArray(base) ? base : [])) add(s);
+  for (const key of ["contenders", "watchlist", "lowtier"]) {
+    const list = contendersDB && Array.isArray(contendersDB[key]) ? contendersDB[key] : [];
+    for (const c of list) if (c && c.sym) add(c.sym);
+  }
+  return out;
 }
 
 // ─── Cross-sectional SHORT-TERM REVERSAL overlay (propose-only) ───────────────
@@ -652,7 +684,9 @@ async function main() {
   const key = process.env.POLYGON_API_KEY || process.env.POLYGON_KEY || "";
   if (!fixture && !key) { console.error("Set POLYGON_API_KEY (or pass --fixture for offline)."); process.exit(2); }
 
-  let tickers = args.ticker ? [args.ticker] : readTickers();
+  // Universe = the legacy mega-caps UNION every graded contender tier (A/B + C + D/F) → all grades
+  // are OOS-eligible, not just the 57-name tickers.txt. --ticker / --fixture paths unchanged.
+  let tickers = args.ticker ? [args.ticker] : universeForLog(readTickers(), contendersDB);
   if (fixture && !args.ticker) tickers = Object.keys(fixture);
 
   const ledger = (writes ? readJSON(LEDGER_PATH) : readJSON(LEDGER_PATH)) || [];

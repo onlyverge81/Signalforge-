@@ -10,7 +10,7 @@ import {
 import { markToMarket } from "./forward-log.mjs";
 
 // A minimal closed-trade row, mirroring the ledger schema.
-function closed({ id = "T", ticker = "X", signal = "BUY", entry = 100, exit, benchClose, benchDiv, grade = null, merits = false, momentum = false, reversal = false, lowVol = false, quality = false, newsPositive = false, newsQuiet = true, earningsRecent = false, contenderAllBoxes = false, contenderAB = false, convergence = false, breadthQuorum = false, breadthVolConfirmed = false }) {
+function closed({ id = "T", ticker = "X", signal = "BUY", entry = 100, exit, benchClose, benchDiv, grade = null, merits = false, momentum = false, reversal = false, lowVol = false, quality = false, newsPositive = false, newsQuiet = true, earningsRecent = false, contenderAllBoxes = false, contenderAB = false, contenderC = false, contenderDF = false, convergence = false, breadthQuorum = false, breadthVolConfirmed = false }) {
   const grossPct = (exit - entry) / entry * 100;
   return {
     id, ticker, signal, entry, exit,
@@ -18,7 +18,7 @@ function closed({ id = "T", ticker = "X", signal = "BUY", entry = 100, exit, ben
     pnlPct: parseFloat((grossPct - COST_PER_TRADE).toFixed(4)),
     status: grossPct >= 0 ? "WIN" : "LOSS",
     benchClose, benchDiv,
-    tags: { fundamentalGrade: grade, meritsActivated: merits, momentumActivated: momentum, reversalActivated: reversal, lowVolActivated: lowVol, qualityActivated: quality, newsPositive, newsQuiet, earningsRecent, contenderAllBoxes, contenderAB, convergence, breadthQuorum, breadthVolConfirmed },
+    tags: { fundamentalGrade: grade, meritsActivated: merits, momentumActivated: momentum, reversalActivated: reversal, lowVolActivated: lowVol, qualityActivated: quality, newsPositive, newsQuiet, earningsRecent, contenderAllBoxes, contenderAB, contenderC, contenderDF, convergence, breadthQuorum, breadthVolConfirmed },
   };
 }
 
@@ -166,6 +166,25 @@ test("scoreLedger: contenders-on / contenders-off partition the SAME population 
   assert.equal(perf.variants["contenders-ab-on"].n, 2);
   assert.ok(perf.variants["contenders-on"].alphaGrowthPct > 0);
   assert.ok(perf.variants["contenders-off"].alphaGrowthPct < 0);
+});
+
+test("scoreLedger: contender-c-on/off and contender-df-on/off partition the tactical population; -on legs are FDR hypotheses", () => {
+  const ledger = [
+    closed({ id: "A", entry: 100, exit: 107, benchClose: 102, contenderC: true }),   // C watch tier
+    closed({ id: "B", entry: 100, exit: 101, benchClose: 110, contenderDF: true }),   // D/F low tier
+    closed({ id: "C", entry: 100, exit: 109, benchClose: 103 }),                      // neither tier
+  ];
+  const perf = scoreLedger(ledger);
+  assert.equal(perf.variants["contender-c-on"].n + perf.variants["contender-c-off"].n, perf.variants["all"].n);
+  assert.equal(perf.variants["contender-df-on"].n + perf.variants["contender-df-off"].n, perf.variants["all"].n);
+  assert.equal(perf.variants["contender-c-on"].n, 1);
+  assert.equal(perf.variants["contender-df-on"].n, 1);
+  // Every grade tier is now OOS-eligible: the -on legs are genuine FDR promotion hypotheses; the
+  // -off complement controls are excluded from the family denominator (R2).
+  assert.equal(perf.variants["contender-c-on"].fdr, true);
+  assert.equal(perf.variants["contender-df-on"].fdr, true);
+  assert.equal(perf.variants["contender-c-off"].fdr, false);
+  assert.equal(perf.variants["contender-df-off"].fdr, false);
 });
 
 test("scoreLedger: conv-grounded-on requires BOTH the coil→pop trigger AND a grounded all-boxes name; -off is the complement; -on is an FDR hypothesis", () => {
