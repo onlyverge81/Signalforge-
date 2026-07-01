@@ -269,6 +269,14 @@ export function defaultVariants() {
     //   clean future refinement.)
     { label: "conv-grounded-on", where: t => bothTac(t, "convergence", "contenderAllBoxes") },
     { label: "conv-grounded-off", where: t => tac(t) && !bothTac(t, "convergence", "contenderAllBoxes") },
+    //   esd-grounded — the ESD twin of conv-grounded, closing the ledger's ESD coverage gap. The SMA20
+    //   below→up "launch" heading (the 📡 ESD SWEEP fingerprint) is a labeled PROJECTION that overshoots by
+    //   construction, so it can't be a signal on its own; esd-grounded-ON = tactical BUYs where the heading
+    //   fired AND the name is a vetted all-boxes pick. The A/B: does a GROUNDED ESD heading beat a matched
+    //   total-return buy-&-hold under FDR? Propose-only; the heading never enters the gate. (v1 = heading +
+    //   all-boxes; the trajectory-fizzle sweet-spot could tighten the fingerprint later.)
+    { label: "esd-grounded-on", where: t => bothTac(t, "esdHeading", "contenderAllBoxes") },
+    { label: "esd-grounded-off", where: t => tac(t) && !bothTac(t, "esdHeading", "contenderAllBoxes") },
     // SHADOW ENGINES (team-minus-nuisance): each scores the trades the TEAM took WITHOUT a suspect vote
     // (mirrors forward-log's SHADOW_CONFIGS). The A/B is each shadow stream vs the full team's `all`: if a
     // shadow team's alpha beats `all` under FDR, that vote is a net NUISANCE — evidence to demote it
