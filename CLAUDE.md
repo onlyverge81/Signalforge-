@@ -1059,6 +1059,19 @@ display/awareness only — NO gate/verdict/parity change):
   stays overridable if a future run wants sub-bar precision. **Grade-C confirmed live on `main`** after the monitor refresh
   (leads A 12 · B 55 · C 53). All three phases shipped on PR #81. Tests 428 green; app mounts clean.
 
+**`esd-grounded` OOS variant — close the ESD ledger-coverage gap (DONE, branch `claude/signalforge-esd-oos`):** the
+ledger captured the Monitor's convergence leads (`convergence` tag → `conv-grounded-on`) but ESD (SMA20 heading) leads
+had NO OOS coverage — measured in-sample only (`esdAccuracyBacktest` + the trajectory/capture studies). Wired the ESD
+twin of conv-grounded, propose-only, charter-clean (no engine/gate/verdict change): `forward-log.mjs` imports
+`headingEvent` and stamps `esdHeading` = did the SMA20 fire a below→up "launch" separation at the decision bar
+(point-in-time, engine parity, never enters `gate.actionable`); `forward-perf.mjs` adds **`esd-grounded-on/off`** =
+`bothTac(esdHeading, contenderAllBoxes)` under the existing BH/BY FDR family (the `-on` a genuine promotion hypothesis:
+does a GROUNDED heading beat total-return buy-&-hold OOS; the `-off` the auto-excluded complement per R2). EVIDENCE
+scoreboard row added (hidden until data lands). Now BOTH the Monitor (conv-grounded) and ESD (esd-grounded) boards are
+judged by the ledger, not just the eye. Tests +2 (430 green; forward-perf partition + forward-log boolean label-only);
+app mounts clean. Matures via the nightly `forward-log → forward-perf` pipeline like every label (tactical stream young,
+n≤3 closed — accrues over months).
+
 **Next — Track B:**
 - Mature the `momentum-on` / `merits-on` / `news-*` / `earnings-recent-on` OOS ledgers to n≥10; human-ratify
   only if they clear FDR. PASSIVE — the nightly `forward-log → forward-perf → promote` already partitions every

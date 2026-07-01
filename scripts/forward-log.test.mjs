@@ -304,6 +304,17 @@ test("buildEntry: momentum tag is attached; momentumActivated defaults false and
   assert.equal(short.tags.momentumActivated, false);
 });
 
+test("buildEntry: esdHeading is a boolean label-only tag (the ESD twin of convergence) and never changes status", () => {
+  const settled = genUp(300);
+  const e = buildEntry({ sym: "TST", settled, fundaDB: null, loggedAt: "2026-06-11T22:00:00Z" });
+  assert.ok(e);
+  assert.equal(typeof e.tags.esdHeading, "boolean", "the below→up heading trigger is always a boolean, never undefined");
+  // Label-only: the status is driven purely by the gate, identical whether the heading fired or not.
+  const gate = forwardGates({ signal: e.signal, entry: e.entry, tp1: e.tp1,
+    stats: null, suspect: false, costPerTrade: 0.1, longOnly: true });
+  assert.equal(e.status, gate.actionable ? "OPEN" : "OBSERVATION");
+});
+
 // ─── reversal overlay — propose-only cross-sectional LABEL (no decision change) ─
 test("reversalValue: null without ~1 month of history; NEGATIVE on a steady uptrend (winner ⇒ low score)", () => {
   assert.equal(reversalValue(genUp(20)), null, "20 daily bars ≤ 21 lookback → null");

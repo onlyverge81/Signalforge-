@@ -22,7 +22,7 @@
 import fs from "node:fs";
 import path from "node:path";
 import { fileURLToPath } from "node:url";
-import { analyze, runBacktest, scoreAt, scorePosition, auditData, checkBarExit, tradeNet, valueScore, edgeStatus, relVolSeries } from "./engine.mjs";
+import { analyze, runBacktest, scoreAt, scorePosition, auditData, checkBarExit, tradeNet, valueScore, edgeStatus, relVolSeries, headingEvent } from "./engine.mjs";
 import { readTickers } from "./build-fundamentals.mjs";
 import { fetchPolygonDaily, fetchPolygonDividends, dividendsInWindow, fetchPolygonNews, newsWindow } from "./pattern-study.mjs";
 
@@ -433,6 +433,11 @@ export function buildEntry({ sym, settled, fundaDB, contendersDB = null, news = 
       // paired with contenderAllBoxes it forms the propose-only conv-grounded hypothesis (does a GROUNDED
       // coil→pop beat buy-&-hold OOS?). Read off analyze (engine parity, no engine change); never a gate.
       convergence: !!(a.convBreakout && a.convBreakout.detected),
+      // ESD heading TRIGGER label: did the SMA20 fire a below→up "launch" separation at the decision bar (the
+      // 📡 ESD SWEEP fingerprint)? Point-in-time (headingEvent reads settled ≤ decision bar), engine parity (no
+      // engine change); paired with contenderAllBoxes it forms the propose-only esd-grounded hypothesis (does a
+      // GROUNDED heading beat total-return buy-&-hold OOS?) — the ESD twin of conv-grounded. Never a gate.
+      esdHeading: (() => { const ev = headingEvent(settled, settled.length - 1, {}); return !!(ev && ev.separated && ev.side === "below" && ev.leaning === "up"); })(),
       // Breadth "show of hands" labels (propose-only; never enter the gate) — see the inputs above.
       breadthRatio: bRatio == null ? null : parseFloat(bRatio.toFixed(4)),
       breadthQuorum: bQuorum,
