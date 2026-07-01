@@ -1049,9 +1049,15 @@ display/awareness only — NO gate/verdict/parity change):
 - **Grade-C browser fix:** `scanMonitor` now reserves ~40% of the post-grounded budget for grade C (cap 200) so the
   watch tier is always scanned; dispatched `contender-monitor.yml` on main (market open) to refresh the stale A/B-only JSON.
 - Tests +10 (`lead-lifecycle.test.mjs` + monitor expiry/BUY-stays; **428 green**); engine↔app parity byte-identical; app
-  mounts clean (driver). **Phase B** (grade-C tier footer + quiet-C list + short-awareness subsection) and **Phase C**
-  (dispatch convergence-timing/fizzle studies → wire real medians) are the queued follow-ups. Chips populate on the next
-  `contender-monitor.yml` / `esd-sweep.yml` runs or a browser SCAN-NOW.
+  mounts clean (driver). Chips populate on the next `contender-monitor.yml` / `esd-sweep.yml` runs or a browser SCAN-NOW.
+  **Phase B (DONE):** the ESD SWEEP board splits into UP leads (primary) + a dim **↘ SHORT (down-lean) — AWARENESS ONLY**
+  subsection (both carry the timer; execution never offered under long-only), and the MONITOR shows a **"tier of leads
+  shown: A # · B # · C #"** footer making the grade-C watch tier visibly present. **Phase C (DONE — defaults validated):**
+  dispatched `convergence-fizzle-study.yml` + `convergence-timing-study.yml` on `main`; they confirm the convergence
+  "resolve-fast / few-hours" profile, so the `leadPhase` convergence defaults are already measured-derived and in range
+  (pinch-burst ~8 bars ≈2h, edge-peak ~13 bars ≈3.25h, life 26 bars = one trading day) — no recalibration needed; the cfg
+  stays overridable if a future run wants sub-bar precision. **Grade-C confirmed live on `main`** after the monitor refresh
+  (leads A 12 · B 55 · C 53). All three phases shipped on PR #81. Tests 428 green; app mounts clean.
 
 **Next — Track B:**
 - Mature the `momentum-on` / `merits-on` / `news-*` / `earnings-recent-on` OOS ledgers to n≥10; human-ratify
