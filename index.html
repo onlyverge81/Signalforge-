@@ -3943,6 +3943,8 @@ function App() {
             {monitor&&monitor.leads&&monitor.leads.length>0?(
               <div style={card}>
                 <span style={lbl}>CURRENT LEADS · grounded first (vetted A/B + live BUY), then BUYs, then coil→pop BREAKOUT, then ⏳ FORMING (tightening, caught early)</span>
+                {(()=>{ const g={A:0,B:0,C:0}; (monitor.leads||[]).forEach(l=>{ if(g[l.grade]!=null) g[l.grade]++; });
+                  return (<div style={{fontSize:9,color:FADE,marginTop:4}}>tier of leads shown: <b style={{color:"#00e676"}}>A {g.A}</b> · <b style={{color:"#9ccc65"}}>B {g.B}</b> · <b style={{color:"#ffd740"}}>C {g.C}</b> <span style={{color:DIM}}>— the grade-C watch tier is scanned alongside A/B (a C name lists only when it flashes a setup)</span></div>); })()}
                 <div style={{display:"flex",flexDirection:"column",gap:1,marginTop:6}}>
                   {monitor.leads.map((l,i)=>{
                     const buy=l.engine&&l.engine.signal==="BUY";
@@ -4056,28 +4058,36 @@ function App() {
               </div>
             );
             if(!leads.length) return hdr(<>{meta}<div style={{fontSize:11,color:"#90a4ae",marginTop:8}}>No heading leads in the latest sweep.</div></>);
-            const shown=leads.slice(0,40);
+            // One row renderer, reused for the UP (primary) list and the SHORT (down-lean) awareness subsection.
+            const esdRow=(l,i,arr)=>{
+              const up=l.esd&&l.esd.leaning==="up", lc=up?"#00e676":"#ff5252";
+              // Live lifecycle timer for the heading: ESD leads are LONG-lived — the phase scales with each
+              // lead's own projected ETA (caught early → lasts). Spent headings drop at view time.
+              const ph=l.launchMs!=null?leadPhase(l,Date.now(),{kind:"esd",resolution:sw.resolution||"1hour"}):null;
+              if(ph&&ph.expired) return null;
+              const pc=ph?(ph.phase==="launched"?"#00e676":ph.phase==="boosters"?"#26c6da":ph.phase==="fell_off"?"#ffb74d":"#b39ddb"):null;
+              return (<div key={i} style={{display:"flex",alignItems:"center",justifyContent:"space-between",gap:8,padding:"6px 0",borderBottom:i<arr.length-1?"1px solid #121a2a":"none"}}>
+                <div style={{display:"flex",alignItems:"center",gap:8,flexWrap:"wrap"}}>
+                  <span style={{fontWeight:700,fontSize:12,color:"#e0e0e0"}}>{l.grounded?"⭐ ":""}{l.sym}</span>
+                  {l.grade&&<span style={{fontSize:9,color:FADE}}>{l.grade}</span>}
+                  {ph&&ph.phase!=="unknown"&&<span title={"Lifecycle timer (rocket flight): "+ph.label+" — launched "+fmtDur(ph.ageMs)+" ago"+(ph.remainMs!=null?", ~"+fmtDur(ph.remainMs)+" of its projected flight left":"")+". An ESD heading caught early lasts much longer than a convergence burst (measured — a guide, not a promise; the ray overshoots)."} style={{fontSize:9,fontWeight:700,color:pc,border:"1px solid "+pc+"66",borderRadius:3,padding:"1px 5px"}}>{ph.icon} {ph.label} · {fmtDur(ph.ageMs)}</span>}
+                  <span style={{fontSize:10,fontWeight:700,color:lc}}>{up?"↗ UP":"↘ DOWN"}{l.esd&&l.esd.angleDeg!=null?" "+l.esd.angleDeg+"°":""}</span>
+                  {l.esd&&l.esd.targetPrice!=null&&<span style={{fontSize:10,color:FADE}}>→ ${l.esd.targetPrice} ({l.esd.targetName}{l.esd.etaBars!=null?" ~"+Math.round(l.esd.etaBars)+"b":""})</span>}
+                </div>
+                <button style={{...pill(false),marginBottom:0,whiteSpace:"nowrap",color:"#00bcd4",borderColor:"#00bcd499"}} onClick={()=>{setTicker(l.sym);fetchLive(l.sym);}}>ANALYZE →</button>
+              </div>);
+            };
+            const ups=leads.filter(l=>!(l.esd&&l.esd.leaning==="down")).slice(0,40);
+            const downs=leads.filter(l=>l.esd&&l.esd.leaning==="down").slice(0,15);
             return (<>{hdr(meta)}
-              <div style={card}>
-                {shown.map((l,i)=>{
-                  const up=l.esd&&l.esd.leaning==="up", lc=up?"#00e676":"#ff5252";
-                  // Live lifecycle timer for the heading: ESD leads are LONG-lived — the phase scales with each
-                  // lead's own projected ETA (caught early → lasts). Spent headings drop at view time.
-                  const ph=l.launchMs!=null?leadPhase(l,Date.now(),{kind:"esd",resolution:sw.resolution||"1hour"}):null;
-                  if(ph&&ph.expired) return null;
-                  const pc=ph?(ph.phase==="launched"?"#00e676":ph.phase==="boosters"?"#26c6da":ph.phase==="fell_off"?"#ffb74d":"#b39ddb"):null;
-                  return (<div key={i} style={{display:"flex",alignItems:"center",justifyContent:"space-between",gap:8,padding:"6px 0",borderBottom:i<shown.length-1?"1px solid #121a2a":"none"}}>
-                    <div style={{display:"flex",alignItems:"center",gap:8,flexWrap:"wrap"}}>
-                      <span style={{fontWeight:700,fontSize:12,color:"#e0e0e0"}}>{l.grounded?"⭐ ":""}{l.sym}</span>
-                      {l.grade&&<span style={{fontSize:9,color:FADE}}>{l.grade}</span>}
-                      {ph&&ph.phase!=="unknown"&&<span title={"Lifecycle timer (rocket flight): "+ph.label+" — launched "+fmtDur(ph.ageMs)+" ago"+(ph.remainMs!=null?", ~"+fmtDur(ph.remainMs)+" of its projected flight left":"")+". An ESD heading caught early lasts much longer than a convergence burst (measured — a guide, not a promise; the ray overshoots)."} style={{fontSize:9,fontWeight:700,color:pc,border:"1px solid "+pc+"66",borderRadius:3,padding:"1px 5px"}}>{ph.icon} {ph.label} · {fmtDur(ph.ageMs)}</span>}
-                      <span style={{fontSize:10,fontWeight:700,color:lc}}>{up?"↗ UP":"↘ DOWN"}{l.esd&&l.esd.angleDeg!=null?" "+l.esd.angleDeg+"°":""}</span>
-                      {l.esd&&l.esd.targetPrice!=null&&<span style={{fontSize:10,color:FADE}}>→ ${l.esd.targetPrice} ({l.esd.targetName}{l.esd.etaBars!=null?" ~"+Math.round(l.esd.etaBars)+"b":""})</span>}
-                    </div>
-                    <button style={{...pill(false),marginBottom:0,whiteSpace:"nowrap",color:"#00bcd4",borderColor:"#00bcd499"}} onClick={()=>{setTicker(l.sym);fetchLive(l.sym);}}>ANALYZE →</button>
-                  </div>);
-                })}
-              </div>
+              <div style={card}>{ups.map((l,i)=>esdRow(l,i,ups))}</div>
+              {downs.length>0&&(
+                <div style={{...card,opacity:0.72,borderLeft:"2px solid #ff525244"}}>
+                  <div style={{fontSize:10,fontWeight:800,letterSpacing:1,color:"#ff8a80",marginBottom:4}}>↘ SHORT (down-lean) — AWARENESS ONLY · not taken under the long-only default</div>
+                  {downs.map((l,i)=>esdRow(l,i,downs))}
+                  <div style={{fontSize:9,color:FADE,marginTop:6,lineHeight:1.5}}>A down-lean heading is a SHORT setup the engine sees but the long-only charter never trades — shown with the same lifecycle timer so you can read its burst (focus · timing · discipline). Execution is not offered.</div>
+                </div>
+              )}
             </>);
           })();
           // 🧭 TRAJECTORY & CONVERGENCE research report (trajectory-fizzle-study.json) — the min-fizzle SWEET SPOT,
