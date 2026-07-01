@@ -2813,6 +2813,12 @@ function App() {
   const scanRef = useRef(false);                                 // re-entry guard so a scan can't overlap itself
   const [contenderFocus, setContenderFocus] = useState(null);    // a sym to scroll-to + highlight on CONTENDERS (from a MONITOR lead)
   const loadMonitor = ()=> fetch("./contender-monitor.json?t="+Date.now()).then(r=>r.ok?r.json():null).then(j=>{ if(j&&Array.isArray(j.leads)){ setMonitor(j); setMonitorAt(Date.now()); } }).catch(()=>{});
+  // ESD SWEEP (esd-sweep.json) — the scheduled market-hours sweep that surfaces which contenders are
+  // flashing the SMA20 heading (the ESD launch) now. Built by scripts/esd-sweep.mjs (~9:55 ET + every
+  // 30 min); read-only, same-origin, display-only. 15-MIN DELAYED; the ESD is a projection, not a promise.
+  const [esdSweep, setEsdSweep] = useState(null);
+  const [esdSweepAt, setEsdSweepAt] = useState(0);
+  const loadEsdSweep = ()=> fetch("./esd-sweep.json?t="+Date.now()).then(r=>r.ok?r.json():null).then(j=>{ if(j&&Array.isArray(j.leads)){ setEsdSweep(j); setEsdSweepAt(Date.now()); } }).catch(()=>{});
   // BROWSER on-demand scan — reproduce the CI sweep client-side with the user's Polygon key, so the
   // MONITOR is always fresh WHEN VIEWED (GitHub cron is best-effort and was firing off-hours/stale).
   // Scans the VETTED shortlist (all-boxes first, then by grade) capped for mobile speed, through a
@@ -2878,6 +2884,8 @@ function App() {
     if(alive) loadMonitor();
     return ()=>{ alive=false; };
   },[]);
+  // Load the committed ESD sweep when the 🚀 ESD tab is opened (same-origin, best-effort).
+  useEffect(()=>{ if(tab==="esd" && !esdSweep) loadEsdSweep(); },[tab]);
   // Auto-scan when you open MONITOR with a key set and the last browser scan is stale (>10 min) —
   // so the board is current the moment you look, without a manual click.
   useEffect(()=>{
@@ -3916,7 +3924,47 @@ function App() {
               <div style={{fontSize:9,color:FADE,marginTop:6}}>Uses your Polygon key from LIVE · the same fetch the SIGNALS tab runs.</div>
             </div>
           );
-          if(!analysis||!rows||rows.length<35) return (<>{esdInfo}{tickerBox}
+          // 📡 ESD SWEEP — the scheduled CI sweep of all contenders for the SMA20 heading (esd-sweep.json).
+          const sweepCard=(()=>{
+            const sw=esdSweep;
+            const hdr=(extra)=>(
+              <div style={{...card,background:"linear-gradient(135deg,#0e1320,#10182a)"}}>
+                <div style={{display:"flex",justifyContent:"space-between",alignItems:"center",flexWrap:"wrap",gap:8}}>
+                  <span style={{fontSize:13,fontWeight:700,letterSpacing:1,color:"#26c6da"}}>📡 ESD SWEEP · contenders flashing the heading</span>
+                  <span style={{fontSize:9,fontWeight:700,letterSpacing:1,padding:"3px 8px",borderRadius:3,color:"#ffd740",background:"rgba(255,215,64,0.10)",border:"1px solid #ffd74055"}}>15-MIN DELAYED</span>
+                </div>
+                {extra}
+              </div>
+            );
+            if(!sw) return hdr(<div style={{fontSize:10,color:FADE,marginTop:6}}>No committed sweep yet — it builds after the workflow merges to main and runs in market hours (~9:55 ET, then every 30 min). The ticker box below works any time.</div>);
+            const leads=Array.isArray(sw.leads)?sw.leads:[];
+            const ageMin=sw.generatedAt?Math.max(0,Math.round((Date.now()-new Date(sw.generatedAt).getTime())/60000)):null;
+            const meta=(
+              <div style={{marginTop:6}}>
+                <div style={{fontSize:9,color:FADE}}>{sw.resolution||"—"} · scanned {sw.withData||0}/{sw.scanned||0} · {sw.counts?sw.counts.leads:0} leads ({sw.counts?sw.counts.grounded:0} ⭐ grounded){ageMin!=null?" · "+ageMin+"m old":""}{sw.marketOpen?"":" · market closed"}</div>
+                <div style={{fontSize:9,color:"#ffb74d",marginTop:4}}>⚠ {sw.esdNote}</div>
+              </div>
+            );
+            if(!leads.length) return hdr(<>{meta}<div style={{fontSize:11,color:"#90a4ae",marginTop:8}}>No heading leads in the latest sweep.</div></>);
+            const shown=leads.slice(0,40);
+            return (<>{hdr(meta)}
+              <div style={card}>
+                {shown.map((l,i)=>{
+                  const up=l.esd&&l.esd.leaning==="up", lc=up?"#00e676":"#ff5252";
+                  return (<div key={i} style={{display:"flex",alignItems:"center",justifyContent:"space-between",gap:8,padding:"6px 0",borderBottom:i<shown.length-1?"1px solid #121a2a":"none"}}>
+                    <div style={{display:"flex",alignItems:"center",gap:8,flexWrap:"wrap"}}>
+                      <span style={{fontWeight:700,fontSize:12,color:"#e0e0e0"}}>{l.grounded?"⭐ ":""}{l.sym}</span>
+                      {l.grade&&<span style={{fontSize:9,color:FADE}}>{l.grade}</span>}
+                      <span style={{fontSize:10,fontWeight:700,color:lc}}>{up?"↗ UP":"↘ DOWN"}{l.esd&&l.esd.angleDeg!=null?" "+l.esd.angleDeg+"°":""}</span>
+                      {l.esd&&l.esd.targetPrice!=null&&<span style={{fontSize:10,color:FADE}}>→ ${l.esd.targetPrice} ({l.esd.targetName}{l.esd.etaBars!=null?" ~"+Math.round(l.esd.etaBars)+"b":""})</span>}
+                    </div>
+                    <button style={{...pill(false),marginBottom:0,whiteSpace:"nowrap",color:"#00bcd4",borderColor:"#00bcd499"}} onClick={()=>{setTicker(l.sym);fetchLive(l.sym);}}>ANALYZE →</button>
+                  </div>);
+                })}
+              </div>
+            </>);
+          })();
+          if(!analysis||!rows||rows.length<35) return (<>{esdInfo}{sweepCard}{tickerBox}
             <div style={{textAlign:"center",padding:"40px 0",color:"#1e2a3a"}}>
               <div style={{fontSize:46}}>🚀</div>
               <div style={{letterSpacing:3,fontSize:12,marginTop:12}}>ENTER A TICKER TO PROJECT ITS DESTINATION</div>
@@ -3935,6 +3983,7 @@ function App() {
           const row=(k,v,c)=>(<div style={{display:"flex",justifyContent:"space-between",padding:"3px 0",fontSize:11}}><span style={{color:FADE}}>{k}</span><span style={{color:c||"#cfd8dc",fontWeight:600}}>{v}</span></div>);
           return (<>
             {esdInfo}
+            {sweepCard}
             {tickerBox}
             <div style={{...card,padding:8}}>
               <div style={{fontSize:10,color:FADE,letterSpacing:1,marginBottom:6,paddingLeft:4}}>{ticker} · {RES_LABEL[liveMeta?.resolution]||liveMeta?.resolution||"—"} · {rows.length} candles · SMA20 heading + ESD ray</div>
