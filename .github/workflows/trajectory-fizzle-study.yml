@@ -15,6 +15,10 @@ on:
         description: "Max universe size (TFS_MAX)"
         required: false
         default: "30"
+      source:
+        description: "Universe source (TFS_SOURCE): 'contenders' (live A–C graded names, default) or 'roster' (survivorship-free)"
+        required: false
+        default: "contenders"
       resolution:
         description: "Bar resolution (TFS_RESOLUTION): 1hour (default) / 30min / 15min / 1day"
         required: false
@@ -45,6 +49,7 @@ jobs:
         env:
           POLYGON_API_KEY: ${{ secrets.POLYGON_API_KEY }}
           TFS_MAX: ${{ github.event.inputs.cap }}
+          TFS_SOURCE: ${{ github.event.inputs.source == 'roster' && 'roster' || 'contenders' }}
           TFS_RESOLUTION: ${{ github.event.inputs.resolution }}
           TFS_UNIVERSE: ${{ github.event.inputs.universe == 'full' && 'full' || '' }}
           POLYGON_PACE_MS: "0"

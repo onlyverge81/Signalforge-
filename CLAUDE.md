@@ -987,6 +987,23 @@ propose-only, NEVER gated — R6 ritual):
   (all new logic lives in the study file — NO parity mirror needed); app mounts clean (driver, zero JS errors). The report cards
   populate once `trajectory-fizzle-study.yml` is dispatched in CI with `commit: true` (sandbox is egress-blocked + keyless).
 
+**Trajectory-fizzle — first CI run + CONTENDERS A–C re-run + recalVerdict bug fix (DONE, branch
+`claude/signalforge-tfs-contenders`):** the first dispatch (run #1, `main`, cap 30, survivorship-free roster) was
+**low-power** — the roster is de-listed-heavy, so 16 skipped + 9 illiquid → **only 5 names covered**, and the user's
+exact fingerprint (below/up/20°/separated) produced **ZERO episodes** on 5 names. Reading run #1 also exposed a **real
+bug**: `recalVerdict` read `best.rate` but the swept rows carry `conversionRate`, so `gain` came back null and Part C
+reported "recalibration NOT warranted" even though the best lever (a longer **5-bar forming run**) beat the default
+**48.4% → 59.2% = +10.7pp (n=49)**. Fixes shipped (still IN-SAMPLE, propose-only, never gated): (1) `recalVerdict` now
+reads `conversionRate ?? rate` (test hardened with the real row shape — it would have caught this); (2) a **Contenders
+A–C universe** — pure `selectContenderUniverse(db,cap)` unions `contenders` (A/B) ∪ `watchlist` (C) deduped, selected via
+`TFS_SOURCE=contenders` (default `roster`), and when used **skips the liquidity screen** (the list is already
+grade/momentum-vetted → live, liquid coverage the roster lacked: 178 A/B + 190 C = 368 names on `main`); (3) an explicit
+**`esdFingerprintRow`** (below·up·20°·sep0.75·curv0) surfaced in the JSON + job-log + the EVIDENCE card, so the trial
+reports the user's exact fingerprint beside the swept sweet spot. Workflow gains a `source` input (contenders default).
+Vetting is on fundamentals/momentum, NOT the ESD/convergence geometry → not circular; still a min-fizzle base rate, not
+proven edge. Tests +1 (413 green); app mounts clean (driver). Dispatched on the branch with `source=contenders`,
+`cap=400`, `commit=true` to run the trial.
+
 **Next — Track B:**
 - Mature the `momentum-on` / `merits-on` / `news-*` / `earnings-recent-on` OOS ledgers to n≥10; human-ratify
   only if they clear FDR. PASSIVE — the nightly `forward-log → forward-perf → promote` already partitions every

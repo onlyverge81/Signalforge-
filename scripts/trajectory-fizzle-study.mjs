@@ -227,10 +227,11 @@ export function recalConversion(episodes, rvolMin){
 export function recalVerdict(defaultRate, best, opts = {}){
   const minGain = opts.minGain != null ? opts.minGain : 0.05;
   const minN = opts.minN != null ? opts.minN : 30;
+  const bestRate = best ? (best.conversionRate != null ? best.conversionRate : best.rate) : null; // rows carry `conversionRate`
   const n = best ? (best.conv + best.fizz) : 0;
-  const gain = (best && best.rate != null && defaultRate != null) ? +(best.rate - defaultRate).toFixed(4) : null;
+  const gain = (bestRate != null && defaultRate != null) ? +(bestRate - defaultRate).toFixed(4) : null;
   const warranted = !!(gain != null && gain >= minGain && n >= minN);
-  return { warranted, gain, n, defaultRate: defaultRate ?? null, bestRate: best ? best.rate : null };
+  return { warranted, gain, n, defaultRate: defaultRate ?? null, bestRate };
 }
 
 // ─── the grid ──────────────────────────────────────────────────────────────────────────────────────
@@ -251,6 +252,35 @@ function buildCombos(leaning, side){
 }
 
 // ─── universe + fetch (mirrors esd-capture-study) ───────────────────────────────────────────────────
+// Contenders A–C universe: the A/B shortlist (`contenders`) ∪ the grade-C watch tier (`watchlist`), deduped by
+// symbol (D/F excluded — not present on `main`). These are live, liquid, grade+momentum-vetted names — the coverage
+// the de-listed-heavy roster lacks. Pure. Vetting is on FUNDAMENTALS/momentum, NOT on ESD/convergence geometry, so
+// judging the geometry on them is not circular.
+export function selectContenderUniverse(db, cap){
+  const src = [...((db && db.contenders) || []), ...((db && db.watchlist) || [])];
+  const seen = new Set(), out = [];
+  for (const c of src){
+    if (!c || !c.sym) continue;
+    const k = String(c.sym).toUpperCase();
+    if (seen.has(k)) continue;
+    seen.add(k); out.push(c.sym);
+  }
+  return cap > 0 ? out.slice(0, cap) : out;
+}
+
+function resolveContenders(cap){
+  try{
+    const db = JSON.parse(fs.readFileSync(path.join(ROOT, "contenders.json"), "utf8"));
+    const tickers = selectContenderUniverse(db, cap);
+    if (tickers.length){
+      const ab = ((db.contenders) || []).length, c = ((db.watchlist) || []).length;
+      return { tickers, source: `contenders.json A–C (${ab} A/B ∪ ${c} C, deduped; cap ${cap} → ${tickers.length})`,
+        survivorshipFree: false, contenders: true };
+    }
+  }catch{ /* no contenders.json → caller falls back to roster */ }
+  return null;
+}
+
 function resolveUniverse(cap){
   try{
     const r = JSON.parse(fs.readFileSync(path.join(ROOT, "roster.json"), "utf8"));
@@ -297,9 +327,13 @@ async function main(){
   const resolution = process.env.TFS_RESOLUTION || "1hour";
   const lookbackDays = +(process.env.TFS_LOOKBACK_DAYS || 180);
   const intraday = /min|hour/.test(resolution);
+  const useContenders = process.env.TFS_SOURCE === "contenders";
   const fullUniverse = process.env.TFS_UNIVERSE === "full";
   const minN = +(process.env.TFS_MIN_N || 20);
-  const { tickers, source, survivorshipFree } = resolveUniverse(cap);
+  // Contenders A–C source (live, liquid, vetted) when requested; else the survivorship-free roster.
+  const resolved = (useContenders && resolveContenders(cap)) || resolveUniverse(cap);
+  const { tickers, source, survivorshipFree } = resolved;
+  const curatedUniverse = !!resolved.contenders;   // contenders are already grade/momentum-screened → skip liquidity drop
   console.log("trajectory-fizzle universe: " + source + `  @ ${resolution}, ~${lookbackDays}d`);
 
   const upCombos = buildCombos("up", "below");
@@ -327,7 +361,7 @@ async function main(){
     try{
       const bars = await fetchBars(sym, resolution, key, lookbackDays, intraday);
       if (bars.length < 80) throw new Error(`only ${bars.length} bars`);
-      if (!fullUniverse && !clearsLiquidityBar(bars)){ droppedIlliquid++; continue; }
+      if (!fullUniverse && !curatedUniverse && !clearsLiquidityBar(bars)){ droppedIlliquid++; continue; }
       covered++;
 
       // ── Part A: features once, then every combo ──
@@ -389,6 +423,10 @@ async function main(){
   const upRows = esdSweep.filter(r => r.leaning === "up");
   const sweetSpot = pickSweetSpot(upRows, { minN });
   const baselineRow = upRows.find(r => r.sep === 1.75 && r.angleDeg === 20 && r.curvature === 0.5) || null;
+  // The user's requested test-trial fingerprint: Position BELOW · Leaning UP · Angle 20 · Separate YES (no curvature
+  // constraint → curv 0; sep 0.75 = the lowest "clearly separated" gate in the grid). Surfaced explicitly so the trial
+  // reports THAT combo directly, beside the swept sweet spot.
+  const fingerprintRow = upRows.find(r => r.sep === 0.75 && r.angleDeg === 20 && r.curvature === 0) || null;
 
   // ── assemble Part B rows (cross-sectional t across names) ──
   const horizonRows = (edgeMap) => HORIZONS.map(h => {
@@ -416,12 +454,14 @@ async function main(){
     generatedAt: new Date().toISOString(),
     question: "ESD launch-fingerprint min-fizzle sweet spot + when to ENTER/EXIT (ESD & convergence) + is a convergence recalibration warranted?",
     universe: { requested: tickers.length, covered, droppedIlliquid, skipped, source, survivorshipFree,
-      screen: fullUniverse ? "FULL survivorship-free roster (bias cross-check)" : "LIQUID default (illiquid dropped)" },
+      screen: curatedUniverse ? "CONTENDERS A–C (grade/momentum-vetted; liquidity screen skipped)"
+        : fullUniverse ? "FULL survivorship-free roster (bias cross-check)" : "LIQUID default (illiquid dropped)" },
     config: { resolution, lookbackDays, minN, seps: SEPS, angles: ANGLES, curvatures: CURVS, horizons: HORIZONS },
     // A
     esdSweep,
     esdSweetSpot: sweetSpot ? { ...sweetSpot } : null,
     esdBaselineRow: baselineRow,
+    esdFingerprintRow: fingerprintRow,   // the user's trial fingerprint: below · up · 20° · separated (sep 0.75, curv 0)
     // B
     enterExitTermStructure: { esd: esdHorizons, convergence: convHorizons, esdEntryDelay: delayRows },
     esdBestExitBar: esdBestExit ? { horizon: esdBestExit.horizon, meanEdge: esdBestExit.meanEdge, t: esdBestExit.tAcrossNames, verdict: esdBestExit.verdict } : null,
@@ -447,6 +487,7 @@ async function main(){
   console.log("\n── A · ESD LAUNCH-FINGERPRINT SWEET SPOT (up-lean; conversion = reached ÷ resolved) ──");
   console.log("  " + (sweetSpot ? `SWEET SPOT → sep ${sweetSpot.sep} · angle ${sweetSpot.angleDeg}° · curv ${sweetSpot.curvature} → conversion ${pct(sweetSpot.conversionRate)} (n=${sweetSpot.reached + sweetSpot.fizzled}, medMove ${spct(sweetSpot.medianFavMovePct)})` : `no combo reached n≥${minN}`));
   if (baselineRow) console.log(`  baseline (1.75/20/0.5) → conversion ${pct(baselineRow.conversionRate)} (n=${baselineRow.reached + baselineRow.fizzled}, medMove ${spct(baselineRow.medianFavMovePct)})`);
+  console.log("  TRIAL FINGERPRINT (below · up · 20° · separated; sep 0.75, curv 0) → " + (fingerprintRow ? `conversion ${pct(fingerprintRow.conversionRate)} (n=${fingerprintRow.reached + fingerprintRow.fizzled}, medMove ${spct(fingerprintRow.medianFavMovePct)})` : "no episodes fired"));
   console.log("\n── B · WHEN TO EXIT (edge vs matched baseline, t across names) ──");
   console.log("  ESD:  " + esdHorizons.map(r => `H${r.horizon} ${spct(r.meanEdge)} (t ${r.tAcrossNames ?? "—"})`).join("  "));
   console.log("        best exit → " + (esdBestExit ? `H${esdBestExit.horizon} ${spct(esdBestExit.meanEdge)} (${esdBestExit.verdict})` : "none"));

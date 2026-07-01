@@ -9,7 +9,7 @@ import { test } from "node:test";
 import assert from "node:assert/strict";
 import {
   esdFeatures, launchFires, esdEpisodes, horizonEdge, bestHorizon, pickSweetSpot,
-  conversionRate, recalConversion, recalVerdict, median, mean,
+  conversionRate, recalConversion, recalVerdict, median, mean, selectContenderUniverse,
 } from "./trajectory-fizzle-study.mjs";
 
 // ── synthetic bar builders ──────────────────────────────────────────────────
@@ -120,10 +120,29 @@ test("conversionRate + recalConversion RVOL co-filter", () => {
 });
 
 test("recalVerdict is 'if it ain't broke' — warranted only on a real gain with enough n", () => {
+  // the REAL sweep rows carry the field as `conversionRate` (not `rate`) — the bug run #1 exposed
+  const real = { formingMult: 2, minFormingBars: 5, rvolMin: null, conv: 29, fizz: 20, conversionRate: 0.5918 };
+  const v = recalVerdict(0.4844, real, { minGain: 0.05, minN: 30 });
+  assert.equal(v.warranted, true);                       // +10.7pp, n=49 → warranted (was wrongly false pre-fix)
+  assert.equal(v.gain, 0.1074);
+  assert.equal(v.bestRate, 0.5918);
+  // legacy `rate` field still accepted
   assert.equal(recalVerdict(0.40, { rate: 0.50, conv: 20, fizz: 20 }, { minGain: 0.05, minN: 30 }).warranted, true);
-  assert.equal(recalVerdict(0.40, { rate: 0.42, conv: 20, fizz: 20 }, { minGain: 0.05, minN: 30 }).warranted, false); // gain too small
-  assert.equal(recalVerdict(0.40, { rate: 0.60, conv: 5, fizz: 5 }, { minGain: 0.05, minN: 30 }).warranted, false);   // too few n
+  assert.equal(recalVerdict(0.40, { conversionRate: 0.42, conv: 20, fizz: 20 }, { minGain: 0.05, minN: 30 }).warranted, false); // gain too small
+  assert.equal(recalVerdict(0.40, { conversionRate: 0.60, conv: 5, fizz: 5 }, { minGain: 0.05, minN: 30 }).warranted, false);   // too few n
   assert.equal(recalVerdict(null, null, {}).warranted, false);
+});
+
+test("selectContenderUniverse unions A/B ∪ C, dedupes, caps, and is empty-safe", () => {
+  const db = {
+    contenders: [{ sym: "EOG" }, { sym: "NEM" }, { sym: "BLK" }],   // A/B
+    watchlist: [{ sym: "AA" }, { sym: "eog" }, { sym: "ADSK" }],    // C (eog dup, different case)
+  };
+  const all = selectContenderUniverse(db, 0);
+  assert.deepEqual(all, ["EOG", "NEM", "BLK", "AA", "ADSK"]);       // dedup case-insensitive, A/B before C
+  assert.deepEqual(selectContenderUniverse(db, 2), ["EOG", "NEM"]); // cap
+  assert.deepEqual(selectContenderUniverse({}, 5), []);            // empty-safe
+  assert.deepEqual(selectContenderUniverse({ contenders: [{}, { sym: "" }, { sym: "X" }] }, 0), ["X"]); // skips missing sym
 });
 
 test("median/mean ignore null/NaN", () => {
