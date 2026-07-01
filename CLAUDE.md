@@ -948,6 +948,45 @@ proven buys; touches no gate/verdict. Tests +4 (401 green); driver-verified the 
 with zero JS errors. Activates after merge (cron runs only from main); dispatch `esd-sweep.yml` once in market hours to
 populate.
 
+**🧭 Trajectory / convergence FIZZLE SWEET-SPOT + enter/exit-timing study (DONE, branch `claude/signalforge-trajectory-fizzle`,
+off `main`):** the user's evidence-first questions — does the ESD "launch fingerprint" (Position below · Leaning up · Angle 20°
+· Curvature 0.5 · Separation 1.75 ATR) have a COMBINATION sweet-spot that minimizes FIZZLING; the same for convergence ("let
+the evidence support a change… if it ain't broke don't fix it"); and WHERE is the report on WHEN to ENTER & EXIT convergence /
+ESD-trajectory leads. Diagnosis (measured): `esdAccuracyBacktest` already gates on exactly that fingerprint (`separated &&
+leaning:up && side:below`) but HARDCODES `sep=0.25` and never sweeps angle/curvature/separation; a `convergence-fizzle-study`
+(conversion vs fizzle base rate + tightness/RVOL levers — itself notes "a tighter pinch would cut noise, a lever NOT yet
+applied"), `convergence-timing-study`, `convergence-scan` (horizon edge) and `esd-capture-study` (which timeframe) exist, but
+NOTHING sweeps the ESD fingerprint for a min-fizzle combo, there is no ESD fizzle-rate or optimal-exit-bar sweep, and the timing
+reports aren't surfaced in-app (why they "can't find" them). Shipped as one on-demand research harness (in-sample POINTER,
+propose-only, NEVER gated — R6 ritual):
+- **`scripts/trajectory-fizzle-study.mjs` + `.yml`** (workflow_dispatch, artifact + opt-in commit; never wired to a gate).
+  Charter-clean (Polygon bars only, survivorship-free roster via `selectMeritUniverse`, LIQUID default via `clearsLiquidityBar`,
+  `TFS_UNIVERSE=full` cross-check). Reuses the EXACT engine fns the ESD tab + monitor run (`headingEvent`/`lineKinematics`/
+  `esdAccuracyBacktest`/`convergenceBreakout`/`convergenceFizzle`) + `tStat`/`verdictFor` from `convergence-scan`. Three parts,
+  all pure + unit-tested: **A** the ESD launch-fingerprint SWEET SPOT — `esdFeatures` (point-in-time per-bar heading read) +
+  `launchFires` (thresholds side/leaning/sep/angle/curvature) + `esdEpisodes` (reached / fizzled / censored trichotomy, adverse-
+  first, no overlap) swept over sep{0.25,0.75,1.25,1.75}×angle{10,15,20,25}×curv{0,0.25,0.5} → conversion rate, median favorable
+  move, median ETA, n, sep-conditioned alpha/overshoot; `pickSweetSpot` (minN floor) picks the min-fizzle combo (the user's
+  1.75/20/0.5 baseline is one ROW, not a foregone answer). **B** WHEN TO ENTER & EXIT — `horizonEdge` (trigger-fwd minus matched
+  baseline-fwd, alpha vs the tape) at H{3,5,8,13,21,34} for ESD AND convergence triggers, cross-sectional t across NAMES;
+  `bestHorizon` = the exit bar where edge peaks (≥ suggestive) + an ESD entry-delay sweep. **C** convergence RECALIBRATION —
+  sweep the FORMING levers (formingMult × minFormingBars × an RVOL co-filter via `recalConversion`) → `recalVerdict` recommends
+  a change ONLY if it beats today's default conversion by a margin with enough n ("if it ain't broke, don't fix it"). Writes
+  `trajectory-fizzle-study.json`.
+- **EVIDENCE surfacing (display-only, ESD tab):** a **🧭 TRAJECTORY & CONVERGENCE** research card (same-origin fetch of
+  `trajectory-fizzle-study.json`, IN-SAMPLE badge) renders A (sweet spot vs baseline), B (best exit bars + a per-horizon edge
+  table for ESD & convergence), C (recalibration verdict), with the −0.71%/overshoot honesty inline. Rendered in both the
+  empty-state and loaded-state ESD returns.
+- **"Scan Contenders A–C" consistency:** `esd-sweep.mjs` now sweeps grades **A/B ∪ C** (the A/B shortlist ∪ the grade-C watch
+  tier, deduped, D/F excluded — inlined to stay branch-self-contained) so the ESD test-trial covers every actionable-eligible
+  grade, matching the CONTENDER MONITOR universe.
+- **Honesty (binding):** in-sample is NEVER the verdict; convergence geometry is a measured loser (≈ −0.71%) so a min-fizzle
+  combo minimizes a bad base rate, not manufacturing edge; the straight-line SMA20 ray OVERSHOOTS by construction; the down-lean
+  / breakdown rows are AWARENESS ONLY under the unchanged long-only charter; nothing is gated — only the OOS ledger (esd /
+  conv-grounded variants under FDR) pulls the trigger. Tests +11 (study helpers; 412 green with the suite); engine untouched
+  (all new logic lives in the study file — NO parity mirror needed); app mounts clean (driver, zero JS errors). The report cards
+  populate once `trajectory-fizzle-study.yml` is dispatched in CI with `commit: true` (sandbox is egress-blocked + keyless).
+
 **Next — Track B:**
 - Mature the `momentum-on` / `merits-on` / `news-*` / `earnings-recent-on` OOS ledgers to n≥10; human-ratify
   only if they clear FDR. PASSIVE — the nightly `forward-log → forward-perf → promote` already partitions every
