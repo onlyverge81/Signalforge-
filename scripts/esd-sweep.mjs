@@ -103,7 +103,16 @@ async function main(){
   let db;
   try { db = JSON.parse(fs.readFileSync(path.join(ROOT, "contenders.json"), "utf8")); }
   catch { console.error("contenders.json missing — run build-contenders first."); process.exit(2); }
-  const names = (db.contenders || []).filter(c => c && c.sym);
+  // Scan grades A–C: the A/B shortlist ∪ the grade-C watch tier (deduped, D/F excluded) — the same universe the
+  // CONTENDER MONITOR sweeps, so the ESD test-trial covers every actionable-eligible grade. Inlined (rather than
+  // importing selectMonitorNames) so this stays self-contained across branches; watchlist is empty on older builds.
+  const seen = new Set();
+  const names = [...(db.contenders || []), ...(db.watchlist || [])].filter(c => {
+    if (!c || !c.sym) return false;
+    const k = String(c.sym).toUpperCase();
+    if (seen.has(k)) return false;
+    seen.add(k); return true;
+  });
   const resolution = process.env.ESD_RESOLUTION || "1hour";    // SMA20 on 1-hour ≈ a ~3-day swing heading
   const lookbackDays = +(process.env.ESD_LOOKBACK_DAYS || 120);
   const pace = +(process.env.POLYGON_PACE_MS || 0);

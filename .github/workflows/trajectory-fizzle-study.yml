@@ -1,0 +1,76 @@
+name: Trajectory / convergence fizzle sweet-spot study (research, on-demand)
+
+# The trajectory-fizzle study answers three questions with real Polygon history, all IN-SAMPLE and NEVER wired
+# to a gate: (A) does the ESD launch-fingerprint (Position below · Leaning up · Angle° · Curvature · Separation
+# ATR) have a COMBINATION sweet-spot that minimizes FIZZLING; (B) WHEN to ENTER & EXIT — the forward-return edge
+# by horizon for ESD and convergence leads (where edge peaks then decays = the exit bar); (C) is a convergence
+# FORMING-lever recalibration WARRANTED (only if it beats today's default by a margin — "if it ain't broke, don't
+# fix it"). Manual dispatch only — prints a rollup to the job log + uploads the JSON (opt-in commit, dispatch
+# branch only, NEVER main). Requires secret POLYGON_API_KEY. Nothing here promotes or re-wires the engine.
+
+on:
+  workflow_dispatch:
+    inputs:
+      cap:
+        description: "Max universe size (TFS_MAX)"
+        required: false
+        default: "30"
+      resolution:
+        description: "Bar resolution (TFS_RESOLUTION): 1hour (default) / 30min / 15min / 1day"
+        required: false
+        default: "1hour"
+      universe:
+        description: "Universe screen: 'liquid' (default) or 'full' (survivorship-free bias cross-check)"
+        required: false
+        default: "liquid"
+      commit:
+        description: "Commit trajectory-fizzle-study.json to the branch this runs on (default: artifact only)"
+        required: false
+        default: "false"
+
+permissions:
+  contents: write   # only used when the `commit` input is true; harmless otherwise
+
+jobs:
+  study:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 20
+      - name: Run offline unit tests
+        run: node --test scripts/*.test.mjs
+      - name: Run trajectory-fizzle study
+        env:
+          POLYGON_API_KEY: ${{ secrets.POLYGON_API_KEY }}
+          TFS_MAX: ${{ github.event.inputs.cap }}
+          TFS_RESOLUTION: ${{ github.event.inputs.resolution }}
+          TFS_UNIVERSE: ${{ github.event.inputs.universe == 'full' && 'full' || '' }}
+          POLYGON_PACE_MS: "0"
+        run: node scripts/trajectory-fizzle-study.mjs
+      - name: Upload trajectory-fizzle-study.json
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: trajectory-fizzle-study
+          path: trajectory-fizzle-study.json
+          if-no-files-found: warn
+      - name: Commit trajectory-fizzle-study.json to this branch (opt-in)
+        if: github.event.inputs.commit == 'true'
+        run: |
+          git config user.name "github-actions[bot]"
+          git config user.email "github-actions[bot]@users.noreply.github.com"
+          # Stage first, THEN check the staged diff — `git diff --quiet` ignores untracked files,
+          # so a never-before-committed file would never persist otherwise.
+          [ -f trajectory-fizzle-study.json ] && git add trajectory-fizzle-study.json || true
+          if git diff --cached --quiet; then
+            echo "trajectory-fizzle-study.json unchanged — nothing to commit."
+          else
+            git commit -m "chore: refresh trajectory-fizzle-study.json (research snapshot, display-only)"
+            # Push to the SAME branch this workflow was dispatched on — NEVER main.
+            for i in 1 2 3; do
+              git pull --rebase origin "${GITHUB_REF_NAME}" && git push origin "HEAD:${GITHUB_REF_NAME}" && break
+              echo "push race (attempt $i) — retrying"; sleep 3
+            done
+          fi

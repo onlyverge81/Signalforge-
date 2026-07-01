@@ -36,7 +36,7 @@ export function tStat(values){
   return { n, mean, sd, t };
 }
 
-function verdictFor(t){
+export function verdictFor(t){
   if(t == null) return "TOO FEW";
   const a = Math.abs(t);
   if(a >= 2)   return t > 0 ? "SIGNIFICANT +" : "SIGNIFICANT −";

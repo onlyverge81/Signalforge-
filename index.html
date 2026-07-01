@@ -2819,6 +2819,11 @@ function App() {
   const [esdSweep, setEsdSweep] = useState(null);
   const [esdSweepAt, setEsdSweepAt] = useState(0);
   const loadEsdSweep = ()=> fetch("./esd-sweep.json?t="+Date.now()).then(r=>r.ok?r.json():null).then(j=>{ if(j&&Array.isArray(j.leads)){ setEsdSweep(j); setEsdSweepAt(Date.now()); } }).catch(()=>{});
+  // TRAJECTORY-FIZZLE study (trajectory-fizzle-study.json) — the on-demand research harness that answers the
+  // ESD launch-fingerprint SWEET SPOT (min-fizzle combo), WHEN TO ENTER/EXIT (edge by horizon), and whether a
+  // convergence recalibration is warranted. Read-only, same-origin, display-only; IN-SAMPLE pointer, never a gate.
+  const [fizzle, setFizzle] = useState(null);
+  const loadFizzle = ()=> fetch("./trajectory-fizzle-study.json?t="+Date.now()).then(r=>r.ok?r.json():null).then(j=>{ if(j&&j.recommendation){ setFizzle(j); } }).catch(()=>{});
   // BROWSER on-demand scan — reproduce the CI sweep client-side with the user's Polygon key, so the
   // MONITOR is always fresh WHEN VIEWED (GitHub cron is best-effort and was firing off-hours/stale).
   // Scans the VETTED shortlist (all-boxes first, then by grade) capped for mobile speed, through a
@@ -2886,6 +2891,8 @@ function App() {
   },[]);
   // Load the committed ESD sweep when the 🚀 ESD tab is opened (same-origin, best-effort).
   useEffect(()=>{ if(tab==="esd" && !esdSweep) loadEsdSweep(); },[tab]);
+  // Load the committed trajectory-fizzle research JSON when the 🚀 ESD tab is opened (same-origin, best-effort).
+  useEffect(()=>{ if(tab==="esd" && !fizzle) loadFizzle(); },[tab]);
   // Auto-scan when you open MONITOR with a key set and the last browser scan is stale (>10 min) —
   // so the board is current the moment you look, without a manual click.
   useEffect(()=>{
@@ -3964,7 +3971,62 @@ function App() {
               </div>
             </>);
           })();
-          if(!analysis||!rows||rows.length<35) return (<>{esdInfo}{sweepCard}{tickerBox}
+          // 🧭 TRAJECTORY & CONVERGENCE research report (trajectory-fizzle-study.json) — the min-fizzle SWEET SPOT,
+          // the WHEN-TO-ENTER/EXIT term-structure, and the convergence recalibration verdict. IN-SAMPLE pointer only.
+          const fizzleCard=(()=>{
+            const pctv=v=>v!=null?(v*100).toFixed(1)+"%":"—";
+            const spct=v=>v!=null?((v>=0?"+":"")+(v*100).toFixed(2)+"%"):"—";
+            const hdr=(extra)=>(
+              <div style={{...card,background:"linear-gradient(135deg,#0e1320,#181026)"}}>
+                <div style={{display:"flex",justifyContent:"space-between",alignItems:"center",flexWrap:"wrap",gap:8}}>
+                  <span style={{fontSize:13,fontWeight:700,letterSpacing:1,color:"#ce93d8"}}>🧭 TRAJECTORY & CONVERGENCE · fizzle / enter-exit research</span>
+                  <span title="In-sample measurement over Polygon history — a POINTER, never the verdict. Convergence geometry is a measured loser (≈ −0.71%); a min-fizzle combo minimizes a bad base rate, it does not manufacture edge. Nothing here is wired to a gate — only the OOS ledger promotes." style={{fontSize:9,fontWeight:700,letterSpacing:1,padding:"3px 8px",borderRadius:3,color:"#ffb74d",background:"rgba(255,183,77,0.10)",border:"1px solid #ffb74d55"}}>IN-SAMPLE · NOT THE VERDICT</span>
+                </div>
+                {extra}
+              </div>
+            );
+            const f=fizzle;
+            if(!f) return hdr(<div style={{fontSize:10,color:FADE,marginTop:6}}>No research snapshot yet — dispatch <b>trajectory-fizzle-study.yml</b> in CI (it needs the Polygon key) with <b>commit: true</b> to publish <code>trajectory-fizzle-study.json</code>. It answers: the ESD launch-fingerprint <b>sweet spot</b>, <b>when to enter/exit</b>, and whether a convergence <b>recalibration</b> is warranted.</div>);
+            const ss=f.esdSweetSpot, bl=f.esdBaselineRow, rec=f.recommendation||{}, rc=f.convRecalWarranted||{};
+            const eh=(f.enterExitTermStructure&&f.enterExitTermStructure.esd)||[], ch=(f.enterExitTermStructure&&f.enterExitTermStructure.convergence)||[];
+            const row=(label,val,color)=>(<div style={{display:"flex",justifyContent:"space-between",gap:8,padding:"2px 0"}}><span style={{fontSize:10,color:FADE}}>{label}</span><span style={{fontSize:10,fontWeight:700,color:color||"#e0e0e0"}}>{val}</span></div>);
+            const horizonTable=(rows,label)=>(
+              <div style={{marginTop:6}}>
+                <div style={{fontSize:9,color:FADE,marginBottom:3}}>{label} — edge vs matched baseline (t across names)</div>
+                <div style={{display:"flex",flexWrap:"wrap",gap:6}}>
+                  {rows.map((r,i)=>{ const pos=r.meanEdge!=null&&r.meanEdge>0; return (
+                    <span key={i} style={{fontSize:9,padding:"2px 6px",borderRadius:3,background:"rgba(255,255,255,0.03)",border:"1px solid #1e2a3a",color:pos?"#00e676":"#ff8a80"}}>H{r.horizon} {spct(r.meanEdge)}{r.tAcrossNames!=null?" (t"+r.tAcrossNames+")":""}</span>
+                  );})}
+                </div>
+              </div>
+            );
+            return (<>{hdr(
+              <div style={{fontSize:9,color:FADE,marginTop:6}}>{f.universe?("covered "+f.universe.covered+" · "+(f.universe.screen||"")+" · "+(f.config&&f.config.resolution)):""}</div>
+            )}
+              <div style={card}>
+                <div style={{fontSize:11,fontWeight:700,color:"#ce93d8",marginBottom:4}}>A · ESD LAUNCH-FINGERPRINT SWEET SPOT</div>
+                {ss? row("min-fizzle combo", "sep "+ss.sep+" · "+ss.angleDeg+"° · curv "+ss.curvature+" → "+pctv(ss.conversionRate)+" conversion (n="+(ss.reached+ss.fizzled)+")", "#00e676")
+                   : <div style={{fontSize:10,color:FADE}}>no combo reached the minimum episode count yet.</div>}
+                {bl&&row("your baseline (1.75 / 20° / 0.5)", pctv(bl.conversionRate)+" conversion (n="+(bl.reached+bl.fizzled)+")","#90caf9")}
+                {ss&&row("median favorable move (sweet spot)", spct(ss.medianFavMovePct))}
+              </div>
+              <div style={card}>
+                <div style={{fontSize:11,fontWeight:700,color:"#ce93d8",marginBottom:4}}>B · WHEN TO ENTER & EXIT</div>
+                {row("ESD best exit bar", f.esdBestExitBar?("H"+f.esdBestExitBar.horizon+" · "+spct(f.esdBestExitBar.meanEdge)+" ("+f.esdBestExitBar.verdict+")"):"—", "#e0e0e0")}
+                {row("convergence best exit bar", f.convBestExitBar?("H"+f.convBestExitBar.horizon+" · "+spct(f.convBestExitBar.meanEdge)+" ("+f.convBestExitBar.verdict+")"):"—", "#e0e0e0")}
+                {eh.length>0&&horizonTable(eh,"ESD leads")}
+                {ch.length>0&&horizonTable(ch,"Convergence leads")}
+              </div>
+              <div style={card}>
+                <div style={{fontSize:11,fontWeight:700,color:"#ce93d8",marginBottom:4}}>C · CONVERGENCE RECALIBRATION</div>
+                {row("today's default conversion", pctv(f.convDefaultConversion))}
+                {f.convBestRecal&&row("best swept lever", "mult "+f.convBestRecal.formingMult+" · minBars "+f.convBestRecal.minFormingBars+" · RVOL "+(f.convBestRecal.rvolMin??"off")+" → "+pctv(f.convBestRecal.conversionRate))}
+                {row("recalibration warranted?", rc.warranted?"YES — take it to the OOS ledger":"NO — if it ain't broke, don't fix it", rc.warranted?"#ffd740":"#90a4ae")}
+                <div style={{fontSize:9,color:FADE,marginTop:6,lineHeight:1.5}}>Convergence geometry is a measured loser (≈ −0.71%); a higher conversion minimizes a bad base rate, it doesn't manufacture edge. The live detector is never re-wired in-sample — only the OOS ledger (esd / conv-grounded variants under FDR) pulls the trigger.</div>
+              </div>
+            </>);
+          })();
+          if(!analysis||!rows||rows.length<35) return (<>{esdInfo}{sweepCard}{fizzleCard}{tickerBox}
             <div style={{textAlign:"center",padding:"40px 0",color:"#1e2a3a"}}>
               <div style={{fontSize:46}}>🚀</div>
               <div style={{letterSpacing:3,fontSize:12,marginTop:12}}>ENTER A TICKER TO PROJECT ITS DESTINATION</div>
@@ -3984,6 +4046,7 @@ function App() {
           return (<>
             {esdInfo}
             {sweepCard}
+            {fizzleCard}
             {tickerBox}
             <div style={{...card,padding:8}}>
               <div style={{fontSize:10,color:FADE,letterSpacing:1,marginBottom:6,paddingLeft:4}}>{ticker} · {RES_LABEL[liveMeta?.resolution]||liveMeta?.resolution||"—"} · {rows.length} candles · SMA20 heading + ESD ray</div>
