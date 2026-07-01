@@ -1596,6 +1596,81 @@ export function esdAccuracyBacktest(bars, opts={}){
   };
 }
 
+// ─── Lead lifecycle "flight timer" 🔔⏲️ — rocket-phase of an ESD / convergence lead ─────────────────
+// Display/awareness only: reads a lead's LAUNCH anchor + measured typical durations and returns which phase
+// of its "flight" it is in (Launched → Boosters → Boosters fell off → Angling to coast → Expired). NEVER
+// touches the signal/gate/verdict — it only tells you how fresh a lead is and when it goes stale so a spent
+// event drops off the board instead of re-listing. Durations are measured medians (ESD median ETA ≈7 bars @1h;
+// convergence pinch→breakout ≈1–8 bars, edge peaks ~13 bars, life ≈ a trading day) — a guide, not a promise.
+
+// Minutes per bar for a Polygon resolution string (1day ≈ 390 trading minutes). Pure.
+export function resMinutes(resolution){
+  const m = { "1min":1, "5min":5, "15min":15, "30min":30, "1hour":60, "1day":390, "1week":1950, "1month":8190 };
+  return m[resolution] || 60;
+}
+
+// Launch ms of a coil/breakout lead: walk back `barsSinceCoil` bars from the detection bar (the coil start).
+// Pure; returns the bar's time (ms) or null.
+export function convLaunchMs(bars, detectionIdx, barsSinceCoil){
+  if(!bars || !bars.length || detectionIdx == null) return null;
+  const i = Math.max(0, detectionIdx - (barsSinceCoil || 0));
+  const b = bars[i];
+  return b ? (b.time != null ? b.time : (b.t != null ? b.t : null)) : null;
+}
+
+// Launch ms of an ESD heading lead: the start of the CURRENT contiguous below→up SMA20 separation run ending
+// at the last bar (walk back while the fingerprint still fires). If it isn't firing at the last bar, anchor at
+// the last bar. Pure (reuses headingEvent, point-in-time).
+export function esdLaunchMs(bars, opts={}){
+  const slopeWin = opts.slopeWin != null ? opts.slopeWin : 10, sep = opts.sep != null ? opts.sep : 0;
+  const n = (bars && bars.length) || 0, warm = 20 + slopeWin + 1;
+  const tOf = b => b ? (b.time != null ? b.time : (b.t != null ? b.t : null)) : null;
+  if(n < warm) return null;
+  const fires = i => { const ev = headingEvent(bars.slice(0, i + 1), i, { sep, slopeWin }); return !!(ev && ev.separated && ev.side === "below" && ev.leaning === "up"); };
+  let i = n - 1;
+  if(!fires(i)) return tOf(bars[i]);                 // not currently launched → anchor at the last bar
+  while(i - 1 >= warm && fires(i - 1)) i--;          // walk back to where this run began
+  return tOf(bars[i]);
+}
+
+// Rocket-flight phase of a lead. `lead` carries {launchMs?, lastBarMs?, esd?{etaBars}}; kind ∈ "esd"|"convergence"
+// (inferred from an `esd` field when absent). Thresholds default to the measured medians and are fully overridable
+// via cfg (so the convergence-timing/fizzle study medians can feed them). Returns
+// {phase, icon, label, expired, kind, ageMs, lifeMs, remainMs, pct}. Pure; display-only.
+export function leadPhase(lead, nowMs, cfg={}){
+  if(!lead || nowMs == null) return null;
+  const kind = cfg.kind || lead.kind || (lead.esd !== undefined && lead.esd !== null ? "esd" : "convergence");
+  const barMin = cfg.barMinutes != null ? cfg.barMinutes : resMinutes(cfg.resolution || lead.resolution || (kind === "esd" ? "1hour" : "15min"));
+  const barMs = barMin * 60000;
+  const anchor = lead.launchMs != null ? lead.launchMs : (lead.lastBarMs != null ? lead.lastBarMs : null);
+  const mk = (phase, icon, label, expired, e) => ({ phase, icon, label, expired: !!expired, kind,
+    ageMs: e.ageMs != null ? e.ageMs : null, lifeMs: e.lifeMs != null ? e.lifeMs : null,
+    remainMs: e.remainMs != null ? e.remainMs : null, pct: e.pct != null ? e.pct : null });
+  if(anchor == null) return mk("unknown", "", "—", false, {});
+  const age = Math.max(0, nowMs - anchor);
+  let launchedMs, boostersMs, fellMs, coastEndMs;
+  if(kind === "esd"){
+    const etaBars = (lead.esd && lead.esd.etaBars != null && lead.esd.etaBars > 0) ? lead.esd.etaBars : (cfg.etaBars || 7);
+    const eta = etaBars * barMs;
+    launchedMs = (cfg.launchedBars != null ? cfg.launchedBars : 1) * barMs;
+    boostersMs = eta * (cfg.boostFrac != null ? cfg.boostFrac : 0.5);
+    fellMs     = eta * (cfg.fellFrac  != null ? cfg.fellFrac  : 0.85);
+    coastEndMs = eta * (cfg.coastFrac != null ? cfg.coastFrac : 1.5);   // life runs ~50% past the projected ETA
+  } else {
+    launchedMs = (cfg.launchedBars != null ? cfg.launchedBars : 1)  * barMs;
+    boostersMs = (cfg.burstBars    != null ? cfg.burstBars    : 8)  * barMs;   // pinch→breakout short burst
+    fellMs     = (cfg.peakBars     != null ? cfg.peakBars     : 13) * barMs;   // forward edge peaks ~H13
+    coastEndMs = (cfg.maxLifeBars  != null ? cfg.maxLifeBars  : 26) * barMs;   // ~one trading day (26×15m = 390m)
+  }
+  const life = coastEndMs, pct = life > 0 ? Math.min(1, age / life) : null, remainMs = Math.max(0, coastEndMs - age);
+  const e = { ageMs: age, lifeMs: life, remainMs, pct };
+  if(age > coastEndMs)  return mk("expired",  "⌛", "EXPIRED",             true,  e);
+  if(age <= launchedMs) return mk("launched", "🔔", "LAUNCHED",            false, e);
+  if(age <= boostersMs) return mk("boosters", "🚀", "BOOSTERS",            false, e);
+  if(age <= fellMs)     return mk("fell_off", "📉", "BOOSTERS FELL OFF",   false, e);
+  return                       mk("coast",    "🛬", "ANGLING TO COAST",    false, e);
+}
+
 // ─── Buffett-style fundamental VALUE score (for the fundamentalGrade tag) ─────
 export function valueScore(m){
   if(!m) return null;

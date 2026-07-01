@@ -16,7 +16,7 @@
 import fs from "node:fs";
 import path from "node:path";
 import { fileURLToPath } from "node:url";
-import { analyze, convergenceForming } from "./engine.mjs";
+import { analyze, convergenceForming, leadPhase, convLaunchMs } from "./engine.mjs";
 import { fetchPolygonAggs, filterRegularHours, etMinutes } from "./pattern-study.mjs";
 
 const ROOT = path.resolve(path.dirname(fileURLToPath(import.meta.url)), "..");
@@ -103,7 +103,16 @@ export function rankLeads(records){
 // Assemble the committed report. Pure → the honesty caveats + the pattern-edge note are
 // guaranteed present on every report (unit-tested), and the ranking is deterministic.
 export function buildReport({ generatedAt, session, records = [], scanned = 0, withData = 0, dataFresh = false }){
-  const ranked   = rankLeads(records.map(r => ({ ...r, ...classifyLead(r) })));
+  // Attach the lifecycle "flight" phase (Launched → Boosters → …), then DROP any lead whose phase has EXPIRED
+  // (past its measured max life) so a spent event stops re-listing on the board. Leads with no launch anchor
+  // (plain BUYs) get an "unknown" phase and are never expired. nowMs = the scan's own generatedAt.
+  const nowMs = generatedAt ? Date.parse(generatedAt) : NaN;
+  const classified = records.map(r => {
+    const rr = { ...r, ...classifyLead(r) };
+    if(rr.lead && Number.isFinite(nowMs)) rr.phase = leadPhase(rr, nowMs, { kind: "convergence", resolution: "15min" });
+    return rr;
+  });
+  const ranked   = rankLeads(classified).filter(l => !(l.phase && l.phase.expired));
   const grounded = ranked.filter(l => l.grounded);
   return {
     generatedAt,
@@ -179,9 +188,15 @@ async function main(){
         forming = { forming: true, barsForming: cf.barsForming, tightness: cf.tightness, nearPinch: !!cf.nearPinch,
           startMs: (startBar && startBar.time) || null, startDate: (startBar && startBar.date) || null };
       }
+      // Launch anchor for the lifecycle timer: the forming-run start, else the coil start (detection −
+      // barsSinceCoil), else null for a plain BUY (no discrete launch event → no timer). Drives leadPhase.
+      const barsSinceCoil = (cb && cb.detected && cb.barsSinceCoil != null) ? cb.barsSinceCoil : null;
+      const launchMs = forming.forming ? forming.startMs
+        : (cb && cb.detected) ? convLaunchMs(bars, bars.length - 1, barsSinceCoil)
+        : null;
       records.push({
         sym, entity: c.entity || null, grade: c.grade || null, allBoxes: !!c.allBoxes,
-        price: a.entry, lastBarMs: last.time || null, fresh,
+        price: a.entry, lastBarMs: last.time || null, fresh, launchMs, barsSinceCoil,
         conv: cb ? { detected: !!cb.detected, strength: cb.strength != null ? +(+cb.strength).toFixed(3) : null } : { detected: false, strength: null },
         forming,
         patternEdge: a.convBreakoutTest && Number.isFinite(a.convBreakoutTest.edge) ? +(a.convBreakoutTest.edge * 100).toFixed(3) : null,
