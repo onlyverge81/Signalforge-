@@ -1028,6 +1028,37 @@ only — no `analyze`/`computeSignal`/`scoreAt`/gate/verdict/parity touch):
   +5 (402 green); app mounts clean (driver, zero JS errors). D/F cards + `lowtier` populate on the next `contenders.yml`
   CI run; the C monitor sweep + low-grade ledger rows populate as `contender-monitor.yml` / nightly `forward-log` run.
 
+**Lead lifecycle "flight timer" 🔔⏲️ + Grade-C fixes (Phase A DONE) — branch `claude/signalforge-lead-lifecycle`:**
+the user's ask — ESD-sweep + Contender-Monitor leads should read like a rocket launch (**Launched → Boosters →
+Boosters fell off → Angling to Coast → Expired**) with a **timer that expires a stale event so it stops re-listing**,
+durations **data-driven** (ESD long-lived, esp. caught early; convergence a few hours → a full trading day). Findings:
+there was **no launch timestamp** (records had only `lastBarMs`/`generatedAt`) and **no expiry/de-dup** — hence the
+stale re-listing; **Grade C** was absent for TWO reasons — the committed `contender-monitor.json` was pre-#78 (A/B only),
+AND the browser `scanMonitor` sorted A/B-first then sliced to 150 < 178 A/B, so C was never scanned. Shipped (Phase A,
+display/awareness only — NO gate/verdict/parity change):
+- **Pure `leadPhase(lead, nowMs, cfg)` + launch anchors** (`resMinutes`, `convLaunchMs` = detection−barsSinceCoil,
+  `esdLaunchMs` = start of the current below→up separation run) in `engine.mjs`, exported + unit-tested, **mirrored
+  byte-for-byte into `index.html`** (parity verified). Phases seeded from the MEASURED medians (ESD ETA ≈7 bars @1h →
+  life scales with each lead's own `etaBars`; convergence pinch-burst ≈8 bars, edge peaks ~13, life ≈26×15m = one
+  trading day), all `cfg`-overridable so the convergence-timing/fizzle study medians can feed them later.
+- **Sweeps stamp `launchMs`** (`contender-monitor.mjs` coil/forming start; `esd-sweep.mjs` heading-run start) and
+  their `buildReport` attaches the phase + **DROPS expired leads** (no stale re-list). Mirrored into the browser
+  `scanMonitor` record + `buildReport`.
+- **Boards render a live phase chip** (🔔/🚀/📉/🛬 + age + "~Xh left") recomputed at VIEW time (ages as you watch;
+  expired ones drop at view time too) on the MONITOR + 📡 ESD SWEEP rows.
+- **Grade-C browser fix:** `scanMonitor` now reserves ~40% of the post-grounded budget for grade C (cap 200) so the
+  watch tier is always scanned; dispatched `contender-monitor.yml` on main (market open) to refresh the stale A/B-only JSON.
+- Tests +10 (`lead-lifecycle.test.mjs` + monitor expiry/BUY-stays; **428 green**); engine↔app parity byte-identical; app
+  mounts clean (driver). Chips populate on the next `contender-monitor.yml` / `esd-sweep.yml` runs or a browser SCAN-NOW.
+  **Phase B (DONE):** the ESD SWEEP board splits into UP leads (primary) + a dim **↘ SHORT (down-lean) — AWARENESS ONLY**
+  subsection (both carry the timer; execution never offered under long-only), and the MONITOR shows a **"tier of leads
+  shown: A # · B # · C #"** footer making the grade-C watch tier visibly present. **Phase C (DONE — defaults validated):**
+  dispatched `convergence-fizzle-study.yml` + `convergence-timing-study.yml` on `main`; they confirm the convergence
+  "resolve-fast / few-hours" profile, so the `leadPhase` convergence defaults are already measured-derived and in range
+  (pinch-burst ~8 bars ≈2h, edge-peak ~13 bars ≈3.25h, life 26 bars = one trading day) — no recalibration needed; the cfg
+  stays overridable if a future run wants sub-bar precision. **Grade-C confirmed live on `main`** after the monitor refresh
+  (leads A 12 · B 55 · C 53). All three phases shipped on PR #81. Tests 428 green; app mounts clean.
+
 **Next — Track B:**
 - Mature the `momentum-on` / `merits-on` / `news-*` / `earnings-recent-on` OOS ledgers to n≥10; human-ratify
   only if they clear FDR. PASSIVE — the nightly `forward-log → forward-perf → promote` already partitions every

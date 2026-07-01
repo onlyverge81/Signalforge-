@@ -133,3 +133,31 @@ test("buildReport: counts forming-only names and surfaces them as ⏳ FORMING le
   const f = rep.leads.find(l => l.sym === "F");
   assert.ok(f && f.stage === "FORMING");
 });
+
+// ── lifecycle timer: buildReport attaches a phase and DROPS expired leads (no stale re-listing) ──
+test("buildReport: a spent (EXPIRED) lead is dropped; a live one keeps its phase", () => {
+  const gen = "2026-07-01T18:00:00.000Z";
+  const nowMs = Date.parse(gen);
+  const bar = 15 * 60000;
+  const mk = (sym, ageBars) => ({
+    sym, grade: "B", allBoxes: false,
+    engine: { signal: "HOLD" }, conv: { detected: true, strength: 0.8 }, forming: { forming: false },
+    lastBarMs: nowMs, launchMs: nowMs - ageBars * bar,
+  });
+  const rep = buildReport({ generatedAt: gen, session: { open: true }, records: [mk("LIVE", 2), mk("STALE", 40)] });
+  const syms = rep.leads.map(l => l.sym);
+  assert.ok(syms.includes("LIVE"), "a fresh coil lead stays");
+  assert.ok(!syms.includes("STALE"), "a lead past its ~1-day max life is dropped");
+  const live = rep.leads.find(l => l.sym === "LIVE");
+  assert.ok(live.phase && live.phase.phase === "boosters", "the live lead carries its flight phase");
+  assert.equal(live.phase.expired, false);
+});
+
+test("buildReport: a plain BUY (launchMs null) is never expired — a live verdict always stays", () => {
+  const gen = "2026-07-01T18:00:00.000Z";
+  const rep = buildReport({ generatedAt: gen, session: { open: true },
+    records: [{ sym: "BUYONLY", grade: "A", allBoxes: true, engine: { signal: "BUY" }, conv: { detected: false }, forming: { forming: false }, lastBarMs: Date.parse(gen), launchMs: null }] });
+  const l = rep.leads.find(l => l.sym === "BUYONLY");
+  assert.ok(l, "the BUY lead stays on the board");
+  assert.equal(l.phase.expired, false);
+});

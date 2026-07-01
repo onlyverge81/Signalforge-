@@ -15,7 +15,7 @@
 import fs from "node:fs";
 import path from "node:path";
 import { fileURLToPath } from "node:url";
-import { analyze, esdProject, headingEvent } from "./engine.mjs";
+import { analyze, esdProject, headingEvent, esdLaunchMs, leadPhase } from "./engine.mjs";
 import { fetchPolygonAggs, filterRegularHours } from "./pattern-study.mjs";
 import { withinSession, etParts } from "./contender-monitor.mjs";
 
@@ -57,7 +57,15 @@ export function rankEsdLeads(records){
 // Assemble the committed report. Pure → the honesty caveats + the projection note are guaranteed
 // present on every report (unit-tested), and the ranking is deterministic.
 export function buildReport({ generatedAt, session, records = [], scanned = 0, withData = 0, dataFresh = false, resolution = null }){
-  const ranked   = rankEsdLeads(records.map(r => ({ ...r, ...classifyEsdLead(r) })));
+  // Attach the lifecycle "flight" phase (ESD leads are long-lived — the timer scales with each lead's ETA) and
+  // DROP any lead whose phase has EXPIRED (past ~1.5× its projected ETA) so a spent heading stops re-listing.
+  const nowMs = generatedAt ? Date.parse(generatedAt) : NaN;
+  const classified = records.map(r => {
+    const rr = { ...r, ...classifyEsdLead(r) };
+    if(rr.lead && Number.isFinite(nowMs)) rr.phase = leadPhase(rr, nowMs, { kind: "esd", resolution: resolution || "1hour" });
+    return rr;
+  });
+  const ranked   = rankEsdLeads(classified).filter(l => !(l.phase && l.phase.expired));
   const grounded = ranked.filter(l => l.grounded);
   return {
     generatedAt, resolution,
@@ -133,9 +141,12 @@ async function main(){
       if(fresh) freshCount++;
       const ev  = headingEvent(bars, bars.length - 1, {}) || null;
       const esd = esdProject(bars, { sl: a.sl, tp1: a.tp1, support: a.support, resistance: a.resistance }, {}) || null;
+      // Launch anchor for the lifecycle timer: the start of the current below→up SMA20 separation run (when the
+      // heading actually launched), not just the detection bar. null when there's no separation firing.
+      const launchMs = (ev && ev.separated && ev.side === "below" && ev.leaning === "up") ? esdLaunchMs(bars, {}) : null;
       records.push({
         sym, entity: c.entity || null, grade: c.grade || null, allBoxes: !!c.allBoxes,
-        price: a.entry, lastBarMs: last.time || null, fresh,
+        price: a.entry, lastBarMs: last.time || null, fresh, launchMs,
         heading: ev  ? { separated: !!ev.separated, side: ev.side, leaning: ev.leaning, gapATR: ev.gapATR } : null,
         esd:     esd ? { valid: !!esd.valid, leaning: esd.leaning, angleDeg: esd.angleDeg, targetName: esd.targetName, targetPrice: esd.targetPrice, etaBars: esd.etaBars } : null,
         engine:  { signal: a.signal, score: a.score, confidence: a.confidence },
