@@ -1,13 +1,13 @@
 {
-  "generatedAt": "2026-07-01T10:55:36.139Z",
+  "generatedAt": "2026-07-02T08:39:35.581Z",
   "method": "matched-window TOTAL-return buy-&-hold (price + dividends); alpha = strategy net − benchmark net (cost-invariant)",
   "costPerTrade": 0.12000000000000001,
   "ledger": {
-    "rows": 1158,
-    "closed": 21,
-    "benchmarkable": 21,
-    "suspect": 26,
-    "suspectRate": 2.2453
+    "rows": 2762,
+    "closed": 25,
+    "benchmarkable": 25,
+    "suspect": 122,
+    "suspectRate": 4.4171
   },
   "variants": {
     "all": {
@@ -1965,6 +1965,192 @@
         "provenLoser": false
       }
     },
+    "contender-c-on": {
+      "n": 0,
+      "closed": 0,
+      "uncovered": 0,
+      "beatBench": 0,
+      "beatBenchRate": null,
+      "stratNetSum": 0,
+      "benchNetSum": 0,
+      "alphaSum": 0,
+      "meanAlphaPerTrade": null,
+      "stratGrowthPct": 0,
+      "benchGrowthPct": 0,
+      "alphaGrowthPct": 0,
+      "legs": [],
+      "fdr": true,
+      "significance": {
+        "n": 0,
+        "meanAlpha": null,
+        "tStat": null,
+        "df": null,
+        "pUpper": null,
+        "pLower": null,
+        "qBH": null,
+        "qBY": null,
+        "qNegBH": null,
+        "inFamily": false,
+        "verdict": "TOO FEW TRADES",
+        "promotable": false,
+        "provenLoser": false
+      }
+    },
+    "contender-c-off": {
+      "n": 3,
+      "closed": 3,
+      "uncovered": 0,
+      "beatBench": 0,
+      "beatBenchRate": 0,
+      "stratNetSum": 24.2009,
+      "benchNetSum": 24.7216,
+      "alphaSum": -0.5207,
+      "meanAlphaPerTrade": -0.1736,
+      "stratGrowthPct": 26.2055,
+      "benchGrowthPct": 26.8135,
+      "alphaGrowthPct": -0.608,
+      "legs": [
+        {
+          "id": "JNJ-1day-2026-06-15-BUY",
+          "ticker": "JNJ",
+          "stratGross": 8.042,
+          "stratNet": 7.922,
+          "benchGross": 8.0625,
+          "benchNet": 7.9425,
+          "alphaPct": -0.0205,
+          "beatBench": false
+        },
+        {
+          "id": "JNJ-1day-2026-06-16-BUY",
+          "ticker": "JNJ",
+          "stratGross": 8.1933,
+          "stratNet": 8.0733,
+          "benchGross": 8.283,
+          "benchNet": 8.163,
+          "alphaPct": -0.0897,
+          "beatBench": false
+        },
+        {
+          "id": "JNJ-1day-2026-06-17-BUY",
+          "ticker": "JNJ",
+          "stratGross": 8.3256,
+          "stratNet": 8.2056,
+          "benchGross": 8.7361,
+          "benchNet": 8.6161,
+          "alphaPct": -0.4105,
+          "beatBench": false
+        }
+      ],
+      "fdr": false,
+      "significance": {
+        "n": 3,
+        "meanAlpha": -0.1736,
+        "tStat": -1.4447,
+        "df": 2,
+        "pUpper": 0.8573,
+        "pLower": 0.1427,
+        "qBH": null,
+        "qBY": null,
+        "qNegBH": null,
+        "inFamily": false,
+        "verdict": "TOO FEW TRADES",
+        "promotable": false,
+        "provenLoser": false
+      }
+    },
+    "contender-df-on": {
+      "n": 0,
+      "closed": 0,
+      "uncovered": 0,
+      "beatBench": 0,
+      "beatBenchRate": null,
+      "stratNetSum": 0,
+      "benchNetSum": 0,
+      "alphaSum": 0,
+      "meanAlphaPerTrade": null,
+      "stratGrowthPct": 0,
+      "benchGrowthPct": 0,
+      "alphaGrowthPct": 0,
+      "legs": [],
+      "fdr": true,
+      "significance": {
+        "n": 0,
+        "meanAlpha": null,
+        "tStat": null,
+        "df": null,
+        "pUpper": null,
+        "pLower": null,
+        "qBH": null,
+        "qBY": null,
+        "qNegBH": null,
+        "inFamily": false,
+        "verdict": "TOO FEW TRADES",
+        "promotable": false,
+        "provenLoser": false
+      }
+    },
+    "contender-df-off": {
+      "n": 3,
+      "closed": 3,
+      "uncovered": 0,
+      "beatBench": 0,
+      "beatBenchRate": 0,
+      "stratNetSum": 24.2009,
+      "benchNetSum": 24.7216,
+      "alphaSum": -0.5207,
+      "meanAlphaPerTrade": -0.1736,
+      "stratGrowthPct": 26.2055,
+      "benchGrowthPct": 26.8135,
+      "alphaGrowthPct": -0.608,
+      "legs": [
+        {
+          "id": "JNJ-1day-2026-06-15-BUY",
+          "ticker": "JNJ",
+          "stratGross": 8.042,
+          "stratNet": 7.922,
+          "benchGross": 8.0625,
+          "benchNet": 7.9425,
+          "alphaPct": -0.0205,
+          "beatBench": false
+        },
+        {
+          "id": "JNJ-1day-2026-06-16-BUY",
+          "ticker": "JNJ",
+          "stratGross": 8.1933,
+          "stratNet": 8.0733,
+          "benchGross": 8.283,
+          "benchNet": 8.163,
+          "alphaPct": -0.0897,
+          "beatBench": false
+        },
+        {
+          "id": "JNJ-1day-2026-06-17-BUY",
+          "ticker": "JNJ",
+          "stratGross": 8.3256,
+          "stratNet": 8.2056,
+          "benchGross": 8.7361,
+          "benchNet": 8.6161,
+          "alphaPct": -0.4105,
+          "beatBench": false
+        }
+      ],
+      "fdr": false,
+      "significance": {
+        "n": 3,
+        "meanAlpha": -0.1736,
+        "tStat": -1.4447,
+        "df": 2,
+        "pUpper": 0.8573,
+        "pLower": 0.1427,
+        "qBH": null,
+        "qBY": null,
+        "qNegBH": null,
+        "inFamily": false,
+        "verdict": "TOO FEW TRADES",
+        "promotable": false,
+        "provenLoser": false
+      }
+    },
     "conv-grounded-on": {
       "n": 0,
       "closed": 0,
@@ -2307,18 +2493,18 @@
       }
     },
     "position": {
-      "n": 18,
-      "closed": 18,
+      "n": 22,
+      "closed": 22,
       "uncovered": 0,
-      "beatBench": 7,
-      "beatBenchRate": 38.8889,
-      "stratNetSum": -125.426,
-      "benchNetSum": -116.907,
-      "alphaSum": -8.519,
-      "meanAlphaPerTrade": -0.4733,
-      "stratGrowthPct": -72.7915,
-      "benchGrowthPct": -70.2299,
-      "alphaGrowthPct": -2.5615,
+      "beatBench": 9,
+      "beatBenchRate": 40.9091,
+      "stratNetSum": -163.9684,
+      "benchNetSum": -155.5038,
+      "alphaSum": -8.4646,
+      "meanAlphaPerTrade": -0.3848,
+      "stratGrowthPct": -82.0085,
+      "benchGrowthPct": -80.3328,
+      "alphaGrowthPct": -1.6757,
       "legs": [
         {
           "id": "AAPL-1day-POS-2026-06-15-BUY",
@@ -2349,6 +2535,16 @@
           "benchNet": -7.847,
           "alphaPct": -0.4435,
           "beatBench": false
+        },
+        {
+          "id": "COST-1day-POS-2026-06-15-BUY",
+          "ticker": "COST",
+          "stratGross": -5.1315,
+          "stratNet": -5.2515,
+          "benchGross": -5.5929,
+          "benchNet": -5.7129,
+          "alphaPct": 0.4614,
+          "beatBench": true
         },
         {
           "id": "CVX-1day-POS-2026-06-15-BUY",
@@ -2391,6 +2587,16 @@
           "beatBench": false
         },
         {
+          "id": "COST-1day-POS-2026-06-16-BUY",
+          "ticker": "COST",
+          "stratGross": -6.5235,
+          "stratNet": -6.6435,
+          "benchGross": -6.2847,
+          "benchNet": -6.4047,
+          "alphaPct": -0.2388,
+          "beatBench": false
+        },
+        {
           "id": "VZ-1day-POS-2026-06-16-BUY",
           "ticker": "VZ",
           "stratGross": -7.3193,
@@ -2418,6 +2624,16 @@
           "benchGross": -7.2569,
           "benchNet": -7.3769,
           "alphaPct": -0.4313,
+          "beatBench": false
+        },
+        {
+          "id": "CVX-1day-POS-2026-06-17-BUY",
+          "ticker": "CVX",
+          "stratGross": -7.1045,
+          "stratNet": -7.2245,
+          "benchGross": -6.6956,
+          "benchNet": -6.8156,
+          "alphaPct": -0.4089,
           "beatBench": false
         },
         {
@@ -2449,6 +2665,16 @@
           "benchNet": -8.4454,
           "alphaPct": -0.7773,
           "beatBench": false
+        },
+        {
+          "id": "QCOM-1day-POS-2026-06-18-BUY",
+          "ticker": "QCOM",
+          "stratGross": -19.3029,
+          "stratNet": -19.4229,
+          "benchGross": -19.5436,
+          "benchNet": -19.6636,
+          "alphaPct": 0.2407,
+          "beatBench": true
         },
         {
           "id": "VZ-1day-POS-2026-06-18-BUY",
@@ -2503,12 +2729,12 @@
       ],
       "fdr": false,
       "significance": {
-        "n": 18,
-        "meanAlpha": -0.4733,
-        "tStat": -1.4699,
-        "df": 17,
-        "pUpper": 0.9201,
-        "pLower": 0.0799,
+        "n": 22,
+        "meanAlpha": -0.3848,
+        "tStat": -1.4398,
+        "df": 21,
+        "pUpper": 0.9177,
+        "pLower": 0.0823,
         "qBH": null,
         "qBY": null,
         "qNegBH": null,
@@ -2571,18 +2797,18 @@
       }
     },
     "quality-position-off": {
-      "n": 16,
-      "closed": 16,
+      "n": 20,
+      "closed": 20,
       "uncovered": 0,
-      "beatBench": 5,
-      "beatBenchRate": 31.25,
-      "stratNetSum": -112.4233,
-      "benchNetSum": -102.8,
-      "alphaSum": -9.6233,
-      "meanAlphaPerTrade": -0.6015,
-      "stratGrowthPct": -68.876,
-      "benchGrowthPct": -65.5394,
-      "alphaGrowthPct": -3.3366,
+      "beatBench": 7,
+      "beatBenchRate": 35,
+      "stratNetSum": -150.9657,
+      "benchNetSum": -141.3968,
+      "alphaSum": -9.5689,
+      "meanAlphaPerTrade": -0.4784,
+      "stratGrowthPct": -79.4195,
+      "benchGrowthPct": -77.2341,
+      "alphaGrowthPct": -2.1854,
       "legs": [
         {
           "id": "AAPL-1day-POS-2026-06-15-BUY",
@@ -2613,6 +2839,16 @@
           "benchNet": -7.847,
           "alphaPct": -0.4435,
           "beatBench": false
+        },
+        {
+          "id": "COST-1day-POS-2026-06-15-BUY",
+          "ticker": "COST",
+          "stratGross": -5.1315,
+          "stratNet": -5.2515,
+          "benchGross": -5.5929,
+          "benchNet": -5.7129,
+          "alphaPct": 0.4614,
+          "beatBench": true
         },
         {
           "id": "CVX-1day-POS-2026-06-15-BUY",
@@ -2655,6 +2891,16 @@
           "beatBench": false
         },
         {
+          "id": "COST-1day-POS-2026-06-16-BUY",
+          "ticker": "COST",
+          "stratGross": -6.5235,
+          "stratNet": -6.6435,
+          "benchGross": -6.2847,
+          "benchNet": -6.4047,
+          "alphaPct": -0.2388,
+          "beatBench": false
+        },
+        {
           "id": "VZ-1day-POS-2026-06-16-BUY",
           "ticker": "VZ",
           "stratGross": -7.3193,
@@ -2682,6 +2928,16 @@
           "benchGross": -7.2569,
           "benchNet": -7.3769,
           "alphaPct": -0.4313,
+          "beatBench": false
+        },
+        {
+          "id": "CVX-1day-POS-2026-06-17-BUY",
+          "ticker": "CVX",
+          "stratGross": -7.1045,
+          "stratNet": -7.2245,
+          "benchGross": -6.6956,
+          "benchNet": -6.8156,
+          "alphaPct": -0.4089,
           "beatBench": false
         },
         {
@@ -2713,6 +2969,16 @@
           "benchNet": -8.4454,
           "alphaPct": -0.7773,
           "beatBench": false
+        },
+        {
+          "id": "QCOM-1day-POS-2026-06-18-BUY",
+          "ticker": "QCOM",
+          "stratGross": -19.3029,
+          "stratNet": -19.4229,
+          "benchGross": -19.5436,
+          "benchNet": -19.6636,
+          "alphaPct": 0.2407,
+          "beatBench": true
         },
         {
           "id": "VZ-1day-POS-2026-06-18-BUY",
@@ -2747,12 +3013,12 @@
       ],
       "fdr": false,
       "significance": {
-        "n": 16,
-        "meanAlpha": -0.6015,
-        "tStat": -1.7276,
-        "df": 15,
-        "pUpper": 0.9477,
-        "pLower": 0.0523,
+        "n": 20,
+        "meanAlpha": -0.4784,
+        "tStat": -1.6807,
+        "df": 19,
+        "pUpper": 0.9454,
+        "pLower": 0.0546,
         "qBH": null,
         "qBY": null,
         "qNegBH": null,
@@ -2965,19 +3231,29 @@
       }
     },
     "quality-grade-position-off": {
-      "n": 1,
-      "closed": 1,
+      "n": 5,
+      "closed": 5,
       "uncovered": 0,
-      "beatBench": 1,
-      "beatBenchRate": 100,
-      "stratNetSum": -7.7287,
-      "benchNetSum": -8.2353,
-      "alphaSum": 0.5066,
-      "meanAlphaPerTrade": 0.5066,
-      "stratGrowthPct": -7.7287,
-      "benchGrowthPct": -8.2353,
-      "alphaGrowthPct": 0.5066,
+      "beatBench": 3,
+      "beatBenchRate": 60,
+      "stratNetSum": -46.2711,
+      "benchNetSum": -46.8321,
+      "alphaSum": 0.561,
+      "meanAlphaPerTrade": 0.1122,
+      "stratGrowthPct": -38.9861,
+      "benchGrowthPct": -39.377,
+      "alphaGrowthPct": 0.3908,
       "legs": [
+        {
+          "id": "COST-1day-POS-2026-06-15-BUY",
+          "ticker": "COST",
+          "stratGross": -5.1315,
+          "stratNet": -5.2515,
+          "benchGross": -5.5929,
+          "benchNet": -5.7129,
+          "alphaPct": 0.4614,
+          "beatBench": true
+        },
         {
           "id": "CVX-1day-POS-2026-06-15-BUY",
           "ticker": "CVX",
@@ -2987,16 +3263,46 @@
           "benchNet": -8.2353,
           "alphaPct": 0.5066,
           "beatBench": true
+        },
+        {
+          "id": "COST-1day-POS-2026-06-16-BUY",
+          "ticker": "COST",
+          "stratGross": -6.5235,
+          "stratNet": -6.6435,
+          "benchGross": -6.2847,
+          "benchNet": -6.4047,
+          "alphaPct": -0.2388,
+          "beatBench": false
+        },
+        {
+          "id": "CVX-1day-POS-2026-06-17-BUY",
+          "ticker": "CVX",
+          "stratGross": -7.1045,
+          "stratNet": -7.2245,
+          "benchGross": -6.6956,
+          "benchNet": -6.8156,
+          "alphaPct": -0.4089,
+          "beatBench": false
+        },
+        {
+          "id": "QCOM-1day-POS-2026-06-18-BUY",
+          "ticker": "QCOM",
+          "stratGross": -19.3029,
+          "stratNet": -19.4229,
+          "benchGross": -19.5436,
+          "benchNet": -19.6636,
+          "alphaPct": 0.2407,
+          "beatBench": true
         }
       ],
       "fdr": false,
       "significance": {
-        "n": 1,
-        "meanAlpha": 0.5066,
-        "tStat": null,
-        "df": null,
-        "pUpper": null,
-        "pLower": null,
+        "n": 5,
+        "meanAlpha": 0.1122,
+        "tStat": 0.6046,
+        "df": 4,
+        "pUpper": 0.289,
+        "pLower": 0.711,
         "qBH": null,
         "qBY": null,
         "qNegBH": null,
